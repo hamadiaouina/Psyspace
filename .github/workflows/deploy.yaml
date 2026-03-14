@@ -2,9 +2,9 @@ name: PsySpace CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main" ] # Se déclenche dès que tu push sur la branche main
+    branches: [ "main", "master" ] # On met les deux pour être tranquille
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "master" ]
 
 jobs:
   build-and-test:
