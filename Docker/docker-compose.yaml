@@ -1,0 +1,37 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: psyspace_db
+    restart: always
+    command: --sql-mode="" 
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_DATABASE: edoc
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+
+  php-apache:
+    image: php:8.2-apache
+    container_name: psyspace_web
+    ports:
+      - "8080:80"
+    volumes:
+      - ../:/var/www/html
+    depends_on:
+      - db
+    entrypoint: >
+      sh -c "docker-php-ext-install mysqli pdo pdo_mysql && apache2-foreground"
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: psyspace_pma
+    restart: always
+    environment:
+      - PMA_HOST=db
+      - PMA_ARBITRARY=1
+    ports:
+      - "8081:80"
+    depends_on:
+      - db
