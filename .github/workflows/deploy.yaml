@@ -25,7 +25,7 @@ jobs:
         run: docker compose config
 
       # 4. Simuler le build des images pour voir si tout s'installe bien
-      - name: Test du Build Docker
+      - name: Test du Build Docker&&
         run: docker compose build
 
       # 5. Notification de succès
