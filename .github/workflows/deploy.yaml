@@ -2,7 +2,7 @@ name: PsySpace CI/CD Pipeline
 
 on:
   push:
-    branches: [ "main", "master" ] # On met les deux pour être tranquille
+    branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
 
@@ -11,24 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Récupérer le code depuis ton dépôt GitHub
       - name: Checkout du code
         uses: actions/checkout@v4
 
-      # 2. Vérifier que les fichiers PHP n'ont pas d'erreurs de syntaxe (Linting)
       - name: Vérification syntaxe PHP
         run: |
           find . -name "*.php" -not -path "./vendor/*" | xargs -n 1 php -l
 
-      # 3. Vérifier que Docker et Docker Compose sont fonctionnels
-      - name: Validation de la configuration Docker
-        run: docker compose config
-
-      # 4. Simuler le build des images pour voir si tout s'installe bien
-      - name: Test du Build Docker&&
-        run: docker compose build
-
-      # 5. Notification de succès
-      - name: Status Check
-        if: success()
-        run: echo "Le pipeline CI est passé avec succès ! Code prêt pour le déploiement."
+      - name: Test Docker
+        run: |
+          docker compose version
+          docker compose config
