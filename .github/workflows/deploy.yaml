@@ -22,11 +22,11 @@ jobs:
 
       # 3. Vérifier que Docker et Docker Compose sont fonctionnels
       - name: Validation de la configuration Docker
-        run: docker-compose config
+        run: docker compose config
 
       # 4. Simuler le build des images pour voir si tout s'installe bien
       - name: Test du Build Docker
-        run: docker-compose build
+        run: docker compose build
 
       # 5. Notification de succès
       - name: Status Check
