@@ -24,37 +24,42 @@ jobs:
         with:
           php-version: "8.2"
 
-      - name: Fail if .env is present or tracked (allow .env.example)
+      - name: Fail if .env is present or tracked (debug)
         shell: bash
         run: |
           set -euo pipefail
 
-          # Block a real .env file in the workspace
+          echo "== Debug: listing env-like files in workspace =="
+          ls -la . | grep -E '(^| )\.env' || true
+
+          echo "== Debug: git tracked env-like files =="
+          git ls-files | grep -E '(^|/)\.env($|[./])|(^|/)\.env\.[^/]+$|(^|/)[^/]+\.env$' || true
+
+          # Hard fail rules
           if [ -f ".env" ]; then
-            echo "::error::.env exists in the workspace. Keep it local/server-only and never commit it."
+            echo "::error::.env exists in the workspace. Remove it (keep only local/server)."
             exit 1
           fi
 
-          # Block tracked .env
           if git ls-files --error-unmatch ".env" >/dev/null 2>&1; then
-            echo "::error::.env is tracked by git. Untrack it: git rm --cached .env"
+            echo "::error::.env is tracked by git. Run: git rm --cached .env"
             exit 1
           fi
 
-          # Block tracked .env.* variants except .env.example
           tracked_env_variants="$(
             git ls-files \
               | grep -E '(^|/)\.env\.[^/]+$' \
-              | grep -v -E '(^|/)\.env\.example$'
+              | grep -v -E '(^|/)\.env\.example$' \
+              || true
           )"
 
-          if [ -n "$tracked_env_variants" ]; then
+          if [ -n "${tracked_env_variants:-}" ]; then
             echo "::error::Tracked env variant files detected (not allowed):"
             echo "$tracked_env_variants"
             exit 1
           fi
 
-          echo "OK: .env.example is allowed; real env files are blocked."
+          echo "OK: env checks passed."
 
       - name: PHP syntax check (php -l)
         shell: bash
