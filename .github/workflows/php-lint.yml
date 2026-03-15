@@ -1,21 +1,47 @@
+name: PHP Lint + Secrets Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+
       - name: Fail if .env is present or tracked (allow .env.example)
         shell: bash
         run: |
           set -euo pipefail
 
-          # 1) Block a real .env file in the workspace
+          # Block a real .env file in the workspace
           if [ -f ".env" ]; then
             echo "::error::.env exists in the workspace. Keep it local/server-only and never commit it."
             exit 1
           fi
 
-          # 2) Block tracked .env (but allow .env.example)
+          # Block tracked .env
           if git ls-files --error-unmatch ".env" >/dev/null 2>&1; then
             echo "::error::.env is tracked by git. Untrack it: git rm --cached .env"
             exit 1
           fi
 
-          # 3) Optional: block other tracked env variants like ".env.production" (but allow .env.example)
+          # Block tracked .env.* variants except .env.example
           tracked_env_variants="$(
             git ls-files \
               | grep -E '(^|/)\.env\.[^/]+$' \
@@ -29,3 +55,25 @@
           fi
 
           echo "OK: .env.example is allowed; real env files are blocked."
+
+      - name: PHP syntax check (php -l)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          files=(**/*.php)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No PHP files found."
+            exit 0
+          fi
+
+          failed=0
+          for f in "${files[@]}"; do
+            echo "Linting: $f"
+            php -l "$f" || failed=1
+          done
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::PHP lint failed."
+            exit 1
+          fi
