@@ -4,7 +4,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
 <style>
-    /* --- STYLE DARK MODE PRO --- */
     body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
     
     .ai-layout {
@@ -17,7 +16,6 @@
         .ai-layout { flex-direction: row; height: calc(100vh - 100px); padding: 32px; }
     }
 
-    /* PANNEAU AVATAR */
     .avatar-panel {
         flex: 1;
         background: linear-gradient(145deg, #1e293b, #0f172a);
@@ -30,7 +28,6 @@
     #avatar-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
     #avatar-canvas:active { cursor: grabbing; }
     
-    /* Statut flottant */
     .status-pill {
         position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
         display: flex; align-items: center; gap: 8px;
@@ -45,7 +42,6 @@
     .status-pill.thinking  .status-dot { background: #6366f1; box-shadow: 0 0 10px #6366f1; animation: pulse 1.5s infinite; }
     .status-pill.speaking  .status-dot { background: #10b981; box-shadow: 0 0 10px #10b981; }
 
-    /* PANNEAU CHAT */
     .chat-panel {
         flex: 1; display: flex; flex-direction: column;
         background: #1e293b; border-radius: 2rem;
@@ -94,7 +90,6 @@
     .btn-send { background: #6366f1; color: white; box-shadow: 0 4px 15px rgba(99,102,241,0.3); }
     .btn-send:hover { background: #4f46e5; transform: translateY(-1px); }
 
-    /* Animations */
     .typing-dots { display: flex; gap: 4px; }
     .typing-dots span { width: 6px; height: 6px; background: #6366f1; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
     .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
@@ -113,24 +108,18 @@
 
 <div class="ai-layout">
 
-    <!-- COLONNE GAUCHE : AVATAR 3D -->
     <div class="avatar-panel">
         <canvas id="avatar-canvas"></canvas>
-        
-        <!-- Loader -->
         <div id="loader" style="position:absolute;color:white;text-align:center;">
             <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>
             Chargement de l'avatar…
         </div>
-
-        <!-- Statut -->
         <div class="status-pill" id="statusPill">
             <div class="status-dot"></div>
             <span id="statusText">En attente</span>
         </div>
     </div>
 
-    <!-- COLONNE DROITE : CHAT -->
     <div class="chat-panel">
         <div class="chat-area" id="chatHistory">
             <div class="message-bubble bot">
@@ -158,18 +147,13 @@
 </div>
 
 <script>
-/* ═══════════════════════════════════════
-   ÉTAT & VARIABLES
-═══════════════════════════════════════ */
 var isThinking=false, isListening=false, isSpeaking=false;
 var recognition=null, currentAudio=null;
 var scene, camera, renderer, mixer, clock, avatarRoot;
 
-/* Morph targets */
 var headMesh=null, teethMesh=null, tongueMesh=null;
 var lipIv=null, blinkIv=null, vIdx=0;
 
-/* Index morph Head_Mesh (Ajustez ces indices selon votre modèle si besoin) */
 var M = {
     mouthOpen:0, viseme_sil:1,
     viseme_PP:2, viseme_FF:3, viseme_TH:4,
@@ -187,7 +171,6 @@ var VISEMES = [
     {k:'viseme_U', w:.75},{k:'mouthOpen',w:.65},{k:'viseme_nn',w:.45}
 ];
 
-/* DOM */
 var chatHistory = document.getElementById('chatHistory');
 var chatInput   = document.getElementById('chatInput');
 var statusPill  = document.getElementById('statusPill');
@@ -213,12 +196,8 @@ function showTyping(){
 }
 function hideTyping(){ var t=document.getElementById('typingBubble'); if(t)t.remove(); }
 
-/* ═══════════════════════════════════════
-   MORPH HELPERS
-═══════════════════════════════════════ */
 function setM(mesh,idx,val){
     if(!mesh||!mesh.morphTargetInfluences) return;
-    // Sécurité pour ne pas dépasser la taille du tableau
     if(idx>=0 && idx<mesh.morphTargetInfluences.length)
         mesh.morphTargetInfluences[idx]=Math.max(0,Math.min(1,val));
 }
@@ -248,7 +227,6 @@ function startLipSync(){
         vIdx++;
     },110);
 }
-
 function stopLipSync(){ clearInterval(lipIv); resetMorphs(); }
 
 function startBlink(){
@@ -268,12 +246,11 @@ function startBlink(){
 ═══════════════════════════════════════ */
 function initThree(){
     var canvas=document.getElementById('avatar-canvas');
-    // Force une taille si les dimensions CSS ne sont pas encore calculées
-    var W=canvas.clientWidth || 400; 
+    var W=canvas.clientWidth || 400;
     var H=canvas.clientHeight || 500;
 
     scene=new THREE.Scene();
-    scene.background=new THREE.Color(0x1e293b); // Fond bleu slate
+    scene.background=new THREE.Color(0x1e293b);
 
     camera=new THREE.PerspectiveCamera(35,W/H,0.1,100);
     camera.position.set(0,1.6,2.0);
@@ -286,7 +263,6 @@ function initThree(){
     renderer.toneMapping=THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure=1.2;
 
-    // Lumières
     scene.add(new THREE.AmbientLight(0xffffff,0.8));
     var key=new THREE.DirectionalLight(0xffffff,1.2); key.position.set(1.5,3,2); scene.add(key);
     var fill=new THREE.DirectionalLight(0xffffff,0.6); fill.position.set(-2,1,1); scene.add(fill);
@@ -294,53 +270,37 @@ function initThree(){
 
     clock=new THREE.Clock();
 
-    // Chargement dynamique du GLTFLoader
     var s=document.createElement('script');
     s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
     s.onload=function(){
         var loader=new THREE.GLTFLoader();
-        
-        // CHARGEMENT DU MODELE
         loader.load('model.glb', function(gltf){
             avatarRoot=gltf.scene;
-
-            // Centrage du modèle
             var box=new THREE.Box3().setFromObject(avatarRoot);
             var size=box.getSize(new THREE.Vector3());
             avatarRoot.position.sub(box.getCenter(new THREE.Vector3()));
-            avatarRoot.position.y+=size.y*0.5; // Pieds au sol
-            
+            avatarRoot.position.y+=size.y*0.5;
             scene.add(avatarRoot);
-
-            // Recherche des meshes pour morphing
             avatarRoot.traverse(function(o){
                 if(o.isMesh && o.morphTargetInfluences){
-                    console.log("Mesh trouvé:", o.name); // Pour debug
                     if(o.name==='Head_Mesh')   headMesh=o;
                     if(o.name==='Teeth_Mesh')  teethMesh=o;
                     if(o.name==='Tongue_Mesh') tongueMesh=o;
                 }
             });
-
-            // Animation loop si animations dans le GLB
             if(gltf.animations.length>0){
                 mixer=new THREE.AnimationMixer(avatarRoot);
                 mixer.clipAction(gltf.animations[0]).play();
             }
-
-            // Succès -> Cacher loader
             loaderDiv.style.display='none';
-
-            // Init expressions
             setTimeout(function(){ if(headMesh) setM(headMesh,M.mouthSmile,0.12); },600);
             startBlink();
-
-        }, 
-        function(xhr){ // Progression
+        },
+        function(xhr){
             var percent = Math.round(xhr.loaded / xhr.total * 100) || 0;
             loaderDiv.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>Chargement... ' + percent + '%';
-        }, 
-        function(e){ // Erreur
+        },
+        function(e){
             console.error('Erreur chargement modèle:', e);
             loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur: Fichier model.glb introuvable.<br>Vérifiez qu\'il est à la racine du site.</span>';
         });
@@ -357,11 +317,26 @@ function animate(){
     if(renderer && scene && camera) renderer.render(scene,camera);
 }
 
-var drag=false, prevX=0;
-
 /* ═══════════════════════════════════════
-   AUDIO & CHAT
+   AUDIO — FIX AUTOPLAY
 ═══════════════════════════════════════ */
+var audioCtx = null;
+var audioUnlocked = false;
+
+/* Appelé au premier clic/touche utilisateur pour débloquer l'autoplay */
+function unlockAudio(){
+    if(audioUnlocked) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        var buf = audioCtx.createBuffer(1,1,22050);
+        var src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(audioCtx.destination);
+        src.start(0);
+        audioUnlocked = true;
+    } catch(e){}
+}
+
 function playAudio(b64){
     if(currentAudio){ currentAudio.pause(); currentAudio=null; }
     stopLipSync(); isSpeaking=false;
@@ -370,13 +345,15 @@ function playAudio(b64){
     for(var i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
     var url=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
     var audio=new Audio(url);
+    audio.volume=1.0;
     currentAudio=audio;
+
+    audio.onerror=function(e){ console.error("Audio error:", e, audio.error); };
 
     audio.onended=function(){
         isSpeaking=false; stopLipSync();
         setStatus('','En attente');
         URL.revokeObjectURL(url);
-        var pb=document.getElementById('play-btn'); if(pb)pb.remove();
     };
 
     function onPlay(){
@@ -385,20 +362,25 @@ function playAudio(b64){
         startLipSync();
     }
 
-    var p=audio.play();
-    if(p!==undefined){
-        p.then(onPlay).catch(function(){
-            // Autoplay bloqué
-            var old=document.getElementById('play-btn'); if(old)old.remove();
-            var btn=document.createElement('button');
-            btn.id='play-btn';
-            btn.innerHTML='▶ Écouter la réponse';
-            btn.style.cssText='display:block;margin-top:10px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;width:100%;';
-            btn.onclick=function(){ btn.remove(); audio.play().then(onPlay); };
-            chatHistory.appendChild(btn);
-            chatHistory.scrollTop=chatHistory.scrollHeight;
+    function showPlayBtn(){
+        var old=document.getElementById('play-btn'); if(old)old.remove();
+        var btn=document.createElement('button');
+        btn.id='play-btn';
+        btn.innerHTML='▶ Écouter la réponse';
+        btn.style.cssText='display:block;margin-top:10px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;width:100%;';
+        btn.onclick=function(){ btn.remove(); unlockAudio(); audio.play().then(onPlay).catch(function(e){ console.error(e); }); };
+        chatHistory.appendChild(btn);
+        chatHistory.scrollTop=chatHistory.scrollHeight;
+    }
+
+    /* Resume AudioContext si suspendu puis jouer */
+    if(audioCtx && audioCtx.state === 'suspended'){
+        audioCtx.resume().then(function(){
+            audio.play().then(onPlay).catch(function(e){ console.error("play() blocked after resume:", e); showPlayBtn(); });
         });
-    } else { onPlay(); }
+    } else {
+        audio.play().then(onPlay).catch(function(e){ console.error("play() blocked:", e); showPlayBtn(); });
+    }
 }
 
 async function sendMessage(txt){
@@ -420,6 +402,7 @@ async function sendMessage(txt){
         var data=await res.json();
         hideTyping();
         addMessage(data.text,'bot');
+        console.log("audio_base64 length:", data.audio_base64 ? data.audio_base64.length : 'vide');
         if(data.audio_base64&&data.audio_base64.length>50) playAudio(data.audio_base64);
         else setStatus('','En attente');
     } catch(e){
@@ -431,9 +414,6 @@ async function sendMessage(txt){
 
 function ask(txt){ sendMessage(txt); }
 
-/* ═══════════════════════════════════════
-   MICRO
-═══════════════════════════════════════ */
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function toggleMic(){
     if(!SR){ alert('Non supporté — utilisez Chrome.'); return; }
@@ -446,15 +426,17 @@ function toggleMic(){
     recognition.start();
 }
 
-/* ═══════════════════════════════════════
-   INIT
-═══════════════════════════════════════ */
 window.onload=function(){
     initThree();
     animate();
 
-    // Rotation par drag
+    /* Débloquer l'audio au premier geste utilisateur */
+    document.addEventListener('click',    unlockAudio, {once:true});
+    document.addEventListener('keydown',  unlockAudio, {once:true});
+    document.addEventListener('touchend', unlockAudio, {once:true});
+
     var canvas=document.getElementById('avatar-canvas');
+    var drag=false, prevX=0;
     canvas.addEventListener('mousedown',  function(e){ drag=true; prevX=e.clientX; });
     window.addEventListener('mouseup',    function(){ drag=false; });
     window.addEventListener('mousemove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.clientX-prevX)*0.01; } prevX=e.clientX; });

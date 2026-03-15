@@ -1,1 +1,24 @@
+# Secrets (NE JAMAIS PUSH)
+.env
+*.env
+
+# Docs / PFE (si tu ne veux pas les publier)
+Documents/
+*.docx
+*.pdf
+
+# Docker volume / données locales
 Docker/mysql_data/
+
+# Dépendances (si tu en as)
+node_modules/
+vendor/
+
+# Logs / cache
+*.log
+.cache/
+tmp/
+
+# OS
+.DS_Store
+Thumbs.db
