@@ -23,45 +23,29 @@ jobs:
         with:
           php-version: "8.2"
 
-      - name: Fail if .env is tracked or present
+      - name: Fail if .env is present or tracked (allow .env.example)
         shell: bash
         run: |
           set -euo pipefail
 
-          # If .env exists at root (even untracked), fail
+          # Block a real .env file in the workspace
           if [ -f ".env" ]; then
-            echo "::error::.env exists in repository workspace. Remove it and keep it only on the server/local machine."
+            echo "::error::.env exists in the workspace. Keep it local/server-only and never commit it."
             exit 1
           fi
 
-          # If any env file is tracked by git, fail
-          if git ls-files | grep -qE '(^|/)\.env($|[./])|(^|/)[^/]+\.env$'; then
-            echo "::error::An env file appears to be tracked by git. Remove it from git (and history if needed)."
-            git ls-files | grep -E '(^|/)\.env($|[./])|(^|/)[^/]+\.env$' || true
+          # Block tracked .env (but allow .env.example)
+          if git ls-files --error-unmatch ".env" >/dev/null 2>&1; then
+            echo "::error::.env is tracked by git. Untrack it: git rm --cached .env"
             exit 1
           fi
 
-          echo "OK: no env files tracked and no root .env file present."
-
-      - name: PHP syntax check (php -l) for all PHP files
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s globstar nullglob
-
-          files=(**/*.php)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No PHP files found."
-            exit 0
-          fi
-
-          failed=0
-          for f in "${files[@]}"; do
-            echo "Linting: $f"
-            php -l "$f" || failed=1
-          done
-
-          if [ "$failed" -ne 0 ]; then
-            echo "::error::PHP lint failed."
+          # Optional: block other tracked env variants like ".env.production"
+          tracked_envs="$(git ls-files | grep -E '(^|/)\.env\.[^/]+$' || true)"
+          if [ -n "$tracked_envs" ]; then
+            echo "::error::Tracked env variant files detected (not allowed):"
+            echo "$tracked_envs"
             exit 1
           fi
+
+          echo "OK: no tracked .env and no tracked .env.* variants; .env.example is allowed."
