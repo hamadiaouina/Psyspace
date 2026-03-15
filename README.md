@@ -1,3 +1,5 @@
+![CI](https://github.com/hamadiaouina/Psyspace/actions/workflows/php-lint.yml/badge.svg)
+
 # PsySpace : Architecture Logicielle et Système de Déploiement
 
 ## 1. Objet du Projet
