@@ -1,7 +1,3 @@
-Je t'ai bien compris. On retire les emojis et le ton "cool" pour passer sur un style industriel et académique. C'est ce type de README qu'on trouve sur les dépôts de banques ou de grandes entreprises technologiques.
-
-Voici le contenu exact à copier dans ton fichier README.md. C'est sobre, précis et très "Ingénieur".
-
 PsySpace : Architecture Logicielle et Système de Déploiement
 1. Objet du Projet
 PsySpace est une plateforme de gestion pour les services de soutien psychologique. Ce projet de fin d'études démontre l'implémentation de bonnes pratiques DevOps, incluant la conteneurisation des services et l'automatisation du cycle de vie logiciel via une chaîne CI/CD.

@@ -1,0 +1,57 @@
+name: PHP Lint + Secrets Check
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  php-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+
+      - name: Fail if .env exists in repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ls -a | grep -qE '^\.env$'; then
+            echo "::error::.env is present at repository root. Remove it and add it to .gitignore."
+            exit 1
+          fi
+          if git ls-files | grep -qE '(^|/)\.env(\.|$)|(^|/)[^/]*\.env$'; then
+            echo "::error::An env file appears to be tracked by git. Remove it from the repository history."
+            git ls-files | grep -E '(^|/)\.env(\.|$)|(^|/)[^/]*\.env$' || true
+            exit 1
+          fi
+          echo "No tracked env files found."
+
+      - name: PHP syntax check (php -l)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          files=(**/*.php)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No PHP files found."
+            exit 0
+          fi
+
+          fail=0
+          for f in "${files[@]}"; do
+            echo "Linting $f"
+            php -l "$f" || fail=1
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::PHP lint failed."
+            exit 1
+          fi
