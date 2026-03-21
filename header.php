@@ -1,4 +1,6 @@
-
+<?php
+require_once __DIR__ . "/security/rate_limit.php";
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -9,7 +11,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <title>PsySpace | Espace Thérapeutique</title>
     
-    <!-- Configuration Tailwind pour le style global -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
     <script>
         tailwind.config = {
             theme: {
@@ -22,10 +25,7 @@
         }
     </script>
     <style>
-        /* Style minimaliste pour le corps de la page */
-        body {
-            background-color: #0f172a; /* slate-900 : plus doux que le noir pur */
-        }
+        body { background-color: #0f172a; }
     </style>
 </head>
 <body class="font-sans text-white antialiased selection:bg-indigo-500/30">
