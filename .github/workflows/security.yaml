@@ -1,0 +1,66 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Lance un scan de sécurité complet tous les samedis à minuit
+    - cron: '0 0 * * 6'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write # Requis pour uploader les alertes de sécurité dans l'onglet "Security" de GitHub
+  actions: read
+
+jobs:
+  # 1. SCAN DES SECRETS (Tokens, Passwords, Clés API)
+  secret-scan:
+    name: Scanner les secrets (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Nécessaire pour scanner tout l'historique
+      
+      - name: Gitleaks - Recherche de secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 2. ANALYSE STATIQUE DE SÉCURITÉ PHP (CodeQL SAST)
+  codeql-analysis:
+    name: Analyse CodeQL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Initialisation de CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'javascript, python' # CodeQL ne supporte pas officiellement PHP par défaut, mais il va analyser ton JS et ton Python (tts.py)
+          
+      - name: Lancer l'analyse CodeQL
+        uses: github/codeql-action/analyze@v3
+
+  # 3. PHPSTAN AVEC RÈGLES DE SÉCURITÉ
+  php-security-analysis:
+    name: Analyse de code PHP (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: phpstan, psalm
+
+      - name: Psalm Security Analysis (Analyse des failles PHP)
+        run: psalm --taint-analysis
+        continue-on-error: true # Met en true pour le moment pour ne pas bloquer ta CI au début, juste pour voir les erreurs
