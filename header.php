@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . "/security/rate_limit.php";
+require_once __DIR__ . "/Security/rate_limit.php";
 ?>
 <!DOCTYPE html>
 <html lang="fr">
