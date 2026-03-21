@@ -1,13 +1,21 @@
 <?php
-// Valeurs par défaut (local Docker)
-$host = getenv('DB_HOST') ?: "db";
-$user = getenv('DB_USER') ?: "root";
-$pass = getenv('DB_PASS') ?: "";
-$db   = getenv('DB_NAME') ?: "edoc";
+declare(strict_types=1);
 
-$con = new mysqli($host, $user, $pass, $db);
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-if ($con->connect_error) {
-    die("La connexion a échoué : " . $con->connect_error);
+$autoload = __DIR__ . '/vendor/autoload.php';
+if (file_exists($autoload)) {
+    require_once $autoload;
+    if (class_exists(\Dotenv\Dotenv::class) && file_exists(__DIR__ . '/.env')) {
+        \Dotenv\Dotenv::createImmutable(__DIR__)->safeLoad();
+    }
 }
-?>
+
+$DB_HOST = getenv('DB_HOST') ?: '127.0.0.1';
+$DB_PORT = (int)(getenv('DB_PORT') ?: 3306);
+$DB_NAME = getenv('DB_NAME') ?: '';
+$DB_USER = getenv('DB_USER') ?: '';
+$DB_PASS = getenv('DB_PASS') ?: '';
+
+$conn = new mysqli($DB_HOST, $DB_USER, $DB_PASS, $DB_NAME, $DB_PORT);
+$conn->set_charset('utf8mb4');
