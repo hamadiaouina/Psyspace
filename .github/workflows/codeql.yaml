@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    - cron: '0 0 * * 1' # Lancement automatique tous les lundis à minuit
+    - cron: '0 0 * * 1'
 
 jobs:
   analyze:
@@ -20,20 +20,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [ 'php' ]
+        # On remplace 'php' par 'javascript-typescript' et 'python' qui sont supportés
+        language: [ 'javascript-typescript', 'python' ]
 
     steps:
     - name: Checkout du code
       uses: actions/checkout@v4
 
+    # On passe en v4 selon la recommandation de GitHub
     - name: Initialisation de CodeQL
-      uses: github/codeql-action/init@v3
+      uses: github/codeql-action/init@v4
       with:
         languages: ${{ matrix.language }}
-        # Utilise le modèle d'analyse étendu pour trouver encore plus de failles
         queries: security-extended,security-and-quality
 
     - name: Lancement de l'analyse CodeQL
-      uses: github/codeql-action/analyze@v3
+      uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
