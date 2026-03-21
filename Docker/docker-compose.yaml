@@ -3,7 +3,7 @@ services:
     image: mysql:8.0
     container_name: psyspace_db
     restart: always
-    command: --sql-mode="" 
+    command: --sql-mode=""
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
       MYSQL_DATABASE: edoc
@@ -21,6 +21,11 @@ services:
       - ../:/var/www/html
     depends_on:
       - db
+
+    # Charge ton .env (dans le même dossier que docker-compose.yml)
+    env_file:
+      - ../.env
+
     entrypoint: >
       sh -c "docker-php-ext-install mysqli pdo pdo_mysql && apache2-foreground"
 

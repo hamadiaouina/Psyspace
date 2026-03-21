@@ -1,5 +1,8 @@
 <?php include "header.php"; ?>
 
+<!-- Cloudflare Turnstile (Captcha) -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
@@ -75,6 +78,8 @@
                         if($_GET['error'] == "wrongpw")   echo "Identifiants incorrects. Vérifiez votre email et mot de passe.";
                         if($_GET['error'] == "noaccount")  echo "Aucun compte trouvé avec cet email.";
                         if($_GET['error'] == "notactive")  echo "Votre compte est en attente d'activation.";
+                        if($_GET['error'] == "captcha")    echo "Captcha invalide. Réessayez.";
+                        if($_GET['error'] == "captchaconfig") echo "Captcha non configuré côté serveur. Contactez l'admin.";
                     ?>
                 </div>
             <?php endif; ?>
@@ -100,13 +105,21 @@
                            class="input-field">
                     <p id="pwError" class="text-xs text-red-500 hidden">Le mot de passe doit contenir au moins 8 caractères.</p>
                 </div>
-                    <div class="flex items-center gap-3">
-    <input type="checkbox" id="remember" name="remember" value="1"
-           class="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-600 cursor-pointer">
-    <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">
-        Rester connecté
-    </label>
-</div>
+
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="remember" name="remember" value="1"
+                           class="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-600 cursor-pointer">
+                    <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">
+                        Rester connecté
+                    </label>
+                </div>
+
+                <!-- Turnstile widget -->
+                <div class="pt-2 flex justify-center">
+                    <!-- Remplace TA_SITE_KEY_ICI par ta *Site key* Turnstile (publique) -->
+                    <div class="cf-turnstile" data-sitekey="0x4AAAAAACuKEOHbmrq9ZkK-"></div>
+                </div>
+
                 <div class="pt-2">
                     <button type="submit" id="loginBtn"
                             class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm shadow-blue-100">
@@ -126,7 +139,7 @@
                     Retour à l'accueil
                 </a>
             </div>
-                
+
         </div>
     </div>
 </main>
@@ -159,6 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
             pwError.classList.add('hidden');
         }
 
+        // Note: on ne peut pas vérifier côté JS si le captcha est résolu.
+        // La vérification du captcha se fait côté serveur dans login_action.php.
         loginBtn.disabled = !(emailOk && passOk);
     }
 

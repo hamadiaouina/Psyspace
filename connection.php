@@ -1,12 +1,12 @@
 <?php
-$host = "db";
-$user = "root"; // Par défaut sur XAMPP
-$pass = "";     // Par défaut sur XAMPP (vide)
-$db   = "edoc"; // Le nom de ta base de données
+// Valeurs par défaut (local Docker)
+$host = getenv('DB_HOST') ?: "db";
+$user = getenv('DB_USER') ?: "root";
+$pass = getenv('DB_PASS') ?: "";
+$db   = getenv('DB_NAME') ?: "edoc";
 
 $con = new mysqli($host, $user, $pass, $db);
 
-// Vérifier la connexion
 if ($con->connect_error) {
     die("La connexion a échoué : " . $con->connect_error);
 }
