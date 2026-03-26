@@ -1,0 +1,19 @@
+Réponse brute: {"action":"","cdata":"","challenge_ts":"2026-03-26T17:59:40.000Z","error-codes":[],"hostname":"127.0.0.1","metadata":{"interactive":false},"success":true}
+Erreur CURL: 
+Data: Array
+(
+    [action] => 
+    [cdata] => 
+    [challenge_ts] => 2026-03-26T17:59:40.000Z
+    [error-codes] => Array
+        (
+        )
+
+    [hostname] => 127.0.0.1
+    [metadata] => Array
+        (
+            [interactive] => 
+        )
+
+    [success] => 1
+)
