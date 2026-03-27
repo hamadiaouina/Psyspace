@@ -16,8 +16,8 @@ if (!$is_localhost) {
 
     // CSP stricte avec nonce — plus de unsafe-inline ni unsafe-eval
     header("Content-Security-Policy: " .
-        "default-src 'self'; " .
-        "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com https://challenges.cloudflare.com; " .
+        "default-src 'none'; " .
+        "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; " .
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
         "font-src 'self' https://fonts.gstatic.com; " .
         "frame-src https://challenges.cloudflare.com; " .
@@ -26,6 +26,7 @@ if (!$is_localhost) {
         "media-src 'self' blob:; " .
         "object-src 'none'; " .
         "base-uri 'self'; " .
+        "form-action 'self'; " .
         "upgrade-insecure-requests;"
     );
 } else {
@@ -45,6 +46,16 @@ header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+header("Cross-Origin-Opener-Policy: same-origin");
+
+// 4. Session sécurisée (données sensibles psychologues)
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_secure', '1');
+    ini_set('session.cookie_httponly', '1');
+    ini_set('session.cookie_samesite', 'Strict');
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.gc_maxlifetime', '1800'); // 30min
+}
 
 // 4. Rate limiting
 if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
@@ -72,12 +83,10 @@ ob_start(function($buffer) {
     <link rel="icon" type="image/png" href="assets/images/logo.png">
     <title>PsySpace | Espace Thérapeutique</title>
 
-    <!-- Tailwind CDN (autorisé via script-src) -->
-    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
+    <!-- Tailwind local (SRI compatible) -->
+    <script src="/assets/js/tailwind.min.js" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Cloudflare Turnstile -->
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" nonce="<?= $nonce ?>" async defer></script>
 
     <!-- Tailwind config + dark mode anti-flash : nonce obligatoire -->
     <script nonce="<?= $nonce ?>">
