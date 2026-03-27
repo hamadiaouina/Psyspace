@@ -117,7 +117,7 @@
                 <!-- Turnstile widget -->
                 <div class="pt-2 flex justify-center">
                     <!-- Remplace TA_SITE_KEY_ICI par ta *Site key* Turnstile (publique) -->
-                    <div class="cf-turnstile" data-sitekey="0x4AAAAAACuKEOHbmrq9ZkK-"></div> 
+                    <div class="cf-turnstile" data-sitekey="0x4AAAAAACwwGfr14_N69NoP"></div> 
                 </div>
 
                 <div class="pt-2">
