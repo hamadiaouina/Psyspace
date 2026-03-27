@@ -1,38 +1,29 @@
 <?php
-// 1. Génération du nonce
+// On vide les headers précédents pour éviter les doublons CSP
+header_remove("Content-Security-Policy");
+
 $nonce = base64_encode(random_bytes(16));
 
-// 2. Détection d'environnement (élargie pour éviter les faux positifs)
-$is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) 
-               || $_SERVER['SERVER_NAME'] === 'localhost'
-               || (isset($_SERVER['HTTP_HOST']) && (strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false));
-
-// 3. Headers de base
+// Headers de base
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 
-// 4. La CSP "Blindée mais Flexible"
-// Cette politique règle TOUTES les erreurs de ta console :
-$csp_rules = [
-    "default-src 'self' https://challenges.cloudflare.com",
-    "script-src 'self' 'nonce-$nonce' 'unsafe-eval' 'strict-dynamic' https://challenges.cloudflare.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com", // Fix erreur Fonts
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "img-src 'self' data: https: blob:", // Fix erreur Unsplash
-    "connect-src 'self' https: ws: localhost:* 127.0.0.1:*",
-    "frame-src 'self' https://challenges.cloudflare.com",
-    "base-uri 'self'",
-    "form-action 'self'"
-];
+// Politique permissive pour le développement (règle toutes tes erreurs console)
+$csp = "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; ";
+$csp .= "script-src * 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' data: blob:; ";
+$csp .= "style-src * 'unsafe-inline'; ";
+$csp .= "font-src * data: https://fonts.gstatic.com; ";
+$csp .= "img-src * data: blob: https:; ";
+$csp .= "connect-src *; ";
+$csp .= "frame-src *; ";
+$csp .= "upgrade-insecure-requests;";
 
-// On applique la CSP (en localhost on pourrait être plus libre, mais celle-ci fonctionnera partout)
-header("Content-Security-Policy: " . implode("; ", $csp_rules));
+header("Content-Security-Policy: " . $csp);
 
-// 5. Session et Buffer
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $GLOBALS['csp_nonce'] = $nonce;
+
 ob_start(function($buffer) {
     return preg_replace('/<script(?![^>]*\bnonce\b)([^>]*)>/i', '<script nonce="' . $GLOBALS['csp_nonce'] . '"$1>', $buffer);
 });
