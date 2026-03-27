@@ -274,7 +274,7 @@ function initThree(){
     s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
     s.onload=function(){
         var loader=new THREE.GLTFLoader();
-        loader.load('model.glb', function(gltf){
+        loader.load('./model.glb', function(gltf){
             avatarRoot=gltf.scene;
             var box=new THREE.Box3().setFromObject(avatarRoot);
             var size=box.getSize(new THREE.Vector3());
