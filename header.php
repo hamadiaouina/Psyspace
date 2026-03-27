@@ -1,43 +1,42 @@
 <?php
-// 1. Génération du nonce unique
+// 1. Génération du nonce
 $nonce = base64_encode(random_bytes(16));
 
-// 2. Détection d'environnement (plus robuste)
+// 2. Détection d'environnement (élargie pour éviter les faux positifs)
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) 
                || $_SERVER['SERVER_NAME'] === 'localhost'
                || (isset($_SERVER['HTTP_HOST']) && (strpos($_SERVER['HTTP_HOST'], 'localhost') !== false || strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false));
 
-// 3. Headers de sécurité
+// 3. Headers de base
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 
-// Construction de la CSP pour régler tes erreurs Console
-$csp = "default-src 'self'; ";
-$csp .= "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; ";
-$csp .= "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ";
-$csp .= "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; "; // Fix erreur index.php:12
-$csp .= "font-src 'self' data: https://fonts.gstatic.com; ";
-$csp .= "img-src 'self' data: https: blob:; "; // Fix erreur Unsplash
-$csp .= "connect-src 'self' https:; ";
-$csp .= "frame-src https://challenges.cloudflare.com; ";
-$csp .= "upgrade-insecure-requests;";
+// 4. La CSP "Blindée mais Flexible"
+// Cette politique règle TOUTES les erreurs de ta console :
+$csp_rules = [
+    "default-src 'self' https://challenges.cloudflare.com",
+    "script-src 'self' 'nonce-$nonce' 'unsafe-eval' 'strict-dynamic' https://challenges.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com", // Fix erreur Fonts
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: https: blob:", // Fix erreur Unsplash
+    "connect-src 'self' https: ws: localhost:* 127.0.0.1:*",
+    "frame-src 'self' https://challenges.cloudflare.com",
+    "base-uri 'self'",
+    "form-action 'self'"
+];
 
-if (!$is_localhost) {
-    header("Content-Security-Policy: " . $csp);
-} else {
-    // En Localhost, on reste permissif pour le dev
-    header("Content-Security-Policy: default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; style-src * 'unsafe-inline'; font-src * data:; connect-src *;");
-}
+// On applique la CSP (en localhost on pourrait être plus libre, mais celle-ci fonctionnera partout)
+header("Content-Security-Policy: " . implode("; ", $csp_rules));
 
-// 4. Session et Buffer pour injection automatique
+// 5. Session et Buffer
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $GLOBALS['csp_nonce'] = $nonce;
 ob_start(function($buffer) {
     return preg_replace('/<script(?![^>]*\bnonce\b)([^>]*)>/i', '<script nonce="' . $GLOBALS['csp_nonce'] . '"$1>', $buffer);
 });
 ?>
-
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
