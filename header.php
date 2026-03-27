@@ -1,23 +1,23 @@
 <?php
-header("Content-Security-Policy: upgrade-insecure-requests");
-// 1. Force le HTTPS et empêche le site d'être mis dans une Frame (Anti-Clickjacking)
+// 1. Protection Anti-Clickjacking
 header("X-Frame-Options: DENY");
 
-// 2. Empêche le navigateur de deviner le type de contenu (Anti-Sniffing)
+// 2. Anti-Sniffing
 header("X-Content-Type-Options: nosniff");
 
-// 3. Politique de Referrer (Confidentialité)
+// 3. Confidentialité
 header("Referrer-Policy: strict-origin-when-cross-origin");
 
-// 4. HSTS (Dit au navigateur de ne parler QU'EN HTTPS pendant 1 an)
+// 4. HSTS (HTTPS forcé pendant 1 an)
 header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 
-// 5. Content Security Policy (Le plus important pour le score)
-// Note : On autorise Cloudflare Turnstile et Google Fonts car tu les utilises
-header("Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com; img-src 'self' data:;");
-?>
-<?php
+/**
+ * 5. CONTENT SECURITY POLICY (FUSIONNÉE)
+ * On ajoute 'upgrade-insecure-requests' au début pour régler ton problème de cadenas rouge.
+ */
+header("Content-Security-Policy: upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com; img-src 'self' data:;");
 
+// Inclusion de ton rate limit
 require_once __DIR__ . "/Security/rate_limit.php";
 ?>
 <!DOCTYPE html>
