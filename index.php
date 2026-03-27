@@ -1,4 +1,7 @@
-<?php include "header.php"; ?>
+<?php include "header.php";
+header("X-Frame-Options: DENY"); // Empêche d'afficher ton site dans une iframe
+header("X-Content-Type-Options: nosniff"); // Empêche le navigateur d'interpréter les fichiers mal
+header("Content-Security-Policy: default-src 'self' https://challenges.cloudflare.com;"); ?>
 
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&display=swap');
