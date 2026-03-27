@@ -1,27 +1,44 @@
 <?php
+// 1. Génération du nonce unique
 $nonce = base64_encode(random_bytes(16));
-$is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
-// On envoie les headers de sécurité
+// 2. Détection d'environnement améliorée
+$is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) 
+               || $_SERVER['SERVER_NAME'] === 'localhost' 
+               || (isset($_SERVER['HTTP_HOST']) && strpos($_SERVER['HTTP_HOST'], '127.0.0.1') !== false);
+
+// 3. Envoi des Headers de sécurité
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 
 if (!$is_localhost) {
-    // Version Production (toujours stricte mais plus compatible)
-    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; upgrade-insecure-requests;");
+    // --- PRODUCTION : Sécurité Maximale ---
+    header("Content-Security-Policy: " .
+        "default-src 'self'; " .
+        "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; " .
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
+        "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
+        "font-src 'self' data: https://fonts.gstatic.com; " .
+        "img-src 'self' data: https: blob:; " .
+        "connect-src 'self' https:; " .
+        "frame-src https://challenges.cloudflare.com; " .
+        "upgrade-insecure-requests;"
+    );
 } else {
-    // Version Localhost (On autorise TOUT pour que tu puisses travailler)
+    // --- LOCALHOST : Flexible pour le développement ---
     header("Content-Security-Policy: default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; style-src * 'unsafe-inline'; font-src * data:; connect-src *;");
 }
 
-// Session et Injection Nonce
+// 4. Session et Buffer pour injection automatique du nonce
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $GLOBALS['csp_nonce'] = $nonce;
 ob_start(function($buffer) {
+    // Injecte le nonce automatiquement dans TOUTES les balises <script> qui n'en ont pas
     return preg_replace('/<script(?![^>]*\bnonce\b)([^>]*)>/i', '<script nonce="' . $GLOBALS['csp_nonce'] . '"$1>', $buffer);
 });
 ?>
+
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
