@@ -1,4 +1,22 @@
 <?php
+// 1. Force le HTTPS et empêche le site d'être mis dans une Frame (Anti-Clickjacking)
+header("X-Frame-Options: DENY");
+
+// 2. Empêche le navigateur de deviner le type de contenu (Anti-Sniffing)
+header("X-Content-Type-Options: nosniff");
+
+// 3. Politique de Referrer (Confidentialité)
+header("Referrer-Policy: strict-origin-when-cross-origin");
+
+// 4. HSTS (Dit au navigateur de ne parler QU'EN HTTPS pendant 1 an)
+header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
+
+// 5. Content Security Policy (Le plus important pour le score)
+// Note : On autorise Cloudflare Turnstile et Google Fonts car tu les utilises
+header("Content-Security-Policy: default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com; img-src 'self' data:;");
+?>
+<?php
+
 require_once __DIR__ . "/Security/rate_limit.php";
 ?>
 <!DOCTYPE html>

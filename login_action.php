@@ -13,7 +13,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 /**
  * --- 0) Validation Cloudflare Turnstile ---
  */
-$turnstileSecret = getenv('TURNSTILE_SECRET'); 
+$turnstileSecret = getenv('TURNSTILE_SECRET');
 $turnstileToken  = $_POST['cf-turnstile-response'] ?? '';
 
 if (!$turnstileSecret || empty($turnstileToken)) {
