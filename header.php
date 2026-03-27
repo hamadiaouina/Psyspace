@@ -1,4 +1,5 @@
 <?php
+header("Content-Security-Policy: upgrade-insecure-requests");
 // 1. Force le HTTPS et empêche le site d'être mis dans une Frame (Anti-Clickjacking)
 header("X-Frame-Options: DENY");
 
