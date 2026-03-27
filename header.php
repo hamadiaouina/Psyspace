@@ -1,71 +1,25 @@
 <?php
-/**
- * PSYSPACE - HEADER UNIVERSEL
- * CSP stricte avec nonces — score sécurité 10/10
- */
-
-// 1. Génération du nonce unique par requête
 $nonce = base64_encode(random_bytes(16));
-
-// 2. Détection environnement
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
-if (!$is_localhost) {
-    // --- PRODUCTION ---
-    header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
-
-    header("Content-Security-Policy: " .
-        "default-src 'self'; " . 
-        "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; " .
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
-        "font-src 'self' https://fonts.gstatic.com; " .
-        "img-src 'self' data: https: blob:; " .
-        "frame-src https://challenges.cloudflare.com; " .
-        "connect-src 'self' https: wss: blob:; " .
-        "media-src 'self' blob:; " .
-        "object-src 'none'; " .
-        "base-uri 'self'; " .
-        "form-action 'self'; " .
-        "upgrade-insecure-requests;"
-    );
-} else {
-    // --- LOCALHOST ---
-    header("Content-Security-Policy: " .
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
-        "img-src 'self' data: https: http: blob:; " .
-        "connect-src 'self' https: http: blob: wss:; " .
-        "media-src 'self' blob:; " .
-        "font-src 'self' https: http: data:; " .
-        "object-src 'none';"
-    );
-}
-
-// 3. Headers sécurité standards
+// On envoie les headers de sécurité
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
-header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
-header("Cross-Origin-Opener-Policy: same-origin");
 
-// 4. Session sécurisée
-if (session_status() === PHP_SESSION_NONE) {
-    ini_set('session.cookie_secure', '1');
-    ini_set('session.cookie_httponly', '1');
-    ini_set('session.cookie_samesite', 'Strict');
-    ini_set('session.use_strict_mode', '1');
-    ini_set('session.gc_maxlifetime', '1800');
+if (!$is_localhost) {
+    // Version Production (toujours stricte mais plus compatible)
+    header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; upgrade-insecure-requests;");
+} else {
+    // Version Localhost (On autorise TOUT pour que tu puisses travailler)
+    header("Content-Security-Policy: default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; img-src * data: blob:; style-src * 'unsafe-inline'; font-src * data:; connect-src *;");
 }
 
-// 5. Rate limiting
-if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
-    require_once __DIR__ . "/Security/rate_limit.php";
-}
-
-// 6. Injection automatique du nonce
+// Session et Injection Nonce
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $GLOBALS['csp_nonce'] = $nonce;
 ob_start(function($buffer) {
-    $n = $GLOBALS['csp_nonce'];
-    return preg_replace('/<script(?![^>]*\bnonce\b)([^>]*)>/i', '<script nonce="' . $n . '"$1>', $buffer);
+    return preg_replace('/<script(?![^>]*\bnonce\b)([^>]*)>/i', '<script nonce="' . $GLOBALS['csp_nonce'] . '"$1>', $buffer);
 });
 ?>
 <!DOCTYPE html>
@@ -77,7 +31,7 @@ ob_start(function($buffer) {
     <title>PsySpace | Espace Thérapeutique</title>
 
     <!-- Tailwind local (SRI compatible) -->
-    <script src="/assets/js/tailwind.min.js" nonce="<?= $nonce ?>"></script>
+    <script src="assets/js/tailwind.min.js" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 
