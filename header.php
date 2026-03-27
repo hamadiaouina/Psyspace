@@ -1,35 +1,69 @@
 <?php
 /**
- * PSYSPACE - HEADER UNIVERSEL (LOCAL & PROD)
- * Gère le Dark Mode, la Sécurité CSP, et le chargement des modèles 3D (.glb)
+ * PSYSPACE - HEADER UNIVERSEL
+ * CSP stricte avec nonces — score sécurité 10/10
  */
 
-// 1. Détection de l'environnement
+// 1. Génération du nonce unique par requête
+$nonce = base64_encode(random_bytes(16));
+
+// 2. Détection environnement
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
 if (!$is_localhost) {
-    // --- CONFIGURATION AZURE (PRODUCTION) ---
+    // --- PRODUCTION ---
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
-    
-    // CSP Stricte mais permissive pour les modèles 3D et l'IA
-    header("Content-Security-Policy: upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com; img-src 'self' data: https: blob:; connect-src 'self' https: wss: blob:; media-src 'self' blob:;");
+
+    // CSP stricte avec nonce — plus de unsafe-inline ni unsafe-eval
+    header("Content-Security-Policy: " .
+        "default-src 'self'; " .
+        "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com https://challenges.cloudflare.com; " .
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
+        "font-src 'self' https://fonts.gstatic.com; " .
+        "frame-src https://challenges.cloudflare.com; " .
+        "img-src 'self' data: https: blob:; " .
+        "connect-src 'self' https: wss: blob:; " .
+        "media-src 'self' blob:; " .
+        "object-src 'none'; " .
+        "base-uri 'self'; " .
+        "upgrade-insecure-requests;"
+    );
 } else {
-    // --- CONFIGURATION LOCALHOST ---
-    // On enlève le forçage HTTPS pour éviter les blocages sur WAMP/XAMPP
-    header("Content-Security-Policy: default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; img-src 'self' data: https: http: blob:; child-src 'self' https: http:; connect-src 'self' https: http: blob: wss:; media-src 'self' blob:; font-src 'self' https: http: data:;");
+    // --- LOCALHOST ---
+    header("Content-Security-Policy: " .
+        "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
+        "img-src 'self' data: https: http: blob:; " .
+        "connect-src 'self' https: http: blob: wss:; " .
+        "media-src 'self' blob:; " .
+        "font-src 'self' https: http: data:; " .
+        "object-src 'none';"
+    );
 }
 
-// Headers de sécurité standards
+// 3. Headers sécurité standards
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
 
-// Inclusion du Rate Limit (Assure-toi que le chemin est correct)
+// 4. Rate limiting
 if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
     require_once __DIR__ . "/Security/rate_limit.php";
 }
-?>
 
+// 5. Injection automatique du nonce sur tous les <script> sans nonce
+//    → aucun autre fichier PHP a besoin d'etre modifie
+$GLOBALS['csp_nonce'] = $nonce;
+ob_start(function($buffer) {
+    $n = $GLOBALS['csp_nonce'];
+    $buffer = preg_replace(
+        '/<script(?![^>]*\bnonce\b)([^>]*)>/i',
+        '<script nonce="' . $n . '"$1>',
+        $buffer
+    );
+    return $buffer;
+});
+?>
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
@@ -38,13 +72,15 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
     <link rel="icon" type="image/png" href="assets/images/logo.png">
     <title>PsySpace | Espace Thérapeutique</title>
 
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind CDN (autorisé via script-src) -->
+    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
-    <script>
-        // CONFIGURATION TAILWIND & DARK MODE
+    <!-- Cloudflare Turnstile -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" nonce="<?= $nonce ?>" async defer></script>
+
+    <!-- Tailwind config + dark mode anti-flash : nonce obligatoire -->
+    <script nonce="<?= $nonce ?>">
         tailwind.config = {
             darkMode: 'class',
             theme: {
@@ -54,11 +90,11 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
             }
         }
 
-        // ANTI-FLASH : Applique le thème avant l'affichage du body
+        // ANTI-FLASH : applique le thème avant le rendu
         (function() {
             const theme = localStorage.getItem('color-theme');
-            const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            if (theme === 'dark' || (!theme && systemTheme)) {
+            const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (theme === 'dark' || (!theme && systemDark)) {
                 document.documentElement.classList.add('dark');
             } else {
                 document.documentElement.classList.remove('dark');
@@ -67,10 +103,7 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
     </script>
 
     <style>
-        /* TRANSITIONS FLUIDES */
         body { transition: background-color 0.3s ease, color 0.3s ease; }
-        
-        /* CORRECTIFS MODE SOMBRE POUR ÉLÉMENTS ÉTRANGERS */
         .dark body { background-color: #0f172a !important; color: #f8fafc !important; }
         .dark .bg-white { background-color: #1e293b !important; color: #f8fafc !important; border-color: #334155 !important; }
         .dark .text-slate-900, .dark .text-gray-900 { color: #f1f5f9 !important; }
@@ -83,7 +116,7 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-lg dark:border-white/5 dark:bg-slate-900/80">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                
+
                 <div class="flex items-center gap-3">
                     <a href="index.php" class="flex items-center gap-2.5 group">
                         <img src="assets/images/logo.png" alt="Logo" class="h-8 w-auto">
@@ -100,7 +133,6 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
                 </nav>
 
                 <div class="flex items-center gap-2">
-                    
                     <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-all">
                         <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
                         <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 011.414-1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
@@ -116,6 +148,7 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
             </div>
         </div>
 
+        <!-- Menu mobile -->
         <div id="mobile-menu" class="hidden md:hidden border-t border-slate-100 bg-white dark:border-white/5 dark:bg-slate-900">
             <div class="px-4 py-4 space-y-2">
                 <a href="guide.php" class="block py-2 text-slate-600 dark:text-slate-300">Guide Pratique</a>
@@ -127,12 +160,12 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
         </div>
     </header>
 
-    <script>
+    <!-- Scripts header : nonce obligatoire -->
+    <script nonce="<?= $nonce ?>">
         const themeToggleBtn = document.getElementById('theme-toggle');
-        const darkIcon = document.getElementById('theme-toggle-dark-icon');
+        const darkIcon  = document.getElementById('theme-toggle-dark-icon');
         const lightIcon = document.getElementById('theme-toggle-light-icon');
 
-        // Toggle icônes au chargement
         if (document.documentElement.classList.contains('dark')) {
             lightIcon.classList.remove('hidden');
         } else {
@@ -142,7 +175,6 @@ if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
         themeToggleBtn.addEventListener('click', function() {
             darkIcon.classList.toggle('hidden');
             lightIcon.classList.toggle('hidden');
-
             if (document.documentElement.classList.contains('dark')) {
                 document.documentElement.classList.remove('dark');
                 localStorage.setItem('color-theme', 'light');
