@@ -1,7 +1,8 @@
 <?php include "header.php"; ?>
-<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com;">
-<!-- Three.js depuis CDN -->
+
+<!-- SCRIPTS STATIQUES dans le body (à déplacer dans header.php si possible) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 
 <style>
     body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
@@ -242,9 +243,15 @@ function startBlink(){
 }
 
 /* ═══════════════════════════════════════
-   THREE.JS
+   THREE.JS  — GLTFLoader chargé en statique, pas dynamiquement
 ═══════════════════════════════════════ */
 function initThree(){
+    /* Vérification défensive : Three.js doit être disponible */
+    if(typeof THREE === 'undefined'){
+        loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur : Three.js n\'a pas pu être chargé.<br>Vérifiez votre connexion ou la CSP serveur.</span>';
+        return;
+    }
+
     var canvas=document.getElementById('avatar-canvas');
     var W=canvas.clientWidth || 400;
     var H=canvas.clientHeight || 500;
@@ -270,42 +277,43 @@ function initThree(){
 
     clock=new THREE.Clock();
 
-    var s=document.createElement('script');
-    s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
-    s.onload=function(){
-        var loader=new THREE.GLTFLoader();
-        loader.load('./model.glb', function(gltf){
-            avatarRoot=gltf.scene;
-            var box=new THREE.Box3().setFromObject(avatarRoot);
-            var size=box.getSize(new THREE.Vector3());
-            avatarRoot.position.sub(box.getCenter(new THREE.Vector3()));
-            avatarRoot.position.y+=size.y*0.5;
-            scene.add(avatarRoot);
-            avatarRoot.traverse(function(o){
-                if(o.isMesh && o.morphTargetInfluences){
-                    if(o.name==='Head_Mesh')   headMesh=o;
-                    if(o.name==='Teeth_Mesh')  teethMesh=o;
-                    if(o.name==='Tongue_Mesh') tongueMesh=o;
-                }
-            });
-            if(gltf.animations.length>0){
-                mixer=new THREE.AnimationMixer(avatarRoot);
-                mixer.clipAction(gltf.animations[0]).play();
+    /* GLTFLoader déjà chargé via <script> statique — pas de createElement */
+    if(typeof THREE.GLTFLoader === 'undefined'){
+        loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur : GLTFLoader non disponible.<br>Vérifiez la CSP serveur pour cdn.jsdelivr.net.</span>';
+        return;
+    }
+
+    var loader=new THREE.GLTFLoader();
+    loader.load('./model.glb', function(gltf){
+        avatarRoot=gltf.scene;
+        var box=new THREE.Box3().setFromObject(avatarRoot);
+        var size=box.getSize(new THREE.Vector3());
+        avatarRoot.position.sub(box.getCenter(new THREE.Vector3()));
+        avatarRoot.position.y+=size.y*0.5;
+        scene.add(avatarRoot);
+        avatarRoot.traverse(function(o){
+            if(o.isMesh && o.morphTargetInfluences){
+                if(o.name==='Head_Mesh')   headMesh=o;
+                if(o.name==='Teeth_Mesh')  teethMesh=o;
+                if(o.name==='Tongue_Mesh') tongueMesh=o;
             }
-            loaderDiv.style.display='none';
-            setTimeout(function(){ if(headMesh) setM(headMesh,M.mouthSmile,0.12); },600);
-            startBlink();
-        },
-        function(xhr){
-            var percent = Math.round(xhr.loaded / xhr.total * 100) || 0;
-            loaderDiv.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>Chargement... ' + percent + '%';
-        },
-        function(e){
-            console.error('Erreur chargement modèle:', e);
-            loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur: Fichier model.glb introuvable.<br>Vérifiez qu\'il est à la racine du site.</span>';
         });
-    };
-    document.head.appendChild(s);
+        if(gltf.animations.length>0){
+            mixer=new THREE.AnimationMixer(avatarRoot);
+            mixer.clipAction(gltf.animations[0]).play();
+        }
+        loaderDiv.style.display='none';
+        setTimeout(function(){ if(headMesh) setM(headMesh,M.mouthSmile,0.12); },600);
+        startBlink();
+    },
+    function(xhr){
+        var percent = xhr.total ? Math.round(xhr.loaded / xhr.total * 100) : 0;
+        loaderDiv.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>Chargement... ' + percent + '%';
+    },
+    function(e){
+        console.error('Erreur chargement modèle:', e);
+        loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur: Fichier model.glb introuvable.<br>Vérifiez qu\'il est à la racine du site.</span>';
+    });
 }
 
 var idleT=0;
@@ -323,7 +331,6 @@ function animate(){
 var audioCtx = null;
 var audioUnlocked = false;
 
-/* Appelé au premier clic/touche utilisateur pour débloquer l'autoplay */
 function unlockAudio(){
     if(audioUnlocked) return;
     try {
@@ -373,7 +380,6 @@ function playAudio(b64){
         chatHistory.scrollTop=chatHistory.scrollHeight;
     }
 
-    /* Resume AudioContext si suspendu puis jouer */
     if(audioCtx && audioCtx.state === 'suspended'){
         audioCtx.resume().then(function(){
             audio.play().then(onPlay).catch(function(e){ console.error("play() blocked after resume:", e); showPlayBtn(); });
@@ -430,7 +436,6 @@ window.onload=function(){
     initThree();
     animate();
 
-    /* Débloquer l'audio au premier geste utilisateur */
     document.addEventListener('click',    unlockAudio, {once:true});
     document.addEventListener('keydown',  unlockAudio, {once:true});
     document.addEventListener('touchend', unlockAudio, {once:true});
