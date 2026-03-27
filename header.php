@@ -14,14 +14,13 @@ if (!$is_localhost) {
     // --- PRODUCTION ---
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 
-    // CSP stricte avec nonce — plus de unsafe-inline ni unsafe-eval
     header("Content-Security-Policy: " .
-        "default-src 'none'; " .
+        "default-src 'self'; " . 
         "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://challenges.cloudflare.com; " .
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
         "font-src 'self' https://fonts.gstatic.com; " .
-        "frame-src https://challenges.cloudflare.com; " .
         "img-src 'self' data: https: blob:; " .
+        "frame-src https://challenges.cloudflare.com; " .
         "connect-src 'self' https: wss: blob:; " .
         "media-src 'self' blob:; " .
         "object-src 'none'; " .
@@ -48,31 +47,25 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
 header("Cross-Origin-Opener-Policy: same-origin");
 
-// 4. Session sécurisée (données sensibles psychologues)
+// 4. Session sécurisée
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_secure', '1');
     ini_set('session.cookie_httponly', '1');
     ini_set('session.cookie_samesite', 'Strict');
     ini_set('session.use_strict_mode', '1');
-    ini_set('session.gc_maxlifetime', '1800'); // 30min
+    ini_set('session.gc_maxlifetime', '1800');
 }
 
-// 4. Rate limiting
+// 5. Rate limiting
 if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
     require_once __DIR__ . "/Security/rate_limit.php";
 }
 
-// 5. Injection automatique du nonce sur tous les <script> sans nonce
-//    → aucun autre fichier PHP a besoin d'etre modifie
+// 6. Injection automatique du nonce
 $GLOBALS['csp_nonce'] = $nonce;
 ob_start(function($buffer) {
     $n = $GLOBALS['csp_nonce'];
-    $buffer = preg_replace(
-        '/<script(?![^>]*\bnonce\b)([^>]*)>/i',
-        '<script nonce="' . $n . '"$1>',
-        $buffer
-    );
-    return $buffer;
+    return preg_replace('/<script(?![^>]*\bnonce\b)([^>]*)>/i', '<script nonce="' . $n . '"$1>', $buffer);
 });
 ?>
 <!DOCTYPE html>
