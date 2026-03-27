@@ -1,12 +1,12 @@
 <?php include "header.php"; ?>
 
-<!-- SCRIPTS STATIQUES dans le body (à déplacer dans header.php si possible) -->
+<!-- Three.js local (placé dans assets/js/) -->
 <script src="/assets/js/three.min.js"></script>
 <script src="/assets/js/GLTFLoader.js"></script>
 
 <style>
     body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
-    
+
     .ai-layout {
         display: flex; flex-direction: column;
         height: calc(100vh - 80px);
@@ -25,10 +25,11 @@
         display: flex; flex-direction: column;
         align-items: center; justify-content: center;
         box-shadow: 0 20px 50px -10px rgba(0,0,0,0.5);
+        min-height: 400px;
     }
     #avatar-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
     #avatar-canvas:active { cursor: grabbing; }
-    
+
     .status-pill {
         position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
         display: flex; align-items: center; gap: 8px;
@@ -101,10 +102,11 @@
         font-size: 12px; color: #94a3b8; transition: all .2s;
     }
     .suggestion-chip:hover { background: rgba(99,102,241,0.15); color: #a5b4fc; }
-    @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-    @keyframes bounce { 0%,80%,100% { transform:scale(0); } 40% { transform:scale(1.0); } }
-    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
-    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @keyframes fadeIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes bounce  { 0%,80%,100% { transform:scale(0); } 40% { transform:scale(1.0); } }
+    @keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+    @keyframes spin    { to { transform: rotate(360deg); } }
 </style>
 
 <div class="ai-layout">
@@ -148,19 +150,21 @@
 </div>
 
 <script>
+/* ═══════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════ */
 var isThinking=false, isListening=false, isSpeaking=false;
 var recognition=null, currentAudio=null;
 var scene, camera, renderer, mixer, clock, avatarRoot;
-
 var headMesh=null, teethMesh=null, tongueMesh=null;
 var lipIv=null, blinkIv=null, vIdx=0;
 
 var M = {
-    mouthOpen:0, viseme_sil:1,
-    viseme_PP:2, viseme_FF:3, viseme_TH:4,
+    mouthOpen:0,  viseme_sil:1,
+    viseme_PP:2,  viseme_FF:3,  viseme_TH:4,
     viseme_DD:56, viseme_kk:57, viseme_CH:58,
     viseme_SS:59, viseme_nn:60, viseme_RR:61,
-    viseme_aa:62, viseme_E:63, viseme_I:64,
+    viseme_aa:62, viseme_E:63,  viseme_I:64,
     viseme_O:65,  viseme_U:66,
     jawOpen:49, eyeBlinkL:18, eyeBlinkR:19, mouthSmile:47
 };
@@ -172,6 +176,9 @@ var VISEMES = [
     {k:'viseme_U', w:.75},{k:'mouthOpen',w:.65},{k:'viseme_nn',w:.45}
 ];
 
+/* ═══════════════════════════════════════════════════════
+   UI HELPERS
+═══════════════════════════════════════════════════════ */
 var chatHistory = document.getElementById('chatHistory');
 var chatInput   = document.getElementById('chatInput');
 var statusPill  = document.getElementById('statusPill');
@@ -197,6 +204,9 @@ function showTyping(){
 }
 function hideTyping(){ var t=document.getElementById('typingBubble'); if(t)t.remove(); }
 
+/* ═══════════════════════════════════════════════════════
+   MORPH / LIP SYNC
+═══════════════════════════════════════════════════════ */
 function setM(mesh,idx,val){
     if(!mesh||!mesh.morphTargetInfluences) return;
     if(idx>=0 && idx<mesh.morphTargetInfluences.length)
@@ -210,7 +220,6 @@ function resetMorphs(){
     });
     if(headMesh) setM(headMesh,M.mouthSmile,0.12);
 }
-
 function startLipSync(){
     clearInterval(lipIv); vIdx=0;
     lipIv=setInterval(function(){
@@ -220,10 +229,7 @@ function startLipSync(){
         var w=v.w*(0.7+Math.random()*0.3);
         setM(headMesh, M[v.k], w);
         setM(headMesh, M.jawOpen, w*0.55);
-        if(teethMesh){
-            var ti=VISEMES.indexOf(v)<5?M[v.k]:0;
-            setM(teethMesh, ti, w*0.8);
-        }
+        if(teethMesh) setM(teethMesh, M[v.k]||0, w*0.8);
         if(tongueMesh) setM(tongueMesh, 0, w*0.3);
         vIdx++;
     },110);
@@ -232,29 +238,32 @@ function stopLipSync(){ clearInterval(lipIv); resetMorphs(); }
 
 function startBlink(){
     function doBlink(){
-        if(!headMesh){ blinkIv=setTimeout(doBlink, 4000); return; }
+        if(!headMesh){ blinkIv=setTimeout(doBlink,4000); return; }
         setM(headMesh,M.eyeBlinkL,1); setM(headMesh,M.eyeBlinkR,1);
         setTimeout(function(){
             setM(headMesh,M.eyeBlinkL,0); setM(headMesh,M.eyeBlinkR,0);
-            blinkIv=setTimeout(doBlink, 3000+Math.random()*3000);
+            blinkIv=setTimeout(doBlink,3000+Math.random()*3000);
         },130);
     }
-    blinkIv=setTimeout(doBlink, 2000);
+    blinkIv=setTimeout(doBlink,2000);
 }
 
-/* ═══════════════════════════════════════
-   THREE.JS  — GLTFLoader chargé en statique, pas dynamiquement
-═══════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   THREE.JS  — GLTFLoader chargé via <script> statique
+═══════════════════════════════════════════════════════ */
 function initThree(){
-    /* Vérification défensive : Three.js doit être disponible */
     if(typeof THREE === 'undefined'){
-        loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur : Three.js n\'a pas pu être chargé.<br>Vérifiez votre connexion ou la CSP serveur.</span>';
+        loaderDiv.innerHTML='<span style="color:#f87171;">Three.js non chargé.<br>Vérifiez /assets/js/three.min.js</span>';
+        return;
+    }
+    if(typeof THREE.GLTFLoader === 'undefined'){
+        loaderDiv.innerHTML='<span style="color:#f87171;">GLTFLoader non chargé.<br>Vérifiez /assets/js/GLTFLoader.js</span>';
         return;
     }
 
     var canvas=document.getElementById('avatar-canvas');
-    var W=canvas.clientWidth || 400;
-    var H=canvas.clientHeight || 500;
+    var W=canvas.clientWidth||400;
+    var H=canvas.clientHeight||500;
 
     scene=new THREE.Scene();
     scene.background=new THREE.Color(0x1e293b);
@@ -277,129 +286,126 @@ function initThree(){
 
     clock=new THREE.Clock();
 
-    /* GLTFLoader déjà chargé via <script> statique — pas de createElement */
-    if(typeof THREE.GLTFLoader === 'undefined'){
-        loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur : GLTFLoader non disponible.<br>Vérifiez la CSP serveur pour cdn.jsdelivr.net.</span>';
-        return;
-    }
-
     var loader=new THREE.GLTFLoader();
-    loader.load('./model.glb', function(gltf){
-        avatarRoot=gltf.scene;
-        var box=new THREE.Box3().setFromObject(avatarRoot);
-        var size=box.getSize(new THREE.Vector3());
-        avatarRoot.position.sub(box.getCenter(new THREE.Vector3()));
-        avatarRoot.position.y+=size.y*0.5;
-        scene.add(avatarRoot);
-        avatarRoot.traverse(function(o){
-            if(o.isMesh && o.morphTargetInfluences){
-                if(o.name==='Head_Mesh')   headMesh=o;
-                if(o.name==='Teeth_Mesh')  teethMesh=o;
-                if(o.name==='Tongue_Mesh') tongueMesh=o;
+    loader.load('model.glb',
+        function(gltf){
+            avatarRoot=gltf.scene;
+            var box=new THREE.Box3().setFromObject(avatarRoot);
+            var size=box.getSize(new THREE.Vector3());
+            avatarRoot.position.sub(box.getCenter(new THREE.Vector3()));
+            avatarRoot.position.y+=size.y*0.5;
+            scene.add(avatarRoot);
+            avatarRoot.traverse(function(o){
+                if(o.isMesh && o.morphTargetInfluences){
+                    if(o.name==='Head_Mesh')   headMesh=o;
+                    if(o.name==='Teeth_Mesh')  teethMesh=o;
+                    if(o.name==='Tongue_Mesh') tongueMesh=o;
+                }
+            });
+            if(gltf.animations.length>0){
+                mixer=new THREE.AnimationMixer(avatarRoot);
+                mixer.clipAction(gltf.animations[0]).play();
             }
-        });
-        if(gltf.animations.length>0){
-            mixer=new THREE.AnimationMixer(avatarRoot);
-            mixer.clipAction(gltf.animations[0]).play();
+            loaderDiv.style.display='none';
+            setTimeout(function(){ if(headMesh) setM(headMesh,M.mouthSmile,0.12); },600);
+            startBlink();
+        },
+        function(xhr){
+            var pct=xhr.total?Math.round(xhr.loaded/xhr.total*100):0;
+            loaderDiv.innerHTML='<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>Chargement... '+pct+'%';
+        },
+        function(e){
+            console.error('Erreur modèle:',e);
+            loaderDiv.innerHTML='<span style="color:#f87171;">model.glb introuvable.</span>';
         }
-        loaderDiv.style.display='none';
-        setTimeout(function(){ if(headMesh) setM(headMesh,M.mouthSmile,0.12); },600);
-        startBlink();
-    },
-    function(xhr){
-        var percent = xhr.total ? Math.round(xhr.loaded / xhr.total * 100) : 0;
-        loaderDiv.innerHTML = '<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>Chargement... ' + percent + '%';
-    },
-    function(e){
-        console.error('Erreur chargement modèle:', e);
-        loaderDiv.innerHTML = '<span style="color:#f87171;">Erreur: Fichier model.glb introuvable.<br>Vérifiez qu\'il est à la racine du site.</span>';
-    });
+    );
 }
 
-var idleT=0;
 function animate(){
     requestAnimationFrame(animate);
     var d=clock?clock.getDelta():0.016;
-    idleT+=d;
     if(mixer) mixer.update(d);
-    if(renderer && scene && camera) renderer.render(scene,camera);
+    if(renderer&&scene&&camera) renderer.render(scene,camera);
 }
 
-/* ═══════════════════════════════════════
-   AUDIO — FIX AUTOPLAY
-═══════════════════════════════════════ */
-var audioCtx = null;
-var audioUnlocked = false;
+/* ═══════════════════════════════════════════════════════
+   AUDIO  — base64 brut (sans préfixe data:...)
+═══════════════════════════════════════════════════════ */
+var audioCtx=null, audioUnlocked=false;
 
 function unlockAudio(){
     if(audioUnlocked) return;
-    try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        var buf = audioCtx.createBuffer(1,1,22050);
-        var src = audioCtx.createBufferSource();
-        src.buffer = buf;
-        src.connect(audioCtx.destination);
-        src.start(0);
-        audioUnlocked = true;
-    } catch(e){}
+    try{
+        audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+        var buf=audioCtx.createBuffer(1,1,22050);
+        var src=audioCtx.createBufferSource();
+        src.buffer=buf; src.connect(audioCtx.destination); src.start(0);
+        audioUnlocked=true;
+    }catch(e){}
 }
 
 function playAudio(b64){
     if(currentAudio){ currentAudio.pause(); currentAudio=null; }
     stopLipSync(); isSpeaking=false;
 
-    var bin=atob(b64), buf=new Uint8Array(bin.length);
-    for(var i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
-    var url=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
-    var audio=new Audio(url);
-    audio.volume=1.0;
-    currentAudio=audio;
+    /* Décoder le base64 brut en Blob audio */
+    try{
+        var bin=atob(b64);
+        var buf=new Uint8Array(bin.length);
+        for(var i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+        var url=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
+        var audio=new Audio(url);
+        audio.volume=1.0;
+        currentAudio=audio;
 
-    audio.onerror=function(e){ console.error("Audio error:", e, audio.error); };
+        audio.onerror=function(e){ console.error("Audio error:",e,audio.error); };
+        audio.onended=function(){
+            isSpeaking=false; stopLipSync();
+            setStatus('','En attente');
+            URL.revokeObjectURL(url);
+        };
 
-    audio.onended=function(){
-        isSpeaking=false; stopLipSync();
-        setStatus('','En attente');
-        URL.revokeObjectURL(url);
-    };
+        function onPlay(){
+            isSpeaking=true;
+            setStatus('speaking','En train de répondre');
+            startLipSync();
+        }
 
-    function onPlay(){
-        isSpeaking=true;
-        setStatus('speaking','En train de répondre');
-        startLipSync();
-    }
+        function showPlayBtn(){
+            var old=document.getElementById('play-btn'); if(old)old.remove();
+            var btn=document.createElement('button');
+            btn.id='play-btn';
+            btn.innerHTML='▶ Écouter la réponse';
+            btn.style.cssText='display:block;margin-top:10px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;width:100%;';
+            btn.onclick=function(){ btn.remove(); unlockAudio(); audio.play().then(onPlay).catch(function(e){console.error(e);}); };
+            chatHistory.appendChild(btn);
+            chatHistory.scrollTop=chatHistory.scrollHeight;
+        }
 
-    function showPlayBtn(){
-        var old=document.getElementById('play-btn'); if(old)old.remove();
-        var btn=document.createElement('button');
-        btn.id='play-btn';
-        btn.innerHTML='▶ Écouter la réponse';
-        btn.style.cssText='display:block;margin-top:10px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;width:100%;';
-        btn.onclick=function(){ btn.remove(); unlockAudio(); audio.play().then(onPlay).catch(function(e){ console.error(e); }); };
-        chatHistory.appendChild(btn);
-        chatHistory.scrollTop=chatHistory.scrollHeight;
-    }
-
-    if(audioCtx && audioCtx.state === 'suspended'){
-        audioCtx.resume().then(function(){
-            audio.play().then(onPlay).catch(function(e){ console.error("play() blocked after resume:", e); showPlayBtn(); });
-        });
-    } else {
-        audio.play().then(onPlay).catch(function(e){ console.error("play() blocked:", e); showPlayBtn(); });
+        if(audioCtx&&audioCtx.state==='suspended'){
+            audioCtx.resume().then(function(){
+                audio.play().then(onPlay).catch(function(e){ console.error(e); showPlayBtn(); });
+            });
+        } else {
+            audio.play().then(onPlay).catch(function(e){ console.error(e); showPlayBtn(); });
+        }
+    } catch(e){
+        console.error("Erreur décodage audio base64:",e);
     }
 }
 
+/* ═══════════════════════════════════════════════════════
+   CHAT
+═══════════════════════════════════════════════════════ */
 async function sendMessage(txt){
     var msg=txt||chatInput.value.trim();
     if(!msg||isThinking) return;
-
     addMessage(msg,'user');
     chatInput.value='';
     isThinking=true;
     setStatus('thinking','Analyse en cours');
     showTyping();
-
-    try {
+    try{
         var res=await fetch('chat_handler.php',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
@@ -408,10 +414,14 @@ async function sendMessage(txt){
         var data=await res.json();
         hideTyping();
         addMessage(data.text,'bot');
-        console.log("audio_base64 length:", data.audio_base64 ? data.audio_base64.length : 'vide');
-        if(data.audio_base64&&data.audio_base64.length>50) playAudio(data.audio_base64);
-        else setStatus('','En attente');
-    } catch(e){
+
+        /* audio_base64 = base64 brut renvoyé par chat_handler.php */
+        if(data.audio_base64 && data.audio_base64.length>50){
+            playAudio(data.audio_base64);
+        } else {
+            setStatus('','En attente');
+        }
+    }catch(e){
         hideTyping();
         addMessage('Erreur de connexion.','bot');
         setStatus('','Erreur');
@@ -420,6 +430,9 @@ async function sendMessage(txt){
 
 function ask(txt){ sendMessage(txt); }
 
+/* ═══════════════════════════════════════════════════════
+   MIC
+═══════════════════════════════════════════════════════ */
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function toggleMic(){
     if(!SR){ alert('Non supporté — utilisez Chrome.'); return; }
@@ -432,6 +445,9 @@ function toggleMic(){
     recognition.start();
 }
 
+/* ═══════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════ */
 window.onload=function(){
     initThree();
     animate();
@@ -440,14 +456,15 @@ window.onload=function(){
     document.addEventListener('keydown',  unlockAudio, {once:true});
     document.addEventListener('touchend', unlockAudio, {once:true});
 
+    /* Drag pour rotation avatar */
     var canvas=document.getElementById('avatar-canvas');
     var drag=false, prevX=0;
     canvas.addEventListener('mousedown',  function(e){ drag=true; prevX=e.clientX; });
     window.addEventListener('mouseup',    function(){ drag=false; });
     window.addEventListener('mousemove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.clientX-prevX)*0.01; } prevX=e.clientX; });
-    canvas.addEventListener('touchstart', function(e){ drag=true; prevX=e.touches[0].clientX; });
+    canvas.addEventListener('touchstart', function(e){ drag=true; prevX=e.touches[0].clientX; },{passive:true});
     window.addEventListener('touchend',   function(){ drag=false; });
-    window.addEventListener('touchmove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.touches[0].clientX-prevX)*0.01; } prevX=e.touches[0].clientX; });
+    window.addEventListener('touchmove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.touches[0].clientX-prevX)*0.01; } prevX=e.touches[0].clientX; },{passive:true});
 };
 </script>
 
