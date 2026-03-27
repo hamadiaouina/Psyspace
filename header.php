@@ -89,7 +89,7 @@ ob_start(function($buffer) {
                     fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] }
                 }
             }
-        }
+        };
 
         // ANTI-FLASH : applique le thème avant le rendu
         (function() {
