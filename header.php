@@ -1,25 +1,32 @@
 <?php
-// On vide les headers précédents pour éviter les doublons CSP
+// On force la suppression des anciens headers CSP qui pourraient traîner
 header_remove("Content-Security-Policy");
+header_remove("X-Content-Security-Policy");
 
 $nonce = base64_encode(random_bytes(16));
 
-// Headers de base
+// Headers de sécurité essentiels
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 
-// Politique permissive pour le développement (règle toutes tes erreurs console)
-$csp = "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; ";
-$csp .= "script-src * 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' data: blob:; ";
-$csp .= "style-src * 'unsafe-inline'; ";
-$csp .= "font-src * data: https://fonts.gstatic.com; ";
-$csp .= "img-src * data: blob: https:; ";
-$csp .= "connect-src *; ";
-$csp .= "frame-src *; ";
-$csp .= "upgrade-insecure-requests;";
+/**
+ * CSP ULTRA-PERMISSIVE POUR DEV
+ * On autorise tout (*) mais on garde le nonce pour tes scripts inline
+ */
+$csp_rules = [
+    "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: https://challenges.cloudflare.com",
+    "script-src * 'nonce-$nonce' 'unsafe-inline' 'unsafe-eval' data: blob: https://challenges.cloudflare.com",
+    "style-src * 'unsafe-inline' https://fonts.googleapis.com",
+    "style-src-elem * 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src * data: https://fonts.gstatic.com",
+    "img-src * data: blob: https:",
+    "connect-src *",
+    "frame-src * https://challenges.cloudflare.com",
+    "upgrade-insecure-requests"
+];
 
-header("Content-Security-Policy: " . $csp);
+header("Content-Security-Policy: " . implode("; ", $csp_rules));
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 $GLOBALS['csp_nonce'] = $nonce;
