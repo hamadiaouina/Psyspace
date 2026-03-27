@@ -156,31 +156,27 @@ ob_start(function($buffer) {
             </div>
         </div>
     </header>
-
-    <script nonce="<?= $nonce ?>">
-        const themeToggleBtn = document.getElementById('theme-toggle');
-        const darkIcon  = document.getElementById('theme-toggle-dark-icon');
-        const lightIcon = document.getElementById('theme-toggle-light-icon');
-
-        if (document.documentElement.classList.contains('dark')) {
-            lightIcon.classList.remove('hidden');
-        } else {
-            darkIcon.classList.remove('hidden');
-        }
-
-        themeToggleBtn.addEventListener('click', function() {
-            darkIcon.classList.toggle('hidden');
-            lightIcon.classList.toggle('hidden');
-            if (document.documentElement.classList.contains('dark')) {
-                document.documentElement.classList.remove('dark');
-                localStorage.setItem('color-theme', 'light');
-            } else {
-                document.documentElement.classList.add('dark');
-                localStorage.setItem('color-theme', 'dark');
+    
+<script nonce="<?= $nonce ?>">
+    // On termine bien chaque instruction avec un ";"
+    window.tailwind = window.tailwind || {};
+    tailwind.config = {
+        darkMode: 'class',
+        theme: {
+            extend: {
+                fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] }
             }
-        });
+        }
+    };
 
-        document.getElementById('menu-btn').addEventListener('click', () => {
-            document.getElementById('mobile-menu').classList.toggle('hidden');
-        });
-    </script>
+    // Le ";" au début ici est MAGIQUE : il empêche l'erreur "is not a function"
+    ;(function() {
+        const theme = localStorage.getItem('color-theme');
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (theme === 'dark' || (!theme && systemDark)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    })();
+</script>
