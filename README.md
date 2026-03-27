@@ -1,69 +1,34 @@
-![CI](https://github.com/hamadiaouina/Psyspace/actions/workflows/php-lint.yml/badge.svg)
+# PsySpace : Plateforme de Gestion Clinique & Architecture Cloud
 
-# PsySpace : Architecture Logicielle et Système de Déploiement
+![CI/CD Deployment](https://github.com/hamadiaouina/Psyspace/actions/workflows/php-lint.yml/badge.svg)
 
-## 1. Objet du Projet
-PsySpace est une plateforme de gestion pour les services de soutien psychologique. Ce projet de fin d'études (PFE) met en avant de bonnes pratiques DevOps, incluant la conteneurisation des services et l’automatisation du cycle de vie logiciel via une chaîne CI/CD.
+## 1. Présentation du Projet
+PsySpace est une solution logicielle dédiée à la gestion des dossiers patients pour les praticiens en psychologie. Ce Projet de Fin d'Études (PFE) met l'accent sur la haute disponibilité et l'automatisation du cycle de vie logiciel (DevOps) via une infrastructure Cloud.
 
-## 2. Spécifications Techniques
-L’application repose sur une pile technologique choisie pour sa robustesse et sa facilité de déploiement.
+## 2. Architecture & Stack Technique
+L'écosystème repose sur une architecture découplée, optimisée pour le déploiement continu :
 
-- **Serveur applicatif** : PHP 8.2 (FastCGI)
-- **Serveur web** : Apache / Nginx (via Docker)
-- **Infrastructure as Code** : Docker Compose
-- **CI/CD** : GitHub Actions (lint PHP + contrôle des secrets)
+* **Environnement de Production :** Microsoft Azure App Service (Plan Linux / PHP 8.2).
+* **Base de Données :** MySQL managé sur Azure.
+* **Sécurité des Entrées :** Intégration de **Cloudflare Turnstile** (Captcha invisible) pour la protection contre les attaques par force brute.
+* **Gestion des Secrets :** Isolation stricte des clés API et identifiants via les *Application Settings* d'Azure (Zéro secret dans le code source).
 
-> Note : la version initiale du document mentionnait GitLab CI. Le dépôt actuel est hébergé sur GitHub et utilise GitHub Actions.
+## 3. Pipeline CI/CD (GitHub Actions)
+Le projet implémente une chaîne de déploiement automatisée localisée dans le répertoire `.github/workflows/` :
 
-## 3. Déploiement et Exécution
+1. **Analyse Statique (Linting) :** Validation systématique de la syntaxe PHP via `php -l` à chaque Push.
+2. **Déploiement Continu (CD) :** Synchronisation automatisée vers Azure Web Apps après validation des tests.
+3. **Gestion d'Environnement :** Injection dynamique des configurations au runtime via les variables d'environnement système, éliminant le besoin de fichiers `.env` en production.
 
-### Prérequis système
-- Docker Engine **v20.10+**
-- Docker Compose **v2+**
+## 4. Installation et Développement Local
 
-### Installation
-1) **Récupérer le code**
-```bash
-git clone https://github.com/hamadiaouina/Psyspace.git
-cd Psyspace
-```
+### Prérequis
+* PHP 8.2+
+* Serveur MySQL local (ou Docker Desktop)
+* Clé API Cloudflare Turnstile
 
-2) **Configurer les variables d’environnement**
-- Copier le fichier d’exemple et renseigner vos clés :
-```bash
-cp .env.example .env
-```
-
-> Important : **ne jamais commit** le fichier `.env` (il est ignoré par `.gitignore`).
-
-3) **Lancer l’infrastructure**
-```bash
-docker compose up -d --build
-```
-
-### Point d’accès
-- Application : `http://localhost:8080`
-
-## 4. Pipeline d’Intégration Continue
-Le dépôt est sécurisé par un pipeline CI via **GitHub Actions** (dossier `.github/workflows/`).
-
-### Phases de validation
-- **Static Analysis (Linting)** : `php -l` sur l’ensemble des fichiers PHP
-- **Secrets Check** : échec du pipeline si un fichier `.env` / `*.env` est suivi par Git
-
-## 5. Organisation du Dépôt
-```text
-├── .github/workflows/     # CI GitHub Actions
-├── docker-compose.yml     # Orchestration des services
-├── Dockerfile             # Construction de l'image
-├── index.php              # Point d'entrée
-├── assets/                # Ressources statiques (CSS, JS, images)
-└── core/                  # Logique métier et contrôleurs
-```
-
-## 6. Sécurité
-- Ne jamais exposer ou commiter des secrets (clés API, tokens).
-- Utiliser `.env` uniquement en local/serveur (voir `.env.example`).
-
-## 7. Licence
-À définir.
+### Procédure de mise en route
+1. **Clonage du dépôt**
+   ```bash
+   git clone [https://github.com/hamadiaouina/Psyspace.git](https://github.com/hamadiaouina/Psyspace.git)
+   cd Psyspace
