@@ -1,7 +1,23 @@
-<?php include "header.php";
-header("X-Frame-Options: DENY"); // Empêche d'afficher ton site dans une iframe
-header("X-Content-Type-Options: nosniff"); // Empêche le navigateur d'interpréter les fichiers mal
-header("Content-Security-Policy: default-src 'self' https://challenges.cloudflare.com;"); ?>
+<?php 
+include "header.php";
+
+// 1. On génère un nonce pour les scripts inline
+$nonce = base64_encode(random_bytes(16));
+
+// 2. Sécurité de base
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+
+// 3. LA VRAIE CSP (Celle qui autorise tout ton design)
+$csp = "default-src 'self' https://challenges.cloudflare.com; " .
+       "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://challenges.cloudflare.com; " .
+       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
+       "font-src 'self' https://fonts.gstatic.com; " .
+       "img-src 'self' data: https://images.unsplash.com https://*.unsplash.com; " .
+       "connect-src 'self';";
+
+header("Content-Security-Policy: " . $csp);
+?>
 
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&display=swap');
