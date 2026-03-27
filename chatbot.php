@@ -1,8 +1,8 @@
 <?php include "header.php"; ?>
 
 <!-- SCRIPTS STATIQUES dans le body (à déplacer dans header.php si possible) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="/assets/js/three.min.js"></script>
+<script src="/assets/js/GLTFLoader.js"></script>
 
 <style>
     body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
