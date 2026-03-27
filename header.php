@@ -1,19 +1,33 @@
 <?php
 /**
- * PSYSPACE - HEADER SÉCURISÉ & DARK MODE
+ * PSYSPACE - HEADER UNIVERSEL (LOCAL & PROD)
+ * Gère le Dark Mode, la Sécurité CSP, et le chargement des modèles 3D (.glb)
  */
 
-// 1. En-têtes de Sécurité HTTP
+// 1. Détection de l'environnement
+$is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
+
+if (!$is_localhost) {
+    // --- CONFIGURATION AZURE (PRODUCTION) ---
+    header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
+    
+    // CSP Stricte mais permissive pour les modèles 3D et l'IA
+    header("Content-Security-Policy: upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com; img-src 'self' data: https: blob:; connect-src 'self' https: wss: blob:; media-src 'self' blob:;");
+} else {
+    // --- CONFIGURATION LOCALHOST ---
+    // On enlève le forçage HTTPS pour éviter les blocages sur WAMP/XAMPP
+    header("Content-Security-Policy: default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; img-src 'self' data: https: http: blob:; child-src 'self' https: http:; connect-src 'self' https: http: blob: wss:; media-src 'self' blob:; font-src 'self' https: http: data:;");
+}
+
+// Headers de sécurité standards
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
-header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 
-// 2. CSP Fusionnée (Inclus upgrade-insecure-requests pour le cadenas vert)
-header("Content-Security-Policy: upgrade-insecure-requests; default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; frame-src https://challenges.cloudflare.com; img-src 'self' data:;");
-
-// 3. Inclusion du Rate Limit
-require_once __DIR__ . "/Security/rate_limit.php";
+// Inclusion du Rate Limit (Assure-toi que le chemin est correct)
+if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
+    require_once __DIR__ . "/Security/rate_limit.php";
+}
 ?>
 
 <!DOCTYPE html>
@@ -40,23 +54,26 @@ require_once __DIR__ . "/Security/rate_limit.php";
             }
         }
 
-        // VÉRIFICATION INITIALE DU THÈME (Empêche le flash blanc)
-        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        // ANTI-FLASH : Applique le thème avant l'affichage du body
+        (function() {
+            const theme = localStorage.getItem('color-theme');
+            const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (theme === 'dark' || (!theme && systemTheme)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
     </script>
 
     <style>
-        /* CSS GLOBAL POUR LES 50 FICHIERS */
+        /* TRANSITIONS FLUIDES */
         body { transition: background-color 0.3s ease, color 0.3s ease; }
         
-        /* Forçage du mode sombre sur les éléments standards */
+        /* CORRECTIFS MODE SOMBRE POUR ÉLÉMENTS ÉTRANGERS */
         .dark body { background-color: #0f172a !important; color: #f8fafc !important; }
         .dark .bg-white { background-color: #1e293b !important; color: #f8fafc !important; border-color: #334155 !important; }
         .dark .text-slate-900, .dark .text-gray-900 { color: #f1f5f9 !important; }
-        .dark .text-slate-600, .dark .text-gray-600 { color: #cbd5e1 !important; }
         .dark header { background-color: rgba(15, 23, 42, 0.9) !important; border-color: rgba(255, 255, 255, 0.1) !important; }
     </style>
 </head>
@@ -69,7 +86,7 @@ require_once __DIR__ . "/Security/rate_limit.php";
                 
                 <div class="flex items-center gap-3">
                     <a href="index.php" class="flex items-center gap-2.5 group">
-                        <img src="assets/images/logo.png" alt="Logo PsySpace" class="h-8 w-auto">
+                        <img src="assets/images/logo.png" alt="Logo" class="h-8 w-auto">
                         <span class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
                             Psy<span class="text-indigo-600 dark:text-indigo-400">Space</span>
                         </span>
@@ -90,9 +107,9 @@ require_once __DIR__ . "/Security/rate_limit.php";
                     </button>
 
                     <a href="login.php" class="hidden sm:block px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors">Connexion</a>
-                    <a href="register.php" class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-all shadow-md shadow-indigo-200 dark:shadow-none">Inscription</a>
+                    <a href="register.php" class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-all shadow-md">Inscription</a>
 
-                    <button id="menu-btn" class="md:hidden p-2 text-slate-500 dark:text-slate-400">
+                    <button id="menu-btn" class="md:hidden p-2 text-slate-500">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                     </button>
                 </div>
@@ -111,12 +128,11 @@ require_once __DIR__ . "/Security/rate_limit.php";
     </header>
 
     <script>
-        // LOGIQUE DU SWITCHER DE THÈME
         const themeToggleBtn = document.getElementById('theme-toggle');
         const darkIcon = document.getElementById('theme-toggle-dark-icon');
         const lightIcon = document.getElementById('theme-toggle-light-icon');
 
-        // Afficher l'icône correcte au chargement
+        // Toggle icônes au chargement
         if (document.documentElement.classList.contains('dark')) {
             lightIcon.classList.remove('hidden');
         } else {
@@ -136,7 +152,6 @@ require_once __DIR__ . "/Security/rate_limit.php";
             }
         });
 
-        // Menu mobile toggle
         document.getElementById('menu-btn').addEventListener('click', () => {
             document.getElementById('mobile-menu').classList.toggle('hidden');
         });
