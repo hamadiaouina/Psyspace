@@ -176,43 +176,32 @@ function checkPasswordStrength() {
     const meter = document.getElementById('strengthMeter');
     const helpText = document.getElementById('passwordHelp');
 
-    // Reset
     meter.style.width = '0%';
-    meter.style.backgroundColor = '';
-
     if (password.length === 0) {
-        helpText.textContent = 'Minimum 12 caractères avec majuscules, chiffres et symboles';
+        helpText.textContent = 'Minimum 8 caractères, une majuscule et un chiffre';
         helpText.className = 'text-xs text-slate-400 mt-1';
         return;
     }
 
-    // Strength calculation
     let strength = 0;
-    if (password.length >= 12) strength += 1;
+    if (password.length >= 8) strength += 1; // Baissé de 12 à 8
     if (/[A-Z]/.test(password)) strength += 1;
     if (/[0-9]/.test(password)) strength += 1;
-    if (/[^A-Za-z0-9]/.test(password)) strength += 1;
+    if (password.length >= 10) strength += 1; // Bonus de longueur au lieu de symbole obligatoire
 
-    // Update UI
     const width = (strength / 4) * 100;
     meter.style.width = width + '%';
 
     if (strength < 2) {
         meter.style.backgroundColor = '#ef4444';
-        helpText.textContent = 'Mot de passe trop faible';
-        helpText.className = 'text-xs text-red-500 mt-1';
-    }
-    else if (strength < 4) {
+        helpText.textContent = 'Mot de passe trop court';
+    } else if (strength < 4) {
         meter.style.backgroundColor = '#f59e0b';
-        helpText.textContent = 'Mot de passe moyen';
-        helpText.className = 'text-xs text-yellow-500 mt-1';
-    }
-    else {
+        helpText.textContent = 'Mot de passe correct';
+    } else {
         meter.style.backgroundColor = '#10b981';
-        helpText.textContent = 'Mot de passe fort';
-        helpText.className = 'text-xs text-emerald-500 mt-1';
+        helpText.textContent = 'Mot de passe sécurisé';
     }
-
     validateForm();
 }
 
