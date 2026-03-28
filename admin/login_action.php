@@ -5,10 +5,10 @@ include "../connection.php";
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Chemins relatifs vers PHPMailer (ajuste selon ton dossier vendor)
-require '../vendor/PHPMailer/src/Exception.php';
-require '../vendor/PHPMailer/src/PHPMailer.php';
-require '../vendor/PHPMailer/src/SMTP.php';
+// 1. UTILISE DES CHEMINS ABSOLUS (Plus sûr pour Azure)
+require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
+require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
+require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
 
 if (!isset($con)) { $con = $conn ?? null; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -16,55 +16,55 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
+// Nettoyage des entrées
 $email    = mysqli_real_escape_string($con, trim($_POST['email'] ?? ''));
 $password = trim($_POST['password'] ?? '');
 
-// 1. On cherche si l'admin existe
+// 2. RECHERCHE EN BASE (L'email saisi doit correspondre à admin.psyspace@gmail.com)
 $sql    = "SELECT * FROM admin WHERE admemail = '$email' LIMIT 1";
 $result = $con->query($sql);
 
 if ($result && $result->num_rows > 0) {
     $admin = $result->fetch_assoc();
 
-    // 🚨 ALERTE IMMÉDIATE : On envoie le mail AVANT de vérifier le mot de passe
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
+        // Identifiants de TON compte Gmail qui envoie (ne change pas si c'est le même)
         $mail->Username   = 'psyspace.all@gmail.com'; 
         $mail->Password   = 'lszg gkpz ylbg ypdt'; 
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
         $mail->CharSet    = 'UTF-8';
-        $mail->Priority   = 1;
 
         $mail->setFrom('security@psyspace.ai', 'PsySpace Shield');
-        $mail->addAddress('psyspace.all@gmail.com'); 
+        
+        // 3. DESTINATION : C'est ici qu'on envoie l'alerte !
+        // On l'envoie à l'email trouvé dans la base (ton nouvel email admin)
+        $mail->addAddress($admin['admemail']); 
 
         $mail->isHTML(true);
         $mail->Subject = "⚠️ TENTATIVE D'ACCÈS ADMIN : $email";
         $mail->Body    = "
             <div style='background-color: #fff7ed; border: 2px solid #ea580c; padding: 20px; font-family: sans-serif; border-radius: 10px;'>
-                <h1 style='color: #ea580c; font-size: 20px;'>🚨 Tentative de connexion détectée</h1>
-                <p>Quelqu'un essaie d'accéder au compte admin : <strong>$email</strong></p>
+                <h1 style='color: #ea580c; font-size: 20px;'>🚨 Alerte de sécurité</h1>
+                <p>Une tentative de connexion a été détectée sur votre compte admin.</p>
                 <hr>
-                <p><strong>Détails techniques :</strong></p>
-                <ul style='list-style: none; padding: 0;'>
+                <ul>
                     <li>🌐 <b>IP :</b> {$_SERVER['REMOTE_ADDR']}</li>
                     <li>⏰ <b>Heure :</b> " . date('d/m/Y H:i:s') . "</li>
-                    <li>📱 <b>Appareil :</b> {$_SERVER['HTTP_USER_AGENT']}</li>
                 </ul>
-                <p style='font-size: 12px; color: #9a3412;'>Si le mot de passe est incorrect, la session ne sera pas ouverte, mais restez vigilant.</p>
             </div>";
 
         $mail->send();
     } catch (Exception $e) {
-        // En cas d'erreur, on enregistre le log pour débugger
-        file_put_contents('mail_error.log', $mail->ErrorInfo);
+        // Log l'erreur si l'envoi échoue
+        file_put_contents('mail_error.log', "Erreur PHPMailer : " . $mail->ErrorInfo, FILE_APPEND);
     }
 
-    // 2. Vérification du mot de passe
+    // Vérification du mot de passe
     if (password_verify($password, $admin['admpassword'])) {
         $_SESSION['admin_id']    = $admin['admid'];
         $_SESSION['admin_name']  = $admin['admname'];
