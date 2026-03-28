@@ -1,5 +1,4 @@
 <?php
-// 1. Inclusion des fichiers nécessaires
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
@@ -10,42 +9,51 @@ require 'vendor/PHPMailer/src/SMTP.php';
 include "connection.php";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // 2. Récupération et nettoyage des données
-    $nom = mysqli_real_escape_string($con, $_POST['nom']);
-    $email = mysqli_real_escape_string($con, $_POST['email']);
+    // 1. Récupération des données (On ne nettoie plus ici, on utilisera bind_param)
+    $nom = trim($_POST['nom']);
+    $prenom = trim($_POST['prenom']);
+    $email = trim($_POST['email']);
+    $dob = $_POST['dob'];
     $password = $_POST['password'];
     
-    $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+    // On combine Nom et Prénom pour la base si nécessaire, ou on sépare les colonnes
+    $fullName = $prenom . " " . $nom;
+    $hashed_password = password_hash($password, PASSWORD_ARGON2ID); // Plus sécurisé que DEFAULT
     $otp = rand(100000, 999999);
 
-    // 3. Vérification si l'email existe déjà
-    $checkEmail = $con->query("SELECT docemail FROM doctor WHERE docemail = '$email'");
+    // 2. Vérification si l'email existe déjà (Requête Préparée)
+    $stmt = $con->prepare("SELECT docemail FROM doctor WHERE docemail = ?");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
     
-    if ($checkEmail->num_rows > 0) {
-        // --- MODIFICATION ICI : ZERO ALERT ---
+    if ($result->num_rows > 0) {
         header("Location: register.php?error=emailexist");
         exit(); 
     }
 
-    // 4. Insertion dans la base de données
-    $sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status) 
-            VALUES ('$email', '$nom', '$hashed_password', '$otp', 'pending')";
+    // 3. Insertion dans la base de données (Requête Préparée)
+    // Note : Assure-toi que ta table a bien les colonnes : docemail, docname, docpassword, otp_code, status, dob
+    $sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status, dob) VALUES (?, ?, ?, ?, 'pending', ?)";
+    $insertStmt = $con->prepare($sql);
+    $insertStmt->bind_param("sssis", $email, $fullName, $hashed_password, $otp, $dob);
 
-    if ($con->query($sql) === TRUE) {
-        
+    if ($insertStmt->execute()) {
         $mail = new PHPMailer(true);
 
         try {
+            // Utilisation des variables d'environnement pour la sécurité
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
-            $mail->Username   = 'psyspace.all@gmail.com';
-            $mail->Password   = 'lszg gkpz ylbg ypdt'; 
+            $mail->Username   = getenv('MAIL_USER') ?: 'psyspace.all@gmail.com'; 
+            $mail->Password   = getenv('MAIL_PASS') ?: 'lszg gkpz ylbg ypdt'; 
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
+            $mail->CharSet    = 'UTF-8';
 
             $mail->setFrom('no-reply@psyspace.ai', 'PsySpace AI');
-            $mail->addAddress($email, $nom);
+            $mail->addAddress($email, $fullName);
 
             $mail->isHTML(true);
             $mail->Subject = "Votre code de validation PsySpace";
@@ -57,10 +65,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </div>
                     <div style='padding: 40px; text-align: center;'>
                         <h2 style='color: #1e293b; font-size: 20px;'>Vérifiez votre adresse email</h2>
-                        <p style='color: #64748b;'>Bonjour <strong>$nom</strong>, utilisez le code ci-dessous :</p>
+                        <p style='color: #64748b;'>Bonjour <strong>$fullName</strong>, utilisez le code ci-dessous pour finaliser votre inscription :</p>
                         <div style='background-color: #f1f5f9; border-radius: 12px; padding: 25px; margin: 20px 0;'>
                             <span style='font-family: monospace; font-size: 36px; font-weight: bold; letter-spacing: 12px; color: #2563eb;'>$otp</span>
                         </div>
+                        <p style='color: #94a3b8; font-size: 12px;'>Ce code expirera dans 10 minutes.</p>
                     </div>
                 </div>
             </div>";
@@ -71,7 +80,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit();
 
         } catch (Exception $e) {
-            // Optionnel : rediriger avec une erreur mail si ça échoue
             header("Location: register.php?error=mailfail");
             exit();
         }
@@ -80,8 +88,4 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         header("Location: register.php?error=dbfail");
         exit();
     }
-} else {
-    header("Location: register.php");
-    exit();
 }
-?>

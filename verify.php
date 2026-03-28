@@ -59,21 +59,27 @@
             </div>
         <?php endif; ?>
 
-        <form action="verify_action.php" method="POST" class="space-y-8">
-            <input type="hidden" name="email" value="<?php echo htmlspecialchars($_GET['email']); ?>">
-            
-            <div class="space-y-2">
-                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Saisir le code à 6 chiffres</label>
-                <input type="text" name="otp" maxlength="6" required
-                    class="input-otp w-full text-center text-4xl tracking-[0.8rem] font-black py-5 rounded-2xl text-slate-900"
-                    placeholder="000000">
-            </div>
+<form action="verify_action.php" method="POST" class="space-y-8">
+    <input type="hidden" name="email" value="<?php echo htmlspecialchars($_GET['email'] ?? ''); ?>">
+    
+    <div class="space-y-2">
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Saisir le code à 6 chiffres</label>
+        <input type="text" 
+               name="otp" 
+               maxlength="6" 
+               inputmode="numeric" 
+               pattern="[0-9]*" 
+               autocomplete="one-time-code"
+               required
+               class="input-otp w-full text-center text-4xl tracking-[0.8rem] font-black py-5 rounded-2xl text-slate-900"
+               placeholder="000000">
+    </div>
 
-            <button type="submit" 
-                class="w-full bg-blue-600 text-white text-sm font-bold py-4 rounded-xl hover:bg-slate-900 transition-all duration-300 shadow-xl shadow-blue-100 transform active:scale-[0.98]">
-                Vérifier mon identité
-            </button>
-        </form>
+    <button type="submit" 
+        class="w-full bg-blue-600 text-white text-sm font-bold py-4 rounded-xl hover:bg-slate-900 transition-all duration-300 shadow-xl shadow-blue-100 transform active:scale-[0.98]">
+        Vérifier mon identité
+    </button>
+</form>
 
         <div class="mt-12 pt-8 border-t border-slate-100">
             <p class="text-sm text-slate-500 font-medium">
