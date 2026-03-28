@@ -87,11 +87,6 @@ ob_start(function($buffer) {
 });
 ?>
 <!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
@@ -99,7 +94,10 @@ ob_start(function($buffer) {
     <link rel="icon" type="image/png" href="assets/images/logo.png">
     <title>PsySpace | Espace Thérapeutique</title>
 
-    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
+    <script src="assets/js/tailwind.min.js" nonce="<?= $nonce ?>"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" nonce="<?= $nonce ?>" async defer></script>
@@ -114,7 +112,7 @@ ob_start(function($buffer) {
             }
         };
 
-        // ANTI-FLASH : applique le thème avant le rendu
+        // ANTI-FLASH
         (function() {
             const theme = localStorage.getItem('color-theme');
             const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -129,9 +127,6 @@ ob_start(function($buffer) {
     <style>
         body { transition: background-color 0.3s ease, color 0.3s ease; }
         .dark body { background-color: #0f172a !important; color: #f8fafc !important; }
-        .dark .bg-white { background-color: #1e293b !important; color: #f8fafc !important; border-color: #334155 !important; }
-        .dark .text-slate-900, .dark .text-gray-900 { color: #f1f5f9 !important; }
-        .dark header { background-color: rgba(15, 23, 42, 0.9) !important; border-color: rgba(255, 255, 255, 0.1) !important; }
     </style>
 </head>
 
