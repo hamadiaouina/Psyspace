@@ -1,31 +1,51 @@
-
 <?php
-// Protection Firewall active
-require_once __DIR__ . '/security/firewall.php';
-
-// Reste de ton code...
-session_start();
-include "connection.php";
 /**
- * PSYSPACE - HEADER UNIVERSEL
- * CSP stricte avec nonces — score sécurité 10/10
+ * PSYSPACE - HEADER DE SÉCURITÉ UNIVERSEL
+ * Inclus : WAF, CSP (Nonces), HSTS, Anti-Clickjacking, Rate Limiting.
  */
 
-// On force la suppression des anciens headers pour éviter les conflits
+// 1. Activation immédiate du Firewall (Protection Serveur)
+if (file_exists(__DIR__ . '/security/firewall.php')) {
+    require_once __DIR__ . '/security/firewall.php';
+}
+
+// 2. Initialisation de la session et de la connexion
+session_start();
+include "connection.php";
+
+// 3. Nettoyage des headers par défaut pour éviter les doublons
 header_remove("Content-Security-Policy");
 header_remove("X-Content-Security-Policy");
+header_remove("X-Frame-Options");
 
-// 1. Génération du nonce unique par requête
+// 4. Génération du Nonce unique (Protection XSS)
 $nonce = base64_encode(random_bytes(16));
+$GLOBALS['csp_nonce'] = $nonce;
 
-// 2. Détection environnement
+// 5. Détection de l'environnement
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
+// 6. Application des Headers de Sécurité (Standard & HSTS)
 if (!$is_localhost) {
-    // --- PRODUCTION ---
+    // Force le HTTPS (Règle le problème du "HSTS Failed -20")
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
+}
 
-    // CSP stricte avec nonce
+// Anti-Clickjacking (Règle le problème du "X-Frame-Options Failed -20")
+header("X-Frame-Options: DENY");
+
+// Anti-MIME Sniffing (Règle le problème du "X-Content-Type Failed -5")
+header("X-Content-Type-Options: nosniff");
+
+// Politique de Referrer
+header("Referrer-Policy: strict-origin-when-cross-origin");
+
+// Restriction des périphériques (Caméra, Micro, Géo)
+header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+
+// 7. Configuration de la Content Security Policy (CSP)
+if (!$is_localhost) {
+    // --- PRODUCTION (Stricte) ---
     header("Content-Security-Policy: " .
         "default-src 'self'; " .
         "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com https://challenges.cloudflare.com; " .
@@ -40,8 +60,7 @@ if (!$is_localhost) {
         "upgrade-insecure-requests;"
     );
 } else {
-    // --- LOCALHOST ---
-    // On garde quand même le nonce ici pour que Tailwind fonctionne bien en local
+    // --- LOCALHOST (Plus souple pour le dev) ---
     header("Content-Security-Policy: " .
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
         "script-src 'self' 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' https: http:; " .
@@ -53,21 +72,16 @@ if (!$is_localhost) {
     );
 }
 
-// 3. Headers sécurité standards
-header("X-Frame-Options: DENY");
-header("X-Content-Type-Options: nosniff");
-header("Referrer-Policy: strict-origin-when-cross-origin");
-header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
-
-// 4. Rate limiting (si le fichier existe)
-if (file_exists(__DIR__ . "/Security/rate_limit.php")) {
-    require_once __DIR__ . "/Security/rate_limit.php";
+// 8. Rate Limiting (Protection contre le Bruteforce)
+if (file_exists(__DIR__ . "/security/rate_limit.php")) {
+    require_once __DIR__ . "/security/rate_limit.php";
 }
 
-// 5. Injection automatique du nonce sur tous les <script>
-$GLOBALS['csp_nonce'] = $nonce;
+// 9. Buffer de sortie : Injection automatique du Nonce sur tous les tags <script>
+// Cela évite que tes scripts soient bloqués par la CSP.
 ob_start(function($buffer) {
     $n = $GLOBALS['csp_nonce'];
+    // On ajoute le nonce à tous les <script> qui ne l'ont pas encore
     return preg_replace(
         '/<script(?![^>]*\bnonce\b)([^>]*)>/i',
         '<script nonce="' . $n . '"$1>',
@@ -75,6 +89,11 @@ ob_start(function($buffer) {
     );
 });
 ?>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
