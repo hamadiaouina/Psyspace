@@ -5,7 +5,7 @@ include "../connection.php";
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Chemins pour Azure
+// Chemins relatifs depuis le dossier /admin
 require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
@@ -23,33 +23,28 @@ if ($result && $result->num_rows > 0) {
 
     if (password_verify($password, $admin['admpassword'])) {
         
+        // --- BLOC MAIL (On force l'envoi AVANT la redirection) ---
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
-            
-            // 🚨 CRUCIAL : On garde les identifiants qui MARCHENT (psyspace.all)
             $mail->Username   = 'psyspace.all@gmail.com'; 
             $mail->Password   = 'lszg gkpz ylbg ypdt'; 
-            
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
             $mail->CharSet    = 'UTF-8';
 
-            // L'expéditeur doit correspondre au Username pour Gmail
-            $mail->setFrom('psyspace.all@gmail.com', 'PsySpace Shield');
-            
-            // 🎯 DESTINATAIRE : Ton adresse admin personnelle
+            $mail->setFrom('psyspace.all@gmail.com', 'PsySpace Security');
             $mail->addAddress('admin.psyspace@gmail.com'); 
 
             $mail->isHTML(true);
-            $mail->Subject = "⚠️ ALERTE : Connexion Admin";
-            $mail->Body    = "L'administrateur <b>" . $admin['admname'] . "</b> s'est connecté.";
+            $mail->Subject = "Connexion Admin Reussie";
+            $mail->Body    = "L'admin <b>" . $admin['admname'] . "</b> est en ligne.";
 
             $mail->send();
-
-            // Une fois le mail envoyé, on crée la session
+            
+            // SI LE MAIL EST PARTI, ON CONTINUE ICI
             $_SESSION['admin_id']   = $admin['admid'];
             $_SESSION['admin_name'] = $admin['admname'];
             $_SESSION['role']       = 'admin';
@@ -58,8 +53,10 @@ if ($result && $result->num_rows > 0) {
             exit();
 
         } catch (Exception $e) {
-            // Si ça échoue encore, on affiche l'erreur pour comprendre
-            die("Erreur SMTP : " . $mail->ErrorInfo);
+            // SI CA FOIRE, ON ARRÊTE TOUT POUR VOIR POURQUOI
+            echo "Erreur lors de l'envoi : " . $mail->ErrorInfo;
+            echo "<br><a href='dashboard.php'>Continuer quand meme vers le Dashboard</a>";
+            die(); 
         }
 
     } else {
