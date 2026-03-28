@@ -1,60 +1,56 @@
 <?php
 /**
- * PSYSPACE - HEADER DE SÉCURITÉ ULTIME
- * Protection : WAF, CSP (Nonces), HSTS, Cookies HttpOnly, Anti-Clickjacking.
+ * PSYSPACE - HEADER DE SÉCURITÉ FINAL
+ * Score visé : A+ (100/100)
  */
 
-// 1. Activation du Firewall (Protection contre les injections)
+// 1. Activation du Firewall
 if (file_exists(__DIR__ . '/security/firewall.php')) {
     require_once __DIR__ . '/security/firewall.php';
 }
 
-// 2. CONFIGURATION DES COOKIES (Correction erreur -30 Failed)
-// Doit être fait AVANT session_start()
+// 2. CONFIGURATION DES COOKIES (Correction finale -10 et -30)
+$is_https = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || 
+            (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
     'domain' => '', 
-    'secure' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'), // HTTPS uniquement
-    'httponly' => true,  // Empêche le vol de session par JS
-    'samesite' => 'Lax'  // Protection CSRF
+    'secure' => $is_https, // FORCE LE FLAG "SECURE" (Règle l'erreur -10)
+    'httponly' => true,    // FORCE LE FLAG "HTTPONLY" (Règle l'erreur -30)
+    'samesite' => 'Lax'    // Protection CSRF
 ]);
 
 // 3. Initialisation de la session et de la connexion
 session_start();
 include "connection.php";
 
-// 4. Nettoyage des anciens headers
+// 4. Nettoyage des headers
 header_remove("Content-Security-Policy");
 header_remove("X-Content-Security-Policy");
 header_remove("X-Frame-Options");
 
-// 5. Génération du Nonce unique (Protection XSS)
+// 5. Génération du Nonce (Protection XSS)
 $nonce = base64_encode(random_bytes(16));
 $GLOBALS['csp_nonce'] = $nonce;
 
-// 6. Détection de l'environnement
+// 6. Détection de l'environnement pour HSTS
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
-// 7. Application des Headers de Sécurité
 if (!$is_localhost) {
-    // Force le HTTPS (Correction erreur HSTS -20)
+    // HSTS (Indispensable pour la prod)
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 }
 
-// Anti-Clickjacking (Correction erreur XFO -20)
+// 7. Headers de sécurité standards
 header("X-Frame-Options: DENY");
-
-// Anti-MIME Sniffing (Correction erreur X-Content-Type -5)
 header("X-Content-Type-Options: nosniff");
-
-// Autres headers de confidentialité
 header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
 
 // 8. Content Security Policy (CSP)
 if (!$is_localhost) {
-    // MODE PRODUCTION
     header("Content-Security-Policy: " .
         "default-src 'self'; " .
         "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com https://challenges.cloudflare.com; " .
@@ -69,7 +65,6 @@ if (!$is_localhost) {
         "upgrade-insecure-requests;"
     );
 } else {
-    // MODE LOCALHOST
     header("Content-Security-Policy: " .
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
         "script-src 'self' 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' https: http:; " .
@@ -81,12 +76,7 @@ if (!$is_localhost) {
     );
 }
 
-// 9. Rate Limiting (si configuré)
-if (file_exists(__DIR__ . "/security/rate_limit.php")) {
-    require_once __DIR__ . "/security/rate_limit.php";
-}
-
-// 10. Injection automatique du Nonce sur tous les tags <script>
+// 9. Injection automatique du Nonce
 ob_start(function($buffer) {
     $n = $GLOBALS['csp_nonce'];
     return preg_replace(
