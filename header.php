@@ -1,51 +1,60 @@
 <?php
 /**
- * PSYSPACE - HEADER DE SÉCURITÉ UNIVERSEL
- * Inclus : WAF, CSP (Nonces), HSTS, Anti-Clickjacking, Rate Limiting.
+ * PSYSPACE - HEADER DE SÉCURITÉ ULTIME
+ * Protection : WAF, CSP (Nonces), HSTS, Cookies HttpOnly, Anti-Clickjacking.
  */
 
-// 1. Activation immédiate du Firewall (Protection Serveur)
+// 1. Activation du Firewall (Protection contre les injections)
 if (file_exists(__DIR__ . '/security/firewall.php')) {
     require_once __DIR__ . '/security/firewall.php';
 }
 
-// 2. Initialisation de la session et de la connexion
+// 2. CONFIGURATION DES COOKIES (Correction erreur -30 Failed)
+// Doit être fait AVANT session_start()
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'domain' => '', 
+    'secure' => (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on'), // HTTPS uniquement
+    'httponly' => true,  // Empêche le vol de session par JS
+    'samesite' => 'Lax'  // Protection CSRF
+]);
+
+// 3. Initialisation de la session et de la connexion
 session_start();
 include "connection.php";
 
-// 3. Nettoyage des headers par défaut pour éviter les doublons
+// 4. Nettoyage des anciens headers
 header_remove("Content-Security-Policy");
 header_remove("X-Content-Security-Policy");
 header_remove("X-Frame-Options");
 
-// 4. Génération du Nonce unique (Protection XSS)
+// 5. Génération du Nonce unique (Protection XSS)
 $nonce = base64_encode(random_bytes(16));
 $GLOBALS['csp_nonce'] = $nonce;
 
-// 5. Détection de l'environnement
+// 6. Détection de l'environnement
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
-// 6. Application des Headers de Sécurité (Standard & HSTS)
+// 7. Application des Headers de Sécurité
 if (!$is_localhost) {
-    // Force le HTTPS (Règle le problème du "HSTS Failed -20")
+    // Force le HTTPS (Correction erreur HSTS -20)
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 }
 
-// Anti-Clickjacking (Règle le problème du "X-Frame-Options Failed -20")
+// Anti-Clickjacking (Correction erreur XFO -20)
 header("X-Frame-Options: DENY");
 
-// Anti-MIME Sniffing (Règle le problème du "X-Content-Type Failed -5")
+// Anti-MIME Sniffing (Correction erreur X-Content-Type -5)
 header("X-Content-Type-Options: nosniff");
 
-// Politique de Referrer
+// Autres headers de confidentialité
 header("Referrer-Policy: strict-origin-when-cross-origin");
-
-// Restriction des périphériques (Caméra, Micro, Géo)
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
 
-// 7. Configuration de la Content Security Policy (CSP)
+// 8. Content Security Policy (CSP)
 if (!$is_localhost) {
-    // --- PRODUCTION (Stricte) ---
+    // MODE PRODUCTION
     header("Content-Security-Policy: " .
         "default-src 'self'; " .
         "script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com https://challenges.cloudflare.com; " .
@@ -60,7 +69,7 @@ if (!$is_localhost) {
         "upgrade-insecure-requests;"
     );
 } else {
-    // --- LOCALHOST (Plus souple pour le dev) ---
+    // MODE LOCALHOST
     header("Content-Security-Policy: " .
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
         "script-src 'self' 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' https: http:; " .
@@ -72,16 +81,14 @@ if (!$is_localhost) {
     );
 }
 
-// 8. Rate Limiting (Protection contre le Bruteforce)
+// 9. Rate Limiting (si configuré)
 if (file_exists(__DIR__ . "/security/rate_limit.php")) {
     require_once __DIR__ . "/security/rate_limit.php";
 }
 
-// 9. Buffer de sortie : Injection automatique du Nonce sur tous les tags <script>
-// Cela évite que tes scripts soient bloqués par la CSP.
+// 10. Injection automatique du Nonce sur tous les tags <script>
 ob_start(function($buffer) {
     $n = $GLOBALS['csp_nonce'];
-    // On ajoute le nonce à tous les <script> qui ne l'ont pas encore
     return preg_replace(
         '/<script(?![^>]*\bnonce\b)([^>]*)>/i',
         '<script nonce="' . $n . '"$1>',
