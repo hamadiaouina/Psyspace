@@ -1,6 +1,11 @@
 
 <?php
-require_once __DIR__ . '/security/firewall.php'; 
+// Protection Firewall active
+require_once __DIR__ . '/security/firewall.php';
+
+// Reste de ton code...
+session_start();
+include "connection.php";
 /**
  * PSYSPACE - HEADER UNIVERSEL
  * CSP stricte avec nonces — score sécurité 10/10
