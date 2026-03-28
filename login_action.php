@@ -1,6 +1,12 @@
 <?php
+// Configuration sécurisée des sessions AVANT le session_start
+ini_set('session.cookie_httponly', 1); // Empêche le vol via XSS
+ini_set('session.cookie_secure', 1);   // Uniquement via HTTPS
+ini_set('session.use_only_cookies', 1);
+ini_set('session.cookie_samesite', 'Lax');
+
 session_start();
-// On utilise ton nouveau fichier centralisé
+
 require_once 'config/db.php'; 
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
@@ -11,10 +17,10 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 /**
  * --- 1) Validation Cloudflare Turnstile ---
  */
-$turnstileSecret = getenv('TURNSTILE_SECRET');
+$turnstileSecret = getenv('TURNSTILE_SECRET') ?: 'TA_CLE_SECRETE_DE_TEST'; // Prévoyance si l'env n'est pas chargé
 $turnstileToken  = $_POST['cf-turnstile-response'] ?? '';
 
-if (!$turnstileSecret || empty($turnstileToken)) {
+if (empty($turnstileToken)) {
     header("Location: login.php?error=captcha");
     exit();
 }
@@ -37,9 +43,9 @@ if (!($data['success'] ?? false)) {
 }
 
 /**
- * --- 2) Inputs sécurisés ---
+ * --- 2) Nettoyage des Inputs ---
  */
-$email    = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
+$email = filter_input(INPUT_POST, 'email', FILTER_VALIDATE_EMAIL);
 $password = $_POST['password'] ?? '';
 
 if (!$email || empty($password)) {
@@ -49,43 +55,49 @@ if (!$email || empty($password)) {
 
 try {
     /**
-     * --- 3) Test DOCTOR (Requête Préparée PDO) ---
-     * Note : J'utilise 'doctor' (minuscule), c'est la norme SQL. 
-     * Si ta table s'appelle autrement, change juste le nom ici.
+     * --- 3) Test DOCTOR ---
      */
     $stmtDoc = $pdo->prepare("SELECT docid, docname, docpassword FROM doctor WHERE docemail = ? LIMIT 1");
     $stmtDoc->execute([$email]);
     $doctor = $stmtDoc->fetch();
 
     if ($doctor && password_verify($password, $doctor['docpassword'])) {
+        // PROTECTION CRITIQUE : Change l'ID de session après connexion
+        session_regenerate_id(true);
+        
         $_SESSION['id'] = $doctor['docid'];
         $_SESSION['nom'] = $doctor['docname'];
         $_SESSION['role'] = 'doctor';
+        $_SESSION['last_login'] = time(); // Pour gérer l'expiration plus tard
+        
         header("Location: welcome.php");
         exit();
     }
 
     /**
-     * --- 4) Test ADMIN (Requête Préparée PDO) ---
+     * --- 4) Test ADMIN ---
      */
     $stmtAdmin = $pdo->prepare("SELECT admid, admpassword FROM admin WHERE admemail = ? LIMIT 1");
     $stmtAdmin->execute([$email]);
     $admin = $stmtAdmin->fetch();
 
     if ($admin && password_verify($password, $admin['admpassword'])) {
+        session_regenerate_id(true);
+        
         $_SESSION['admin_id'] = $admin['admid'];
         $_SESSION['role'] = 'admin';
+        
         header("Location: admin/dashboard.php");
         exit();
     }
 
-    // Si on arrive ici, c'est que rien n'a matché
-    header("Location: login.php?error=wrongpw");
+    // Si échec, on renvoie l'email pour le confort de l'utilisateur (déjà sécurisé par ton htmlspecialchars dans login.php)
+    header("Location: login.php?error=wrongpw&email=" . urlencode($email));
     exit();
 
 } catch (PDOException $e) {
-    // Erreur de base de données : on log pour nous, on cache pour l'utilisateur
-    error_log("Erreur Auth : " . $e->getMessage());
+    // On ne montre jamais l'erreur SQL brute à l'utilisateur
+    error_log("Erreur PsySpace Auth : " . $e->getMessage());
     header("Location: login.php?error=server");
     exit();
 }

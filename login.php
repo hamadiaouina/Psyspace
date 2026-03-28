@@ -1,6 +1,5 @@
 <?php include "header.php"; ?>
 
-<!-- Cloudflare Turnstile (Captcha) -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
 <style>
@@ -35,7 +34,6 @@
 <main class="min-h-screen bg-slate-50 flex items-center justify-center py-16 px-6">
     <div class="w-full max-w-5xl flex rounded-2xl shadow-xl overflow-hidden border border-slate-200 fade-in">
 
-        <!-- PANNEAU GAUCHE — bleu foncé -->
         <div class="hidden md:flex w-5/12 bg-blue-950 flex-col justify-between p-12 text-white">
             <div>
                 <a href="index.php" class="flex items-center gap-3 mb-16">
@@ -62,7 +60,6 @@
             </div>
         </div>
 
-        <!-- PANNEAU DROIT — blanc -->
         <div class="w-full md:w-7/12 bg-white p-10 md:p-14">
 
             <div class="mb-10">
@@ -70,17 +67,20 @@
                 <p class="text-sm text-slate-400">Accédez à votre espace praticien.</p>
             </div>
 
-            <!-- Erreurs PHP -->
             <?php if(isset($_GET['error'])): ?>
                 <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl flex items-center gap-3">
                     <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                    <?php
-                        if($_GET['error'] == "wrongpw")   echo "Identifiants incorrects. Vérifiez votre email et mot de passe.";
-                        if($_GET['error'] == "noaccount")  echo "Aucun compte trouvé avec cet email.";
-                        if($_GET['error'] == "notactive")  echo "Votre compte est en attente d'activation.";
-                        if($_GET['error'] == "captcha")    echo "Captcha invalide. Réessayez.";
-                        if($_GET['error'] == "captchaconfig") echo "Captcha non configuré côté serveur. Contactez l'admin.";
-                    ?>
+                    <span>
+                        <?php
+                            switch($_GET['error']) {
+                                case "wrongpw": echo "Identifiants incorrects."; break;
+                                case "noaccount": echo "Aucun compte trouvé."; break;
+                                case "notactive": echo "Compte en attente d'activation."; break;
+                                case "captcha": echo "Vérification de sécurité échouée."; break;
+                                default: echo "Une erreur est survenue.";
+                            }
+                        ?>
+                    </span>
                 </div>
             <?php endif; ?>
 
@@ -90,7 +90,7 @@
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email</label>
                     <input type="email" id="loginEmail" name="email" required
                            placeholder="votre@cabinet.fr"
-                           value="<?php echo isset($_GET['email']) ? htmlspecialchars($_GET['email']) : ''; ?>"
+                           value="<?php echo isset($_GET['email']) ? htmlspecialchars($_GET['email'], ENT_QUOTES, 'UTF-8') : ''; ?>"
                            class="input-field">
                     <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide.</p>
                 </div>
@@ -103,48 +103,41 @@
                     <input type="password" id="loginPassword" name="password" required
                            placeholder="••••••••"
                            class="input-field">
-                    <p id="pwError" class="text-xs text-red-500 hidden">Le mot de passe doit contenir au moins 8 caractères.</p>
+                    <p id="pwError" class="text-xs text-red-500 hidden">Le mot de passe doit faire 8 caractères minimum.</p>
                 </div>
 
                 <div class="flex items-center gap-3">
                     <input type="checkbox" id="remember" name="remember" value="1"
                            class="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-600 cursor-pointer">
-                    <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">
-                        Rester connecté
-                    </label>
+                    <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">Rester connecté</label>
                 </div>
 
-                <!-- Turnstile widget -->
                 <div class="pt-2 flex justify-center">
-                    <!-- Remplace TA_SITE_KEY_ICI par ta *Site key* Turnstile (publique) -->
                     <div class="cf-turnstile" data-sitekey="0x4AAAAAACwwGfr14_N69NoP"></div> 
                 </div>
 
                 <div class="pt-2">
                     <button type="submit" id="loginBtn"
-                            class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm shadow-blue-100">
+                            class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
                         Se connecter
                     </button>
                 </div>
-
             </form>
 
             <div class="mt-10 pt-8 border-t border-slate-100 text-center space-y-3">
                 <p class="text-sm text-slate-500">
-                    Pas encore de compte ?
-                    <a href="register.php" class="text-blue-600 font-semibold hover:text-blue-700 transition-colors ml-1">Créer un compte</a>
+                    Pas encore de compte ? <a href="register.php" class="text-blue-600 font-semibold">Créer un compte</a>
                 </p>
-                <a href="index.php" class="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center justify-center gap-1">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+                <a href="index.php" class="text-xs text-slate-400 flex items-center justify-center gap-1">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
                     Retour à l'accueil
                 </a>
             </div>
-
         </div>
     </div>
 </main>
 
-<script>
+<script nonce="<?= $nonce ?>">
 document.addEventListener('DOMContentLoaded', () => {
     const emailInput = document.getElementById('loginEmail');
     const passInput  = document.getElementById('loginPassword');
@@ -172,8 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
             pwError.classList.add('hidden');
         }
 
-        // Note: on ne peut pas vérifier côté JS si le captcha est résolu.
-        // La vérification du captcha se fait côté serveur dans login_action.php.
         loginBtn.disabled = !(emailOk && passOk);
     }
 
