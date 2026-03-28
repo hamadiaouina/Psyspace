@@ -5,7 +5,7 @@ include "../connection.php";
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// Utilisation des chemins du register (en remontant d'un dossier)
+// 1. Chemins blindés pour Azure (on remonte d'un dossier pour trouver vendor)
 require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
@@ -20,55 +20,53 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $email    = mysqli_real_escape_string($con, trim($_POST['email'] ?? ''));
 $password = trim($_POST['password'] ?? '');
 
+// 2. Recherche de l'admin
 $sql    = "SELECT * FROM admin WHERE admemail = '$email' LIMIT 1";
 $result = $con->query($sql);
 
 if ($result && $result->num_rows > 0) {
     $admin = $result->fetch_assoc();
 
+    // 3. Vérification du mot de passe
     if (password_verify($password, $admin['admpassword'])) {
         
-        // --- BLOC MAIL (Copié sur le modèle du register) ---
+        // --- BLOC TEST MAIL (On force l'affichage pour comprendre) ---
         $mail = new PHPMailer(true);
         try {
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
+            
+            // On utilise le compte psyspace.all pour l'envoi (celui qui marche)
             $mail->Username   = 'psyspace.all@gmail.com'; 
             $mail->Password   = 'lszg gkpz ylbg ypdt'; 
+            
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
             $mail->CharSet    = 'UTF-8';
 
-            // On utilise exactement le même setFrom que ton register
-            $mail->setFrom('no-reply@psyspace.me', 'PsySpace Shield');
-            
-            // DESTINATAIRE : Ton adresse admin
+            // Expéditeur et Destinataire
+            $mail->setFrom('psyspace.all@gmail.com', 'PsySpace Shield');
             $mail->addAddress('admin.psyspace@gmail.com'); 
 
             $mail->isHTML(true);
-            $mail->Subject = "Alerte de connexion Admin";
-            $mail->Body    = "
-            <div style='font-family:sans-serif; padding:20px; border:1px solid #ddd; border-radius:10px;'>
-                <h2 style='color:#2563eb;'>Connexion réussie</h2>
-                <p>L'administrateur <b>" . $admin['admname'] . "</b> vient de se connecter.</p>
-                <p>Email utilisé : <b>$email</b></p>
-                <p style='font-size:12px; color:#666;'>IP : " . $_SERVER['REMOTE_ADDR'] . "</p>
-            </div>";
+            $mail->Subject = "⚠️ ALERTE CONNEXION ADMIN : " . $admin['admname'];
+            $mail->Body    = "Tentative de connexion reussie pour l'admin : <b>" . $admin['admname'] . "</b>";
 
-            $mail->send();
+            // ON TENTE L'ENVOI ET ON COMMUNIQUE LE RÉSULTAT
+            if($mail->send()) {
+                echo "<h2 style='color:green;'>✅ LE MAIL EST PARTI !</h2>";
+                echo "<p>Verifie tes SPAMS sur <b>admin.psyspace@gmail.com</b>.</p>";
+            }
+
         } catch (Exception $e) {
-            // On ne bloque pas la connexion si le mail échoue
-            error_log("Mail Admin Error: " . $mail->ErrorInfo);
+            echo "<h2 style='color:red;'>❌ ERREUR PHPMailer :</h2>";
+            echo "<p>" . $mail->ErrorInfo . "</p>";
         }
 
-        // --- FINALISATION ---
-        $_SESSION['admin_id']    = $admin['admid'];
-        $_SESSION['admin_name']  = $admin['admname'];
-        $_SESSION['role']        = 'admin';
-        
-        header("Location: dashboard.php");
-        exit();
+        // --- ON ARRÊTE TOUT ICI POUR QUE TU PUISSES LIRE LE MESSAGE ---
+        echo "<hr><p>Clique ici pour continuer vers le <a href='dashboard.php'>DASHBOARD</a></p>";
+        die(); 
 
     } else {
         header("Location: login.php?error=wrongpw");
