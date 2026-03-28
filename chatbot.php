@@ -131,19 +131,21 @@
         </div>
         <div class="controls-area">
             <div class="input-group">
-                <button id="micBtn" class="btn-icon btn-mic" onclick="toggleMic()">
+                <!-- Pas de onclick/onkeydown → tout est dans le JS via addEventListener -->
+                <button id="micBtn" class="btn-icon btn-mic">
                     <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
                 </button>
-                <input type="text" id="chatInput" class="chat-input" placeholder="Posez votre question ici..." onkeydown="if(event.key==='Enter') sendMessage()">
-                <button class="btn-icon btn-send" onclick="sendMessage()">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Posez votre question ici...">
+                <button id="sendBtn" class="btn-icon btn-send">
                     <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </button>
             </div>
+            <!-- data-ask au lieu de onclick pour respecter la CSP -->
             <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-                <span class="suggestion-chip" onclick="ask('C\'est quoi PsySpace ?')">C'est quoi PsySpace ?</span>
-                <span class="suggestion-chip" onclick="ask('Comment s\'inscrire ?')">Comment s'inscrire ?</span>
-                <span class="suggestion-chip" onclick="ask('Sécurité des données')">Sécurité des données</span>
-                <span class="suggestion-chip" onclick="ask('Qui a développé PsySpace ?')">Le développeur</span>
+                <span class="suggestion-chip" data-ask="C'est quoi PsySpace ?">C'est quoi PsySpace ?</span>
+                <span class="suggestion-chip" data-ask="Comment s'inscrire ?">Comment s'inscrire ?</span>
+                <span class="suggestion-chip" data-ask="Sécurité des données">Sécurité des données</span>
+                <span class="suggestion-chip" data-ask="Qui a développé PsySpace ?">Le développeur</span>
             </div>
         </div>
     </div>
@@ -184,6 +186,7 @@ var chatInput   = document.getElementById('chatInput');
 var statusPill  = document.getElementById('statusPill');
 var statusText  = document.getElementById('statusText');
 var micBtn      = document.getElementById('micBtn');
+var sendBtn     = document.getElementById('sendBtn');
 var loaderDiv   = document.getElementById('loader');
 
 function setStatus(s,t){ statusPill.className='status-pill '+(s||''); statusText.textContent=t||'En attente'; }
@@ -249,7 +252,7 @@ function startBlink(){
 }
 
 /* ═══════════════════════════════════════════════════════
-   THREE.JS  — GLTFLoader chargé via <script> statique
+   THREE.JS
 ═══════════════════════════════════════════════════════ */
 function initThree(){
     if(typeof THREE === 'undefined'){
@@ -329,7 +332,7 @@ function animate(){
 }
 
 /* ═══════════════════════════════════════════════════════
-   AUDIO  — base64 brut (sans préfixe data:...)
+   AUDIO
 ═══════════════════════════════════════════════════════ */
 var audioCtx=null, audioUnlocked=false;
 
@@ -347,8 +350,6 @@ function unlockAudio(){
 function playAudio(b64){
     if(currentAudio){ currentAudio.pause(); currentAudio=null; }
     stopLipSync(); isSpeaking=false;
-
-    /* Décoder le base64 brut en Blob audio */
     try{
         var bin=atob(b64);
         var buf=new Uint8Array(bin.length);
@@ -357,31 +358,30 @@ function playAudio(b64){
         var audio=new Audio(url);
         audio.volume=1.0;
         currentAudio=audio;
-
         audio.onerror=function(e){ console.error("Audio error:",e,audio.error); };
         audio.onended=function(){
             isSpeaking=false; stopLipSync();
             setStatus('','En attente');
             URL.revokeObjectURL(url);
         };
-
         function onPlay(){
             isSpeaking=true;
             setStatus('speaking','En train de répondre');
             startLipSync();
         }
-
         function showPlayBtn(){
             var old=document.getElementById('play-btn'); if(old)old.remove();
             var btn=document.createElement('button');
             btn.id='play-btn';
-            btn.innerHTML='▶ Écouter la réponse';
+            btn.textContent='▶ Écouter la réponse';
             btn.style.cssText='display:block;margin-top:10px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;width:100%;';
-            btn.onclick=function(){ btn.remove(); unlockAudio(); audio.play().then(onPlay).catch(function(e){console.error(e);}); };
+            btn.addEventListener('click', function(){
+                btn.remove(); unlockAudio();
+                audio.play().then(onPlay).catch(function(e){console.error(e);});
+            });
             chatHistory.appendChild(btn);
             chatHistory.scrollTop=chatHistory.scrollHeight;
         }
-
         if(audioCtx&&audioCtx.state==='suspended'){
             audioCtx.resume().then(function(){
                 audio.play().then(onPlay).catch(function(e){ console.error(e); showPlayBtn(); });
@@ -414,8 +414,6 @@ async function sendMessage(txt){
         var data=await res.json();
         hideTyping();
         addMessage(data.text,'bot');
-
-        /* audio_base64 = base64 brut renvoyé par chat_handler.php */
         if(data.audio_base64 && data.audio_base64.length>50){
             playAudio(data.audio_base64);
         } else {
@@ -427,8 +425,6 @@ async function sendMessage(txt){
         setStatus('','Erreur');
     } finally { isThinking=false; }
 }
-
-function ask(txt){ sendMessage(txt); }
 
 /* ═══════════════════════════════════════════════════════
    MIC
@@ -446,17 +442,26 @@ function toggleMic(){
 }
 
 /* ═══════════════════════════════════════════════════════
-   INIT
+   INIT — zéro onclick/onkeydown dans le HTML
 ═══════════════════════════════════════════════════════ */
-window.onload=function(){
+window.addEventListener('load', function(){
     initThree();
     animate();
+
+    sendBtn.addEventListener('click', function(){ sendMessage(); });
+    chatInput.addEventListener('keydown', function(e){ if(e.key==='Enter') sendMessage(); });
+    micBtn.addEventListener('click', function(){ toggleMic(); });
+
+    document.querySelectorAll('.suggestion-chip').forEach(function(chip){
+        chip.addEventListener('click', function(){
+            sendMessage(chip.getAttribute('data-ask'));
+        });
+    });
 
     document.addEventListener('click',    unlockAudio, {once:true});
     document.addEventListener('keydown',  unlockAudio, {once:true});
     document.addEventListener('touchend', unlockAudio, {once:true});
 
-    /* Drag pour rotation avatar */
     var canvas=document.getElementById('avatar-canvas');
     var drag=false, prevX=0;
     canvas.addEventListener('mousedown',  function(e){ drag=true; prevX=e.clientX; });
@@ -465,7 +470,7 @@ window.onload=function(){
     canvas.addEventListener('touchstart', function(e){ drag=true; prevX=e.touches[0].clientX; },{passive:true});
     window.addEventListener('touchend',   function(){ drag=false; });
     window.addEventListener('touchmove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.touches[0].clientX-prevX)*0.01; } prevX=e.touches[0].clientX; },{passive:true});
-};
+});
 </script>
 
 <?php include "footer.php"; ?>
