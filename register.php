@@ -1,9 +1,7 @@
 <?php include "header.php"; ?>
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
-    .font-serif { font-family: 'Merriweather', serif; }
     .fade-in { animation: fadeIn 0.5s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -33,16 +31,17 @@
     }
 
     .password-strength {
-        height: 2px;
+        height: 3px;
         background: #e2e8f0;
-        border-radius: 1px;
+        border-radius: 2px;
         margin-top: 8px;
         overflow: hidden;
     }
     .strength-meter {
         height: 100%;
         width: 0;
-        transition: width 0.3s, background 0.3s;
+        transition: width 0.3s, background-color 0.3s;
+        border-radius: 2px;
     }
 </style>
 
@@ -56,9 +55,9 @@
                     <img src="assets/images/logo.png" alt="PsySpace" class="h-8 w-auto">
                     <span class="text-lg font-bold">PsySpace</span>
                 </a>
-                <h2 class="font-serif text-3xl font-bold leading-snug mb-4">
+                <h2 class="text-3xl font-bold leading-snug mb-4">
                     Rejoignez une pratique<br>
-                    <em class="text-blue-300">plus fluide.</em>
+                    <em class="text-blue-300 not-italic">plus fluide.</em>
                 </h2>
                 <p class="text-blue-200/70 text-sm leading-relaxed">
                     Créez votre compte professionnel et accédez à un espace sécurisé pour gérer votre activité clinique.
@@ -79,7 +78,7 @@
         <!-- Panneau droit -->
         <div class="w-full md:w-7/12 p-10 md:p-14">
             <div class="mb-8">
-                <h2 class="font-serif text-3xl font-bold text-slate-900 mb-2">Créer un compte</h2>
+                <h2 class="text-3xl font-bold text-slate-900 mb-2">Créer un compte</h2>
                 <p class="text-sm text-slate-400">Renseignez vos informations pour ouvrir votre espace praticien.</p>
             </div>
 
@@ -93,67 +92,51 @@
                 </div>
             <?php endif; ?>
 
+            <!-- Pas de oninput/onchange dans le HTML — tout est dans le JS -->
             <form id="registerForm" action="register_action.php" method="POST" class="space-y-5" novalidate>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Nom</label>
-                        <input type="text" id="nom" name="nom" required
-                               class="input-field"
-                               placeholder="Ex. Aouina"
-                               oninput="validateField('nom')">
+                        <input type="text" id="nom" name="nom" required class="input-field" placeholder="Ex. Aouina">
                         <p id="nomError" class="text-xs text-red-500 hidden">Veuillez renseigner un nom valide.</p>
                     </div>
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Prénom</label>
-                        <input type="text" id="prenom" name="prenom" required
-                               class="input-field"
-                               placeholder="Ex. Hamadi"
-                               oninput="validateField('prenom')">
+                        <input type="text" id="prenom" name="prenom" required class="input-field" placeholder="Ex. Hamadi">
                         <p id="prenomError" class="text-xs text-red-500 hidden">Veuillez renseigner un prénom valide.</p>
                     </div>
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Date de naissance</label>
-                    <input type="date" id="dob" name="dob" required
-                           class="input-field"
-                           onchange="validateField('dob')">
+                    <input type="date" id="dob" name="dob" required class="input-field">
                     <p id="dobError" class="text-xs text-red-500 hidden">Vous devez avoir au moins 18 ans.</p>
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email professionnelle</label>
-                    <input type="email" id="email" name="email" required
-                           class="input-field"
-                           placeholder="votre@cabinet.fr"
-                           oninput="validateField('email')">
+                    <input type="email" id="email" name="email" required class="input-field" placeholder="votre@cabinet.fr">
                     <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide.</p>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Mot de passe</label>
-                        <input type="password" id="password" name="password" required
-                               class="input-field"
-                               placeholder="••••••••"
-                               oninput="checkPasswordStrength()">
+                        <input type="password" id="password" name="password" required class="input-field" placeholder="••••••••">
                         <div class="password-strength">
                             <div class="strength-meter" id="strengthMeter"></div>
                         </div>
-                        <p id="passwordHelp" class="text-xs text-slate-400 mt-1">Minimum 12 caractères avec majuscules, chiffres et symboles</p>
+                        <p id="passwordHelp" class="text-xs text-slate-400 mt-1">Minimum 8 caractères avec majuscule et chiffre</p>
                     </div>
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Confirmer le mot de passe</label>
-                        <input type="password" id="confirm_password" required
-                               class="input-field"
-                               placeholder="••••••••"
-                               oninput="checkPasswordMatch()">
+                        <input type="password" id="confirm_password" required class="input-field" placeholder="••••••••">
                         <p id="confirmHelp" class="text-xs text-red-500 hidden">Les mots de passe ne correspondent pas.</p>
                     </div>
                 </div>
 
                 <div class="pt-2">
-                    <button type="submit" id="submitBtn"
+                    <button type="submit" id="submitBtn" disabled
                         class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm shadow-blue-100">
                         Créer mon compte
                     </button>
@@ -171,68 +154,87 @@
 </main>
 
 <script>
-function checkPasswordStrength() {
-    const password = document.getElementById('password').value;
-    const meter = document.getElementById('strengthMeter');
-    const helpText = document.getElementById('passwordHelp');
+/* ═══════════════════════════════════════════════════
+   RÈGLES UNIFIÉES — une seule source de vérité
+   strength >= 3 sur 4 critères pour activer le bouton
+═══════════════════════════════════════════════════ */
+function getPasswordStrength(pass) {
+    var score = 0;
+    if (pass.length >= 8)        score++;
+    if (/[A-Z]/.test(pass))      score++;
+    if (/[0-9]/.test(pass))      score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+    return score; // 0 à 4
+}
 
-    meter.style.width = '0%';
-    if (password.length === 0) {
-        helpText.textContent = 'Minimum 8 caractères, une majuscule et un chiffre';
-        helpText.className = 'text-xs text-slate-400 mt-1';
-        return;
+function checkPasswordStrength() {
+    var pass    = document.getElementById('password').value;
+    var meter   = document.getElementById('strengthMeter');
+    var help    = document.getElementById('passwordHelp');
+    var score   = getPasswordStrength(pass);
+
+    if (pass.length === 0) {
+        meter.style.width = '0%';
+        help.textContent  = 'Minimum 8 caractères avec majuscule et chiffre';
+        help.className    = 'text-xs text-slate-400 mt-1';
+        validateForm(); return;
     }
 
-    let strength = 0;
-    if (password.length >= 8) strength += 1; // Baissé de 12 à 8
-    if (/[A-Z]/.test(password)) strength += 1;
-    if (/[0-9]/.test(password)) strength += 1;
-    if (password.length >= 10) strength += 1; // Bonus de longueur au lieu de symbole obligatoire
+    meter.style.width = (score / 4 * 100) + '%';
 
-    const width = (strength / 4) * 100;
-    meter.style.width = width + '%';
-
-    if (strength < 2) {
+    if (score <= 1) {
         meter.style.backgroundColor = '#ef4444';
-        helpText.textContent = 'Mot de passe trop court';
-    } else if (strength < 4) {
+        help.textContent = 'Mot de passe trop faible';
+        help.className   = 'text-xs text-red-500 mt-1';
+    } else if (score === 2) {
         meter.style.backgroundColor = '#f59e0b';
-        helpText.textContent = 'Mot de passe correct';
+        help.textContent = 'Mot de passe moyen';
+        help.className   = 'text-xs text-amber-500 mt-1';
+    } else if (score === 3) {
+        meter.style.backgroundColor = '#3b82f6';
+        help.textContent = 'Mot de passe correct ✓';
+        help.className   = 'text-xs text-blue-500 mt-1';
     } else {
         meter.style.backgroundColor = '#10b981';
-        helpText.textContent = 'Mot de passe sécurisé';
+        help.textContent = 'Mot de passe sécurisé ✓';
+        help.className   = 'text-xs text-emerald-500 mt-1';
     }
     validateForm();
 }
 
 function checkPasswordMatch() {
-    const pass1 = document.getElementById('password').value;
-    const pass2 = document.getElementById('confirm_password').value;
-    const confirmHelp = document.getElementById('confirmHelp');
+    var pass1       = document.getElementById('password').value;
+    var pass2       = document.getElementById('confirm_password').value;
+    var confirmHelp = document.getElementById('confirmHelp');
 
     if (pass2.length > 0 && pass1 !== pass2) {
         confirmHelp.classList.remove('hidden');
+        document.getElementById('confirm_password').classList.add('error');
     } else {
         confirmHelp.classList.add('hidden');
+        document.getElementById('confirm_password').classList.remove('error');
     }
-
     validateForm();
 }
 
 function validateField(name) {
-    const field = document.getElementById(name);
-    const errorMsg = document.getElementById(name + 'Error');
-    let isValid = false;
+    var field    = document.getElementById(name);
+    var errorMsg = document.getElementById(name + 'Error');
+    if (!field || !errorMsg) return;
 
+    var isValid = false;
     switch(name) {
         case 'nom':
         case 'prenom':
             isValid = /^[a-zA-ZÀ-ÿ\s\-]{2,}$/.test(field.value);
             break;
         case 'dob':
-            if(!field.value) return;
-            const birth = new Date(field.value);
-            const age = new Date().getFullYear() - birth.getFullYear();
+            if (!field.value) return;
+            var birth    = new Date(field.value);
+            var today    = new Date();
+            var age      = today.getFullYear() - birth.getFullYear();
+            var m        = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
             isValid = age >= 18;
             break;
         case 'email':
@@ -247,38 +249,40 @@ function validateField(name) {
         field.classList.remove('error');
         errorMsg.classList.add('hidden');
     }
-
     validateForm();
 }
 
 function validateForm() {
-    const nom = document.getElementById('nom').value;
-    const prenom = document.getElementById('prenom').value;
-    const dob = document.getElementById('dob').value;
-    const email = document.getElementById('email').value;
-    const pass1 = document.getElementById('password').value;
-    const pass2 = document.getElementById('confirm_password').value;
-    const submitBtn = document.getElementById('submitBtn');
+    var nom    = document.getElementById('nom').value.trim();
+    var prenom = document.getElementById('prenom').value.trim();
+    var dob    = document.getElementById('dob').value;
+    var email  = document.getElementById('email').value.trim();
+    var pass1  = document.getElementById('password').value;
+    var pass2  = document.getElementById('confirm_password').value;
+    var btn    = document.getElementById('submitBtn');
 
-    // Check email validity
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-    // Check password strength
-    let strength = 0;
-    if (pass1.length >= 12) strength += 1;
-    if (/[A-Z]/.test(pass1)) strength += 1;
-    if (/[0-9]/.test(pass1)) strength += 1;
-    if (/[^A-Za-z0-9]/.test(pass1)) strength += 1;
-
-    submitBtn.disabled = !(nom && prenom && dob && emailValid && strength >= 4 && pass1 === pass2 && pass1.length > 0);
+    var emailOk    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    var passScore  = getPasswordStrength(pass1);
+    /* Bouton actif si : tous les champs remplis + email valide
+       + mot de passe score >= 3 + mots de passe identiques          */
+    var ok = nom && prenom && dob && emailOk && passScore >= 3 && pass1 === pass2 && pass1.length > 0;
+    btn.disabled = !ok;
 }
 
-// Initial validation
-document.addEventListener('DOMContentLoaded', () => {
-    const inputs = ['nom', 'prenom', 'dob', 'email', 'password', 'confirm_password'];
-    inputs.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', () => validateField(id));
+/* ═══════════════════════════════════════════════════
+   INIT — addEventListener uniquement, zéro oninput/onchange
+═══════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('nom').addEventListener('input',    function(){ validateField('nom'); });
+    document.getElementById('prenom').addEventListener('input', function(){ validateField('prenom'); });
+    document.getElementById('dob').addEventListener('change',   function(){ validateField('dob'); });
+    document.getElementById('email').addEventListener('input',  function(){ validateField('email'); });
+    document.getElementById('password').addEventListener('input', function(){
+        checkPasswordStrength();
+        checkPasswordMatch();
+    });
+    document.getElementById('confirm_password').addEventListener('input', function(){
+        checkPasswordMatch();
     });
 });
 </script>
