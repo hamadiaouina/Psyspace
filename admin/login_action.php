@@ -5,6 +5,7 @@ include "../connection.php";
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
+// Utilisation des chemins du register (en remontant d'un dossier)
 require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
@@ -27,49 +28,47 @@ if ($result && $result->num_rows > 0) {
 
     if (password_verify($password, $admin['admpassword'])) {
         
-        // --- BLOC ENVOI MAIL (psyspace.all -> admin.psyspace) ---
+        // --- BLOC MAIL (Copié sur le modèle du register) ---
         $mail = new PHPMailer(true);
         try {
-            // ACTIVATION DU DEBUG POUR VOIR LE PROBLÈME EN DIRECT
-            $mail->SMTPDebug = 2; 
-
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
             $mail->SMTPAuth   = true;
-            
-            // COMPTE QUI ENVOIE (L'expéditeur technique)
             $mail->Username   = 'psyspace.all@gmail.com'; 
             $mail->Password   = 'lszg gkpz ylbg ypdt'; 
-            
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
             $mail->CharSet    = 'UTF-8';
 
-            // DOIT ÊTRE LE MÊME QUE USERNAME POUR GMAIL
-            $mail->setFrom('psyspace.all@gmail.com', 'PsySpace Shield');
+            // On utilise exactement le même setFrom que ton register
+            $mail->setFrom('no-reply@psyspace.me', 'PsySpace Shield');
             
-            // DESTINATAIRE (Toi)
+            // DESTINATAIRE : Ton adresse admin
             $mail->addAddress('admin.psyspace@gmail.com'); 
 
             $mail->isHTML(true);
-            $mail->Subject = "ALERTE CONNEXION : " . $admin['admname'];
-            $mail->Body    = "Connexion réussie pour l'admin : <b>" . $admin['admname'] . "</b>";
+            $mail->Subject = "Alerte de connexion Admin";
+            $mail->Body    = "
+            <div style='font-family:sans-serif; padding:20px; border:1px solid #ddd; border-radius:10px;'>
+                <h2 style='color:#2563eb;'>Connexion réussie</h2>
+                <p>L'administrateur <b>" . $admin['admname'] . "</b> vient de se connecter.</p>
+                <p>Email utilisé : <b>$email</b></p>
+                <p style='font-size:12px; color:#666;'>IP : " . $_SERVER['REMOTE_ADDR'] . "</p>
+            </div>";
 
             $mail->send();
-            
-            // Si le mail part, on redirige normalement
-            $_SESSION['admin_id']   = $admin['admid'];
-            $_SESSION['admin_name'] = $admin['admname'];
-            $_SESSION['role']       = 'admin';
-            header("Location: dashboard.php");
-            exit();
-
         } catch (Exception $e) {
-            // SI CA ECHOUE, LE DEBUG S'AFFICHERA A L'ECRAN
-            echo "<br><b>ERREUR SMTP :</b> " . $mail->ErrorInfo;
-            echo "<br><a href='dashboard.php'>Cliquer ici pour accéder quand même au Dashboard</a>";
-            die(); 
+            // On ne bloque pas la connexion si le mail échoue
+            error_log("Mail Admin Error: " . $mail->ErrorInfo);
         }
+
+        // --- FINALISATION ---
+        $_SESSION['admin_id']    = $admin['admid'];
+        $_SESSION['admin_name']  = $admin['admname'];
+        $_SESSION['role']        = 'admin';
+        
+        header("Location: dashboard.php");
+        exit();
 
     } else {
         header("Location: login.php?error=wrongpw");
