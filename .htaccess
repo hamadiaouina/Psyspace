@@ -1,0 +1,22 @@
+# 1. Empêcher le listage des dossiers (Sécurité n°1)
+Options -Indexes
+
+# 2. Protection des fichiers sensibles
+<FilesMatch "^\.env|composer\.(json|lock)|web\.config$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# 3. Headers de Sécurité (Hardening)
+<IfModule mod_headers.c>
+    Header set X-XSS-Protection "1; mode=block"
+    Header set X-Frame-Options "DENY"
+    Header set X-Content-Type-Options "nosniff"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+</IfModule>
+
+# 4. Redirection HTTPS automatique
+RewriteEngine On
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
