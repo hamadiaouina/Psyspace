@@ -64,10 +64,13 @@ if (!$is_localhost) {
         "base-uri 'self'; " .
         "upgrade-insecure-requests;"
     );
-} else {
+}
+else {
     header("Content-Security-Policy: " .
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
         "script-src 'self' 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' https: http:; " .
+        // AJOUT DE CETTE LIGNE POUR TURNSTILE
+        "frame-src 'self' https://challenges.cloudflare.com; " . 
         "img-src 'self' data: https: http: blob: https://images.unsplash.com; " .
         "connect-src 'self' https: http: blob: wss:; " .
         "media-src 'self' blob:; " .
