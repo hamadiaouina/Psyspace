@@ -2,9 +2,10 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require 'vendor/PHPMailer/src/Exception.php';
-require 'vendor/PHPMailer/src/PHPMailer.php';
-require 'vendor/PHPMailer/src/SMTP.php';
+// Utilisation de chemins absolus pour être sûr à 100%
+require __DIR__ . '/vendor/PHPMailer/src/Exception.php';
+require __DIR__ . '/vendor/PHPMailer/src/PHPMailer.php';
+require __DIR__ . '/vendor/PHPMailer/src/SMTP.php';
 
 include "connection.php";
 
