@@ -1,7 +1,6 @@
 <?php
 /**
- * PSYSPACE - HEADER DE SÉCURITÉ FINAL
- * Score visé : A+ (100/100)
+ * PSYSPACE - HEADER DE SÉCURITÉ FINAL (VERSION FORCE SECURE)
  */
 
 // 1. Activation du Firewall
@@ -9,19 +8,20 @@ if (file_exists(__DIR__ . '/security/firewall.php')) {
     require_once __DIR__ . '/security/firewall.php';
 }
 
-// 2. CONFIGURATION DES COOKIES (Correction finale -10 et -30)
-$is_https = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || 
-            (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+// 2. CONFIGURATION DES COOKIES (Version Radical pour score 100%)
+// On active le flag Secure si on n'est pas sur localhost
+$is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
     'domain' => '', 
-    'secure' => $is_https, // FORCE LE FLAG "SECURE" (Règle l'erreur -10)
-    'httponly' => true,    // FORCE LE FLAG "HTTPONLY" (Règle l'erreur -30)
-    'samesite' => 'Lax'    // Protection CSRF
+    'secure' => !$is_localhost, // FORCE TRUE en ligne, même si la détection HTTPS bug
+    'httponly' => true,
+    'samesite' => 'Lax'
 ]);
 
+// ... RESTE DU CODE (Headers, CSP, etc.)
 // 3. Initialisation de la session et de la connexion
 session_start();
 include "connection.php";
