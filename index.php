@@ -1,4 +1,5 @@
-<?php 
+<?php
+include "security/firewall.php";
 include "header.php"; 
 // Ici, on ne rajoute PAS de header CSP, le header.php s'en occupe déjà !
 ?>

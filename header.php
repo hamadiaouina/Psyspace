@@ -1,4 +1,6 @@
+
 <?php
+require_once __DIR__ . '/security/firewall.php'; 
 /**
  * PSYSPACE - HEADER UNIVERSEL
  * CSP stricte avec nonces — score sécurité 10/10
@@ -156,7 +158,7 @@ ob_start(function($buffer) {
             </div>
         </div>
     </header>
-    
+
 <script nonce="<?= $nonce ?>">
     // On termine bien chaque instruction avec un ";"
     window.tailwind = window.tailwind || {};
