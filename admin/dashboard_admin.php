@@ -1,40 +1,55 @@
 <?php
+declare(strict_types=1);
 session_start();
+
+// ── Connexion et Sécurité ──
 include "../connection.php";
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
+// Protection de la page : réservé aux Admins
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php"); exit();
+    header("Location: login.php"); 
+    exit();
+}
+
+/**
+ * Fonction de Log centralisée
+ * Déclarée à l'extérieur pour éviter les erreurs de portée (scope)
+ */
+function logAction($con, int $admin_id, string $action, string $details): void {
+    if (!$con) return;
+    
+    // Création automatique de la table si elle n'existe pas
+    if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
+        $con->query("CREATE TABLE admin_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            admin_id INT,
+            action VARCHAR(100),
+            details TEXT,
+            ip VARCHAR(45),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
+    
+    $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
+    $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
+    if ($stmt) {
+        $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
+        $stmt->execute(); 
+        $stmt->close();
+    }
 }
 
 $admin_name    = htmlspecialchars($_SESSION['admin_name'] ?? 'Admin');
 $admin_initial = strtoupper(substr($_SESSION['admin_name'] ?? 'A', 0, 1));
 
 /* ══════════════════════════════════════════════════
-   ACTIONS POST
+   TRAITEMENT DES ACTIONS (POST)
 ══════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action  = $_POST['action']  ?? '';
-    $section = $_POST['section'] ?? 'overview';
-    $admin_id = $_SESSION['admin_id'];
-
-    // Logger une action
-    function logAction($con, $admin_id, $action, $details) {
-        if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
-            $con->query("CREATE TABLE admin_logs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                admin_id INT,
-                action VARCHAR(100),
-                details TEXT,
-                ip VARCHAR(45),
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )");
-        }
-        $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
-        $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
-        $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
-        $stmt->execute(); $stmt->close();
-    }
+    $action   = $_POST['action']  ?? '';
+    $section  = $_POST['section'] ?? 'overview';
+    $admin_id = (int)$_SESSION['admin_id'];
 
     switch ($action) {
         case 'toggle_doctor':
@@ -53,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $r  = $con->query("SELECT docname FROM doctor WHERE docid=$id")->fetch_assoc();
             $stmt = $con->prepare("DELETE FROM doctor WHERE docid=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_doctor', "Deleted: ".($r['docname']??$id));
+            logAction($con, $admin_id, 'delete_doctor', "Deleted Doctor: ".($r['docname'] ?? $id));
             break;
 
         case 'delete_appointment':
@@ -75,14 +90,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $r  = $con->query("SELECT pname FROM patients WHERE id=$id")->fetch_assoc();
             $stmt = $con->prepare("DELETE FROM patients WHERE id=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_patient', "Deleted: ".($r['pname']??$id));
+            logAction($con, $admin_id, 'delete_patient', "Deleted Patient: ".($r['pname'] ?? $id));
             break;
 
         case 'edit_doctor':
-            $id       = (int)$_POST['docid'];
-            $docname  = trim($_POST['docname']  ?? '');
-            $docemail = trim($_POST['docemail'] ?? '');
-            $specialty= trim($_POST['specialty']?? '');
+            $id        = (int)$_POST['docid'];
+            $docname   = trim($_POST['docname']   ?? '');
+            $docemail  = trim($_POST['docemail']  ?? '');
+            $specialty = trim($_POST['specialty'] ?? '');
             if ($docname && $docemail) {
                 $stmt = $con->prepare("UPDATE doctor SET docname=?, docemail=?, specialty=? WHERE docid=?");
                 $stmt->bind_param("sssi", $docname, $docemail, $specialty, $id);
@@ -109,6 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
 
         case 'export_csv':
+            // ❗ ANTI-404 NGINX : On nettoie toute sortie avant d'envoyer le fichier
+            if (ob_get_length()) ob_end_clean();
+
             $type = $_POST['export_type'] ?? 'doctors';
             $queries = [
                 'doctors'       => "SELECT docid as ID, docname as Nom, docemail as Email, specialty as Specialite, status as Statut, dob as Naissance FROM doctor ORDER BY docid DESC",
@@ -118,24 +136,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             $q = $queries[$type] ?? $queries['doctors'];
             $res = $con->query($q);
+
+            // Headers pour forcer le téléchargement
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="psyspace_'.$type.'_'.date('Y-m-d').'.csv"');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+
             $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM pour Excel
+
             if ($res && $res->num_rows > 0) {
-                $first = $res->fetch_assoc();
-                fputcsv($out, array_keys($first));
-                fputcsv($out, $first);
-                while ($row = $res->fetch_assoc()) fputcsv($out, $row);
+                // Récupération des données et headers
+                $rows = $res->fetch_all(MYSQLI_ASSOC);
+                fputcsv($out, array_keys($rows[0])); // Colonnes
+                foreach ($rows as $row) {
+                    fputcsv($out, $row); // Lignes
+                }
             }
             fclose($out);
-            logAction($con, $admin_id, 'export_csv', "Exported $type");
-            exit();
+            logAction($con, $admin_id, 'export_csv', "Exported $type data");
+            exit(); // On arrête le script ici pour le téléchargement
     }
 
-    header("Location: dashboard_admin.php?section=".$section); exit();
+    // Retour au dashboard après action (si pas d'export)
+    header("Location: dashboard_admin.php?section=".urlencode($section)); 
+    exit();
 }
 
+/* ══════════════════════════════════════════════════
+   VOTRE CODE HTML COMMENCE ICI (Le reste du fichier)
+══════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════
    DONNÉES
 ══════════════════════════════════════════════════ */
