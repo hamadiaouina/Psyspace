@@ -3,9 +3,7 @@
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
-    .font-serif { font-family: 'Merriweather', serif; }
 
     .input-field {
         width: 100%;
@@ -29,20 +27,28 @@
 
     .fade-in { animation: fadeIn 0.5s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Couleurs des alertes */
+    .alert { display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:12px; font-size:13.5px; margin-bottom:20px; }
+    .alert-red    { background:#fef2f2; border:1px solid #fecaca; color:#dc2626; }
+    .alert-orange { background:#fffbeb; border:1px solid #fde68a; color:#d97706; }
+    .alert-blue   { background:#eff6ff; border:1px solid #bfdbfe; color:#2563eb; }
+    .alert-green  { background:#f0fdf4; border:1px solid #bbf7d0; color:#059669; }
 </style>
 
 <main class="min-h-screen bg-slate-50 flex items-center justify-center py-16 px-6">
     <div class="w-full max-w-5xl flex rounded-2xl shadow-xl overflow-hidden border border-slate-200 fade-in">
 
+        <!-- Panneau gauche -->
         <div class="hidden md:flex w-5/12 bg-blue-950 flex-col justify-between p-12 text-white">
             <div>
                 <a href="index.php" class="flex items-center gap-3 mb-16">
                     <img src="assets/images/logo.png" alt="PsySpace" class="h-8 w-auto">
                     <span class="text-lg font-bold">PsySpace</span>
                 </a>
-                <h2 class="font-serif text-3xl font-bold leading-snug mb-4">
+                <h2 class="text-3xl font-bold leading-snug mb-4">
                     L'intelligence<br>
-                    <em class="text-blue-300">au service du soin.</em>
+                    <em class="text-blue-300 not-italic">au service du soin.</em>
                 </h2>
                 <p class="text-blue-200/70 text-sm leading-relaxed">
                     Accédez à votre interface sécurisée pour piloter vos analyses cliniques.
@@ -60,25 +66,79 @@
             </div>
         </div>
 
+        <!-- Panneau droit -->
         <div class="w-full md:w-7/12 bg-white p-10 md:p-14">
 
             <div class="mb-10">
-                <h2 class="font-serif text-3xl font-bold text-slate-900 mb-2">Connexion</h2>
+                <h2 class="text-3xl font-bold text-slate-900 mb-2">Connexion</h2>
                 <p class="text-sm text-slate-400">Accédez à votre espace praticien.</p>
             </div>
 
             <?php if(isset($_GET['error'])): ?>
-                <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl flex items-center gap-3">
-                    <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <?php
+                $error = $_GET['error'];
+                $alertClass = 'alert-red';
+                $alertIcon  = '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>';
+                $alertMsg   = 'Une erreur est survenue.';
+
+                switch($error) {
+                    case 'wrongpw':
+                        $alertClass = 'alert-red';
+                        $alertMsg   = 'Identifiants incorrects. Vérifiez votre email et mot de passe.';
+                        break;
+                    case 'noaccount':
+                        $alertClass = 'alert-red';
+                        $alertMsg   = 'Aucun compte trouvé avec cet email.';
+                        break;
+                    case 'suspended':
+                        $alertClass = 'alert-orange';
+                        $alertIcon  = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>';
+                        $alertMsg   = 'Votre compte a été suspendu par l\'administrateur. Contactez le support.';
+                        break;
+                    case 'pending':
+                        $alertClass = 'alert-blue';
+                        $alertIcon  = '<circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3"/>';
+                        $alertMsg   = 'Votre compte est en attente d\'activation par l\'administrateur.';
+                        break;
+                    case 'notactive':
+                        $alertClass = 'alert-blue';
+                        $alertIcon  = '<circle cx="12" cy="12" r="10"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3"/>';
+                        $alertMsg   = 'Votre compte n\'est pas encore activé.';
+                        break;
+                    case 'captcha':
+                        $alertClass = 'alert-orange';
+                        $alertIcon  = '<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>';
+                        $alertMsg   = 'Vérification de sécurité échouée. Réessayez.';
+                        break;
+                    case 'empty':
+                        $alertClass = 'alert-red';
+                        $alertMsg   = 'Veuillez remplir tous les champs.';
+                        break;
+                    case 'server':
+                        $alertClass = 'alert-red';
+                        $alertMsg   = 'Erreur serveur temporaire. Réessayez dans quelques instants.';
+                        break;
+                }
+                ?>
+                <div class="alert <?= $alertClass ?>">
+                    <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <?= $alertIcon ?>
+                    </svg>
+                    <span><?= $alertMsg ?></span>
+                </div>
+            <?php endif; ?>
+
+            <?php if(isset($_GET['success'])): ?>
+                <div class="alert alert-green">
+                    <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                     <span>
                         <?php
-                            switch($_GET['error']) {
-                                case "wrongpw": echo "Identifiants incorrects."; break;
-                                case "noaccount": echo "Aucun compte trouvé."; break;
-                                case "notactive": echo "Compte en attente d'activation."; break;
-                                case "captcha": echo "Vérification de sécurité échouée."; break;
-                                default: echo "Une erreur est survenue.";
-                            }
+                        switch($_GET['success']) {
+                            case 'registered': echo 'Compte créé ! Vous pouvez vous connecter.'; break;
+                            case 'verified':   echo 'Email vérifié avec succès. Vous pouvez vous connecter.'; break;
+                            case 'reset':      echo 'Mot de passe réinitialisé avec succès.'; break;
+                            default:           echo 'Opération réussie.';
+                        }
                         ?>
                     </span>
                 </div>
@@ -90,7 +150,7 @@
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email</label>
                     <input type="email" id="loginEmail" name="email" required
                            placeholder="votre@cabinet.fr"
-                           value="<?php echo isset($_GET['email']) ? htmlspecialchars($_GET['email'], ENT_QUOTES, 'UTF-8') : ''; ?>"
+                           value="<?= isset($_GET['email']) ? htmlspecialchars($_GET['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
                            class="input-field">
                     <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide.</p>
                 </div>
@@ -112,8 +172,9 @@
                     <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">Rester connecté</label>
                 </div>
 
+                <!-- Cloudflare Turnstile -->
                 <div class="pt-2 flex justify-center">
-                    <div class="cf-turnstile" data-sitekey="0x4AAAAAACwwGfr14_N69NoP"></div> 
+                    <div class="cf-turnstile" data-sitekey="0x4AAAAAACwwGfr14_N69NoP"></div>
                 </div>
 
                 <div class="pt-2">
@@ -126,9 +187,10 @@
 
             <div class="mt-10 pt-8 border-t border-slate-100 text-center space-y-3">
                 <p class="text-sm text-slate-500">
-                    Pas encore de compte ? <a href="register.php" class="text-blue-600 font-semibold">Créer un compte</a>
+                    Pas encore de compte ?
+                    <a href="register.php" class="text-blue-600 font-semibold hover:text-blue-700 transition-colors ml-1">Créer un compte</a>
                 </p>
-                <a href="index.php" class="text-xs text-slate-400 flex items-center justify-center gap-1">
+                <a href="index.php" class="text-xs text-slate-400 flex items-center justify-center gap-1 hover:text-slate-600 transition-colors">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
                     Retour à l'accueil
                 </a>
@@ -137,17 +199,17 @@
     </div>
 </main>
 
-<script nonce="<?= $nonce ?>">
-document.addEventListener('DOMContentLoaded', () => {
-    const emailInput = document.getElementById('loginEmail');
-    const passInput  = document.getElementById('loginPassword');
-    const loginBtn   = document.getElementById('loginBtn');
-    const emailError = document.getElementById('emailError');
-    const pwError    = document.getElementById('pwError');
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var emailInput = document.getElementById('loginEmail');
+    var passInput  = document.getElementById('loginPassword');
+    var loginBtn   = document.getElementById('loginBtn');
+    var emailError = document.getElementById('emailError');
+    var pwError    = document.getElementById('pwError');
 
     function validate() {
-        const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value);
-        const passOk  = passInput.value.length >= 8;
+        var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value);
+        var passOk  = passInput.value.length >= 8;
 
         if (emailInput.value && !emailOk) {
             emailInput.classList.add('error');
@@ -169,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     emailInput.addEventListener('input', validate);
-    passInput.addEventListener('input', validate);
+    passInput.addEventListener('input',  validate);
     validate();
 });
 </script>

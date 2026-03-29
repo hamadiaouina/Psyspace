@@ -1,46 +1,40 @@
 <?php
 session_start();
 include "../connection.php";
-
-// 1. On s'assure que la connexion est bien initialisée
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
-// 2. LA SÉCURITÉ : Correction du chemin vers login.php pour éviter la 404
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: ./login.php"); 
-    exit();
+    header("Location: login.php"); exit();
 }
 
-// 3. On récupère les infos de session
 $admin_name    = htmlspecialchars($_SESSION['admin_name'] ?? 'Admin');
-$admin_initial = strtoupper(substr($admin_name, 0, 1));
-
-// 4. DÉFINITION DE LA FONCTION LOG (Placée ici pour être accessible partout)
-function logAction($con, $admin_id, $action, $details) {
-    if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
-        $con->query("CREATE TABLE admin_logs (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            admin_id INT,
-            action VARCHAR(100),
-            details TEXT,
-            ip VARCHAR(45),
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )");
-    }
-    $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
-    $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
-    $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
-    $stmt->execute(); 
-    $stmt->close();
-}
+$admin_initial = strtoupper(substr($_SESSION['admin_name'] ?? 'A', 0, 1));
 
 /* ══════════════════════════════════════════════════
-    ACTIONS POST
+   ACTIONS POST
 ══════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action  = $_POST['action']  ?? '';
     $section = $_POST['section'] ?? 'overview';
     $admin_id = $_SESSION['admin_id'];
+
+    // Logger une action
+    function logAction($con, $admin_id, $action, $details) {
+        if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
+            $con->query("CREATE TABLE admin_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                admin_id INT,
+                action VARCHAR(100),
+                details TEXT,
+                ip VARCHAR(45),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )");
+        }
+        $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
+        $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
+        $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
+        $stmt->execute(); $stmt->close();
+    }
 
     switch ($action) {
         case 'toggle_doctor':
@@ -109,6 +103,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
 
+        case 'clean_tokens':
+            $con->query("UPDATE doctor SET reset_token=NULL, token_expiry=NULL WHERE reset_token IS NOT NULL");
+            logAction($con, $admin_id, 'clean_tokens', "All reset tokens cleaned from DB");
+            break;
+
         case 'export_csv':
             $type = $_POST['export_type'] ?? 'doctors';
             $queries = [
@@ -122,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="psyspace_'.$type.'_'.date('Y-m-d').'.csv"');
             $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); 
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
             if ($res && $res->num_rows > 0) {
                 $first = $res->fetch_assoc();
                 fputcsv($out, array_keys($first));
@@ -134,13 +133,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
     }
 
-    // CORRECTION : Redirection vers dashboard_admin.php (pas dashboard.php)
-    header("Location: dashboard_admin.php?section=".$section); 
-    exit();
+    header("Location: dashboard.php?section=".$section); exit();
 }
 
 /* ══════════════════════════════════════════════════
-    DONNÉES
+   DONNÉES
 ══════════════════════════════════════════════════ */
 $section = $_GET['section'] ?? 'overview';
 $search  = trim($_GET['q'] ?? '');
@@ -153,13 +150,14 @@ $stat_consultations = (int)$con->query("SELECT COUNT(*) c FROM consultations")->
 $stat_appointments  = (int)$con->query("SELECT COUNT(*) c FROM appointments")->fetch_assoc()['c'];
 $stat_patients      = (int)$con->query("SELECT COUNT(*) c FROM patients")->fetch_assoc()['c'];
 
-// Données pour graphique
+// Données pour graphique (7 derniers jours)
 $chart_data = [];
 for ($i = 6; $i >= 0; $i--) {
     $date = date('Y-m-d', strtotime("-$i days"));
     $label = date('d/m', strtotime("-$i days"));
     $appts = (int)$con->query("SELECT COUNT(*) c FROM appointments WHERE DATE(app_date)='$date'")->fetch_assoc()['c'];
-    $chart_data[] = ['label'=>$label,'appointments'=>$appts];
+    $docs  = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE DATE(created_at)='$date' 2>/dev/null")->fetch_assoc()['c'] ?? 0;
+    $chart_data[] = ['label'=>$label,'appointments'=>$appts,'doctors'=>$docs];
 }
 
 // Requêtes avec recherche
@@ -172,7 +170,7 @@ if ($section === 'doctors') {
 }
 if ($section === 'patients') {
     $where = $s ? "WHERE pname LIKE '%$s%' OR pphone LIKE '%$s%'" : '';
-    $patients = $con->query("SELECT * FROM patients $where ORDER BY id DESC");
+    $patients = $con->query("SELECT * FROM patients $where ORDER BY created_at DESC");
 }
 if ($section === 'appointments') {
     $where = $s ? "WHERE a.patient_name LIKE '%$s%' OR d.docname LIKE '%$s%'" : '';
@@ -189,11 +187,57 @@ if ($section === 'logs') {
     }
 }
 
+// Détail consultation
+$consultation_detail = null;
+if (isset($_GET['view_consultation'])) {
+    $cid = (int)$_GET['view_consultation'];
+    $consultation_detail = $con->query("SELECT c.*, d.docname, d.docemail, a.patient_name, a.patient_phone, a.app_type FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id WHERE c.id=$cid")->fetch_assoc();
+}
+
 // Détail médecin pour édition
 $edit_doctor = null;
 if (isset($_GET['edit_doctor'])) {
     $did = (int)$_GET['edit_doctor'];
     $edit_doctor = $con->query("SELECT * FROM doctor WHERE docid=$did")->fetch_assoc();
+}
+
+/* ══════════════════════════════════════════════════
+   SECURITY CENTER DATA
+══════════════════════════════════════════════════ */
+$sec = [];
+if ($section === 'security') {
+    // Comptes pending depuis plus de 48h
+    $sec['pending_old']       = $con->query("SELECT docid, docname, docemail FROM doctor WHERE status='pending'");
+    $sec['pending_old_count'] = $sec['pending_old'] ? $sec['pending_old']->num_rows : 0;
+
+    // Hash non-Argon2 (bcrypt $2y$ = moins sécurisé)
+    $sec['weak_hash']       = $con->query("SELECT docid, docname, docemail FROM doctor WHERE docpassword LIKE '\$2y\$%'");
+    $sec['weak_hash_count'] = $sec['weak_hash'] ? $sec['weak_hash']->num_rows : 0;
+
+    // Reset tokens non nettoyés
+    $sec['stale_tokens']       = $con->query("SELECT docid, docname, docemail, token_expiry FROM doctor WHERE reset_token IS NOT NULL");
+    $sec['stale_token_count']  = $sec['stale_tokens'] ? $sec['stale_tokens']->num_rows : 0;
+
+    // Brute force: IPs avec 3+ échecs login admin
+    $sec['brute_ips_count'] = 0;
+    $sec['brute_force']     = null;
+    if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows > 0) {
+        $sec['brute_force']     = $con->query("SELECT ip, COUNT(*) as attempts, MAX(created_at) as last_attempt FROM admin_logs WHERE action='login_failed' GROUP BY ip HAVING attempts >= 3 ORDER BY attempts DESC LIMIT 50");
+        $sec['brute_ips_count'] = $sec['brute_force'] ? $sec['brute_force']->num_rows : 0;
+        $sec['total_failed']    = (int)$con->query("SELECT COUNT(*) c FROM admin_logs WHERE action='login_failed'")->fetch_assoc()['c'];
+        $sec['total_actions']   = (int)$con->query("SELECT COUNT(*) c FROM admin_logs")->fetch_assoc()['c'];
+    }
+
+    // Score de sécurité (100 - pénalités)
+    $score = 100;
+    if ($sec['weak_hash_count'] > 0)   $score -= min(30, $sec['weak_hash_count'] * 10);
+    if ($sec['stale_token_count'] > 0) $score -= min(20, $sec['stale_token_count'] * 5);
+    if ($sec['brute_ips_count'] > 0)   $score -= min(25, $sec['brute_ips_count'] * 8);
+    if ($sec['pending_old_count'] > 5) $score -= 10;
+    $score = max(0, $score);
+    $sec['score'] = $score;
+    $sec['score_label'] = $score >= 90 ? 'Excellent' : ($score >= 70 ? 'Bon' : ($score >= 50 ? 'Moyen' : 'Critique'));
+    $sec['score_color'] = $score >= 90 ? 'var(--ok)' : ($score >= 70 ? 'var(--in)' : ($score >= 50 ? 'var(--wa)' : 'var(--er)'));
 }
 
 $section_labels = [
@@ -203,12 +247,12 @@ $section_labels = [
     'appointments'  => 'Rendez-vous',
     'consultations' => 'Consultations',
     'logs'          => "Logs d'activité",
+    'security'      => 'Security Center',
 ];
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<link rel="icon" type="image/png" href="assets/images/logo.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Admin · PsySpace</title>
@@ -435,6 +479,10 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
     <a href="?section=logs" class="sb-item <?= $section==='logs'?'on':'' ?>">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
       Logs d'activité
+    </a>
+    <a href="?section=security" class="sb-item <?= $section==='security'?'on':'' ?>">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      Security Center
     </a>
   </nav>
   <div class="sb-foot">
@@ -905,11 +953,161 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
       <?php endif; ?>
     </div>
 
+<?php elseif($section==='security'): ?>
+
+    <!-- SCORE GLOBAL -->
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;margin-bottom:16px;">
+
+      <!-- Score card -->
+      <div class="card" style="border:2px solid <?= $sec['score_color'] ?>;">
+        <div style="padding:24px;text-align:center;">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tx3);margin-bottom:12px;">Score de sécurité global</div>
+          <div style="position:relative;width:120px;height:120px;margin:0 auto 16px;">
+            <svg viewBox="0 0 36 36" style="width:120px;height:120px;transform:rotate(-90deg);">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--border)" stroke-width="3"/>
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="<?= $sec['score_color'] ?>" stroke-width="3"
+                stroke-dasharray="<?= round($sec['score'] * 100 / 100, 1) ?> 100"
+                stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <span style="font-size:26px;font-weight:800;color:<?= $sec['score_color'] ?>;"><?= $sec['score'] ?></span>
+              <span style="font-size:10px;color:var(--tx3);">/100</span>
+            </div>
+          </div>
+          <div style="font-size:16px;font-weight:700;color:<?= $sec['score_color'] ?>;"><?= $sec['score_label'] ?></div>
+          <div style="font-size:11px;color:var(--tx3);margin-top:6px;">Calculé en temps réel</div>
+        </div>
+      </div>
+
+      <!-- Résumé des risques -->
+      <div class="card">
+        <div class="card-head">
+          <div class="ch-left"><div class="ch-dot" style="background:var(--er);"></div><div class="ch-title">Résumé des risques détectés</div></div>
+        </div>
+        <div style="padding:12px 0;">
+
+          <!-- Brute force -->
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border2);">
+            <div style="width:36px;height:36px;border-radius:9px;background:<?= $sec['brute_ips_count']>0?'var(--er-l)':'var(--ok-l)' ?>;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?= $sec['brute_ips_count']>0?'🚨':'✅' ?></div>
+            <div style="flex:1;">
+              <div style="font-size:12.5px;font-weight:600;color:var(--tx);">Tentatives brute force</div>
+              <div style="font-size:11px;color:var(--tx3);"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP(s) suspecte(s) détectée(s)":'Aucune IP suspecte détectée' ?></div>
+            </div>
+            <span class="badge <?= $sec['brute_ips_count']>0?'b-er':'b-ok' ?>"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP":'OK' ?></span>
+          </div>
+
+          <!-- Hash faibles -->
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border2);">
+            <div style="width:36px;height:36px;border-radius:9px;background:<?= $sec['weak_hash_count']>0?'var(--wa-l)':'var(--ok-l)' ?>;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?= $sec['weak_hash_count']>0?'⚠️':'✅' ?></div>
+            <div style="flex:1;">
+              <div style="font-size:12.5px;font-weight:600;color:var(--tx);">Mots de passe non-Argon2</div>
+              <div style="font-size:11px;color:var(--tx3);"><?= $sec['weak_hash_count']>0?"$sec[weak_hash_count] compte(s) avec hash bcrypt (moins sécurisé)":'Tous les comptes utilisent Argon2id' ?></div>
+            </div>
+            <span class="badge <?= $sec['weak_hash_count']>0?'b-wa':'b-ok' ?>"><?= $sec['weak_hash_count']>0?"$sec[weak_hash_count] compte":'OK' ?></span>
+          </div>
+
+          <!-- Tokens périmés -->
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border2);">
+            <div style="width:36px;height:36px;border-radius:9px;background:<?= $sec['stale_token_count']>0?'var(--wa-l)':'var(--ok-l)' ?>;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?= $sec['stale_token_count']>0?'🔑':'✅' ?></div>
+            <div style="flex:1;">
+              <div style="font-size:12.5px;font-weight:600;color:var(--tx);">Tokens de réinitialisation actifs</div>
+              <div style="font-size:11px;color:var(--tx3);"><?= $sec['stale_token_count']>0?"$sec[stale_token_count] token(s) non nettoyé(s) en base":'Aucun token traînant en base' ?></div>
+            </div>
+            <span class="badge <?= $sec['stale_token_count']>0?'b-wa':'b-ok' ?>"><?= $sec['stale_token_count']>0?"$sec[stale_token_count] token":'OK' ?></span>
+          </div>
+
+          <!-- Comptes pending -->
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 16px;">
+            <div style="width:36px;height:36px;border-radius:9px;background:<?= $sec['pending_old_count']>5?'var(--wa-l)':'var(--ok-l)' ?>;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;"><?= $sec['pending_old_count']>5?'⏳':'✅' ?></div>
+            <div style="flex:1;">
+              <div style="font-size:12.5px;font-weight:600;color:var(--tx);">Comptes en attente de validation</div>
+              <div style="font-size:11px;color:var(--tx3);"><?= $sec['pending_old_count']>0?"$sec[pending_old_count] compte(s) en attente d'activation":'Aucun compte en attente' ?></div>
+            </div>
+            <span class="badge <?= $sec['pending_old_count']>5?'b-wa':'b-n' ?>"><?= $sec['pending_old_count'] ?> compte<?= $sec['pending_old_count']>1?'s':'' ?></span>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- BRUTE FORCE DÉTAIL -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div class="ch-left"><div class="ch-dot" style="background:var(--er);"></div><div class="ch-title">IPs suspectes — Brute force</div><span class="ch-cnt"><?= $sec['brute_ips_count'] ?? 0 ?> IP</span></div>
+        <span style="font-size:11px;color:var(--tx3);">Seuil : 3+ tentatives échouées</span>
+      </div>
+      <?php if(!empty($sec['brute_force']) && $sec['brute_force']->num_rows > 0): ?>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Adresse IP</th><th>Tentatives</th><th>Dernière tentative</th><th>Risque</th></tr></thead>
+        <tbody>
+        <?php $sec['brute_force']->data_seek(0); while($bf=$sec['brute_force']->fetch_assoc()): ?>
+        <tr>
+          <td class="mono" style="color:var(--er);font-weight:600;"><?= htmlspecialchars($bf['ip']) ?></td>
+          <td><span class="badge <?= $bf['attempts']>=10?'b-er':($bf['attempts']>=5?'b-wa':'b-n') ?>"><?= $bf['attempts'] ?> tentatives</span></td>
+          <td class="mono"><?= date('d/m/Y H:i',strtotime($bf['last_attempt'])) ?></td>
+          <td><span class="badge <?= $bf['attempts']>=10?'b-er':($bf['attempts']>=5?'b-wa':'b-in') ?>"><?= $bf['attempts']>=10?'🔴 Critique':($bf['attempts']>=5?'🟠 Élevé':'🟡 Modéré') ?></span></td>
+        </tr>
+        <?php endwhile; ?>
+        </tbody>
+      </table></div>
+      <?php else: ?>
+      <div class="empty"><div class="empty-icon">🛡️</div><p>Aucune IP suspecte détectée. La plateforme est sécurisée.</p></div>
+      <?php endif; ?>
+    </div>
+
+    <!-- COMPTES HASH FAIBLES -->
+    <?php if($sec['weak_hash_count'] > 0): ?>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div class="ch-left"><div class="ch-dot" style="background:var(--wa);"></div><div class="ch-title">Comptes avec hash bcrypt (non-Argon2)</div><span class="ch-cnt"><?= $sec['weak_hash_count'] ?></span></div>
+        <span style="font-size:11px;color:var(--tx3);">Action : réinitialiser leur mot de passe</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Médecin</th><th>Email</th><th>Action</th></tr></thead>
+        <tbody>
+        <?php $sec['weak_hash']->data_seek(0); while($wh=$sec['weak_hash']->fetch_assoc()): ?>
+        <tr>
+          <td class="mono" style="color:var(--tx3);"><?= $wh['docid'] ?></td>
+          <td class="name"><?= htmlspecialchars($wh['docname']) ?></td>
+          <td><?= htmlspecialchars($wh['docemail']) ?></td>
+          <td><button class="btn btn-pu" data-modal="resetpw" data-docid="<?= $wh['docid'] ?>" data-docname="<?= htmlspecialchars($wh['docname'],ENT_QUOTES) ?>">🔑 Réinitialiser MDP</button></td>
+        </tr>
+        <?php endwhile; ?>
+        </tbody>
+      </table></div>
+    </div>
+    <?php endif; ?>
+
+    <!-- TOKENS PÉRIMÉS -->
+    <?php if($sec['stale_token_count'] > 0): ?>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div class="ch-left"><div class="ch-dot" style="background:var(--wa);"></div><div class="ch-title">Tokens de réinitialisation actifs</div><span class="ch-cnt"><?= $sec['stale_token_count'] ?></span></div>
+        <form method="POST" style="display:inline;">
+          <input type="hidden" name="action" value="clean_tokens">
+          <input type="hidden" name="section" value="security">
+          <button type="submit" class="btn btn-wa">🧹 Nettoyer tous les tokens</button>
+        </form>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Médecin</th><th>Email</th><th>Expiration token</th></tr></thead>
+        <tbody>
+        <?php $sec['stale_tokens']->data_seek(0); while($st=$sec['stale_tokens']->fetch_assoc()): ?>
+        <tr>
+          <td class="mono" style="color:var(--tx3);"><?= $st['docid'] ?></td>
+          <td class="name"><?= htmlspecialchars($st['docname']) ?></td>
+          <td><?= htmlspecialchars($st['docemail']) ?></td>
+          <td class="mono" style="color:var(--wa);"><?= $st['token_expiry']?date('d/m/Y H:i',strtotime($st['token_expiry'])):'—' ?></td>
+        </tr>
+        <?php endwhile; ?>
+        </tbody>
+      </table></div>
+    </div>
+    <?php endif; ?>
+
 <?php endif; ?>
 
-  </div>
-</div>
-</div>
+
 
 <!-- MODAL SUPPRESSION / TOGGLE -->
 <div class="overlay" id="ov-delete">
