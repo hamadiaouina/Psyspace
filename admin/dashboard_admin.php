@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
     }
 
-    header("Location: dashboard.php?section=".$section); exit();
+    header("Location: dashboard_admin.php?section=".$section); exit();
 }
 
 /* ══════════════════════════════════════════════════
