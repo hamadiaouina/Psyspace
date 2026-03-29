@@ -138,21 +138,28 @@ include "header.php";
                                 <p class="text-sm text-slate-500">Tous les champs sont obligatoires.</p>
                             </div>
 
-                            <div class="grid md:grid-cols-2 gap-5">
-                                <div class="space-y-2">
-                                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Nom complet</label>
-                                    <input type="text" name="name" required placeholder="Dr. Nom Prénom" class="input-clean">
-                                </div>
-                                <div class="space-y-2">
-                                    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Sujet</label>
-                                    <select name="subject_type" class="input-clean cursor-pointer">
-                                        <option>Assistance technique</option>
-                                        <option>Information facturation</option>
-                                        <option>Demande de démonstration</option>
-                                        <option>Confidentialité & RGPD</option>
-                                    </select>
-                                </div>
-                            </div>
+<div class="space-y-2">
+    <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Sujet du message</label>
+    <select name="subject_type" class="input-clean cursor-pointer">
+        <optgroup label="Assistance & Technique">
+            <option value="Bug / Erreur">Signaler un bug ou une erreur</option>
+            <option value="Accès Compte">Problème d'accès ou connexion</option>
+            <option value="Installation">Aide à l'installation / Configuration</option>
+            <option value="Performance">Lenteur de la plateforme</option>
+        </optgroup>
+        <optgroup label="Gestion & Cabinet">
+            <option value="Facturation">Question sur la facturation / Abonnement</option>
+            <option value="RGPD">Données patients & Confidentialité (RGPD)</option>
+            <option value="Exports">Exportation des données patient</option>
+            <option value="Agenda">Problème avec l'agenda / Prise de RDV</option>
+        </optgroup>
+        <optgroup label="Partenariat & Démo">
+            <option value="Démo">Demander une démonstration complète</option>
+            <option value="Feedback">Suggestion d'amélioration (Feedback)</option>
+            <option value="Autre">Autre demande</option>
+        </optgroup>
+    </select>
+</div>
 
                             <div class="space-y-2">
                                 <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email</label>
