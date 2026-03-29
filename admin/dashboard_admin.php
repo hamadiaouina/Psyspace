@@ -1,40 +1,50 @@
 <?php
+declare(strict_types=1);
 session_start();
+
+// 1. Connexion et Configuration
 include "../connection.php";
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
+// 2. Protection de session
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php"); exit();
+    header("Location: login.php"); 
+    exit();
+}
+
+/**
+ * FONCTION LOG (Déplacée ici pour être globale)
+ */
+function logAction($con, $admin_id, $action, $details) {
+    if (!$con) return;
+    // Création de table si absente (sécurité PFE)
+    if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
+        $con->query("CREATE TABLE admin_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            admin_id INT,
+            action VARCHAR(100),
+            details TEXT,
+            ip VARCHAR(45),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
+    $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
+    $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
+    $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
+    $stmt->execute(); 
+    $stmt->close();
 }
 
 $admin_name    = htmlspecialchars($_SESSION['admin_name'] ?? 'Admin');
 $admin_initial = strtoupper(substr($_SESSION['admin_name'] ?? 'A', 0, 1));
 
 /* ══════════════════════════════════════════════════
-   ACTIONS POST
+   3. TRAITEMENT DES ACTIONS (POST)
 ══════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action  = $_POST['action']  ?? '';
     $section = $_POST['section'] ?? 'overview';
     $admin_id = $_SESSION['admin_id'];
-
-    // Logger une action
-    function logAction($con, $admin_id, $action, $details) {
-        if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
-            $con->query("CREATE TABLE admin_logs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                admin_id INT,
-                action VARCHAR(100),
-                details TEXT,
-                ip VARCHAR(45),
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )");
-        }
-        $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
-        $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
-        $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
-        $stmt->execute(); $stmt->close();
-    }
 
     switch ($action) {
         case 'toggle_doctor':
@@ -44,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $con->prepare("UPDATE doctor SET status=? WHERE docid=?");
                 $stmt->bind_param("si", $new, $id);
                 $stmt->execute(); $stmt->close();
-                logAction($con, $admin_id, 'toggle_doctor', "Doctor ID $id → $new");
+                logAction($con, $admin_id, 'toggle_doctor', "Doctor ID $id -> $new");
             }
             break;
 
@@ -60,61 +70,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = (int)$_POST['rid'];
             $stmt = $con->prepare("DELETE FROM appointments WHERE id=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_appointment', "Appointment ID $id deleted");
+            logAction($con, $admin_id, 'delete_appointment', "Appt $id deleted");
             break;
 
         case 'delete_consultation':
             $id = (int)$_POST['rid'];
             $stmt = $con->prepare("DELETE FROM consultations WHERE id=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_consultation', "Consultation ID $id deleted");
+            logAction($con, $admin_id, 'delete_consultation', "Consult $id deleted");
             break;
 
         case 'delete_patient':
             $id = (int)$_POST['rid'];
-            $r  = $con->query("SELECT pname FROM patients WHERE id=$id")->fetch_assoc();
             $stmt = $con->prepare("DELETE FROM patients WHERE id=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_patient', "Deleted: ".($r['pname']??$id));
-            break;
-
-        case 'edit_doctor':
-            $id       = (int)$_POST['docid'];
-            $docname  = trim($_POST['docname']  ?? '');
-            $docemail = trim($_POST['docemail'] ?? '');
-            $specialty= trim($_POST['specialty']?? '');
-            if ($docname && $docemail) {
-                $stmt = $con->prepare("UPDATE doctor SET docname=?, docemail=?, specialty=? WHERE docid=?");
-                $stmt->bind_param("sssi", $docname, $docemail, $specialty, $id);
-                $stmt->execute(); $stmt->close();
-                logAction($con, $admin_id, 'edit_doctor', "Edited doctor ID $id → $docname");
-            }
-            break;
-
-        case 'reset_password':
-            $id      = (int)$_POST['docid'];
-            $newpass = trim($_POST['new_password'] ?? '');
-            if (strlen($newpass) >= 8) {
-                $hash = password_hash($newpass, PASSWORD_ARGON2ID);
-                $stmt = $con->prepare("UPDATE doctor SET docpassword=? WHERE docid=?");
-                $stmt->bind_param("si", $hash, $id);
-                $stmt->execute(); $stmt->close();
-                logAction($con, $admin_id, 'reset_password', "Password reset for doctor ID $id");
-            }
+            logAction($con, $admin_id, 'delete_patient', "Patient $id deleted");
             break;
 
         case 'export_csv':
+            // ANTI-404 : Nettoyer le tampon avant l'envoi
+            if (ob_get_level()) ob_end_clean();
+
             $type = $_POST['export_type'] ?? 'doctors';
             $queries = [
-                'doctors'       => "SELECT docid as ID, docname as Nom, docemail as Email, specialty as Specialite, status as Statut, dob as Naissance FROM doctor ORDER BY docid DESC",
-                'patients'      => "SELECT id as ID, pname as Nom, pphone as Telephone, pdob as Naissance, created_at as Inscription FROM patients ORDER BY id DESC",
-                'appointments'  => "SELECT a.id, a.patient_name as Patient, a.patient_phone as Telephone, d.docname as Medecin, a.app_date as Date, a.app_type as Type FROM appointments a LEFT JOIN doctor d ON a.doctor_id=d.docid ORDER BY a.app_date DESC",
-                'consultations' => "SELECT c.id, a.patient_name as Patient, d.docname as Medecin, c.date_consultation as Date, c.duree_minutes as Duree FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id ORDER BY c.date_consultation DESC",
+                'doctors' => "SELECT docid, docname, docemail FROM doctor",
+                'patients' => "SELECT id, pname, pphone FROM patients",
             ];
             $q = $queries[$type] ?? $queries['doctors'];
             $res = $con->query($q);
+
             header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="psyspace_'.$type.'_'.date('Y-m-d').'.csv"');
+            header('Content-Disposition: attachment; filename="export_'.$type.'.csv"');
+            
             $out = fopen('php://output', 'w');
             fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
             if ($res && $res->num_rows > 0) {
@@ -124,12 +111,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 while ($row = $res->fetch_assoc()) fputcsv($out, $row);
             }
             fclose($out);
-            logAction($con, $admin_id, 'export_csv', "Exported $type");
+            logAction($con, $admin_id, 'export_csv', "Export $type");
             exit();
     }
 
-    header("Location: dashboard_admin.php?section=".$section); exit();
+    // Redirection propre après action
+    header("Location: dashboard_admin.php?section=" . urlencode($section)); 
+    exit();
 }
+?>
 
 /* ══════════════════════════════════════════════════
    DONNÉES
