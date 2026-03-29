@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+ob_start(); // Empêche l'envoi de texte avant les headers (fix Nginx)
 session_start();
 
 // 1. Connexion et Configuration
@@ -13,11 +14,10 @@ if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
 }
 
 /**
- * FONCTION LOG (Déplacée ici pour être globale)
+ * FONCTION LOG GLOBAL
  */
 function logAction($con, $admin_id, $action, $details) {
     if (!$con) return;
-    // Création de table si absente (sécurité PFE)
     if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
         $con->query("CREATE TABLE admin_logs (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -37,13 +37,14 @@ function logAction($con, $admin_id, $action, $details) {
 
 $admin_name    = htmlspecialchars($_SESSION['admin_name'] ?? 'Admin');
 $admin_initial = strtoupper(substr($_SESSION['admin_name'] ?? 'A', 0, 1));
+$current_file  = basename($_SERVER['PHP_SELF']); // Détecte dashboard_admin.php automatiquement
 
 /* ══════════════════════════════════════════════════
    3. TRAITEMENT DES ACTIONS (POST)
 ══════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $action  = $_POST['action']  ?? '';
-    $section = $_POST['section'] ?? 'overview';
+    $action   = $_POST['action']  ?? '';
+    $section  = $_POST['section'] ?? 'overview';
     $admin_id = $_SESSION['admin_id'];
 
     switch ($action) {
@@ -60,10 +61,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'delete_doctor':
             $id = (int)$_POST['rid'];
-            $r  = $con->query("SELECT docname FROM doctor WHERE docid=$id")->fetch_assoc();
             $stmt = $con->prepare("DELETE FROM doctor WHERE docid=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_doctor', "Deleted: ".($r['docname']??$id));
+            logAction($con, $admin_id, 'delete_doctor', "Deleted Doc ID $id");
             break;
 
         case 'delete_appointment':
@@ -73,37 +73,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             logAction($con, $admin_id, 'delete_appointment', "Appt $id deleted");
             break;
 
-        case 'delete_consultation':
-            $id = (int)$_POST['rid'];
-            $stmt = $con->prepare("DELETE FROM consultations WHERE id=?");
-            $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_consultation', "Consult $id deleted");
-            break;
-
-        case 'delete_patient':
-            $id = (int)$_POST['rid'];
-            $stmt = $con->prepare("DELETE FROM patients WHERE id=?");
-            $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_patient', "Patient $id deleted");
-            break;
-
         case 'export_csv':
-            // ANTI-404 : Nettoyer le tampon avant l'envoi
-            if (ob_get_level()) ob_end_clean();
-
+            if (ob_get_level()) ob_end_clean(); // Nettoyage critique pour éviter 404 Nginx
             $type = $_POST['export_type'] ?? 'doctors';
             $queries = [
-                'doctors' => "SELECT docid, docname, docemail FROM doctor",
+                'doctors'  => "SELECT docid, docname, docemail FROM doctor",
                 'patients' => "SELECT id, pname, pphone FROM patients",
             ];
             $q = $queries[$type] ?? $queries['doctors'];
             $res = $con->query($q);
-
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="export_'.$type.'.csv"');
-            
             $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM pour Excel
             if ($res && $res->num_rows > 0) {
                 $first = $res->fetch_assoc();
                 fputcsv($out, array_keys($first));
@@ -115,17 +97,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
     }
 
-    // Redirection propre après action
-    header("Location: dashboard_admin.php?section=" . urlencode($section)); 
+    // Redirection blindée
+    header("Location: " . $current_file . "?section=" . urlencode($section)); 
     exit();
 }
 
 /* ══════════════════════════════════════════════════
-   DONNÉES
+   4. RÉCUPÉRATION DES DONNÉES (GET)
 ══════════════════════════════════════════════════ */
 $section = $_GET['section'] ?? 'overview';
 $search  = trim($_GET['q'] ?? '');
+$s = $con->real_escape_string($search);
 
+// Stats Rapides
 $stat_doctors       = (int)$con->query("SELECT COUNT(*) c FROM doctor")->fetch_assoc()['c'];
 $stat_active        = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE status='active'")->fetch_assoc()['c'];
 $stat_suspended     = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE status='suspended'")->fetch_assoc()['c'];
@@ -134,55 +118,30 @@ $stat_consultations = (int)$con->query("SELECT COUNT(*) c FROM consultations")->
 $stat_appointments  = (int)$con->query("SELECT COUNT(*) c FROM appointments")->fetch_assoc()['c'];
 $stat_patients      = (int)$con->query("SELECT COUNT(*) c FROM patients")->fetch_assoc()['c'];
 
-// Données pour graphique (7 derniers jours)
+// Graphique (7 derniers jours)
 $chart_data = [];
 for ($i = 6; $i >= 0; $i--) {
-    $date = date('Y-m-d', strtotime("-$i days"));
+    $date  = date('Y-m-d', strtotime("-$i days"));
     $label = date('d/m', strtotime("-$i days"));
     $appts = (int)$con->query("SELECT COUNT(*) c FROM appointments WHERE DATE(app_date)='$date'")->fetch_assoc()['c'];
-    $docs  = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE DATE(created_at)='$date' 2>/dev/null")->fetch_assoc()['c'] ?? 0;
-    $chart_data[] = ['label'=>$label,'appointments'=>$appts,'doctors'=>$docs];
+    $chart_data[] = ['label' => $label, 'appointments' => $appts];
 }
 
-// Requêtes avec recherche
-$s = $con->real_escape_string($search);
+// Requêtes selon la section
 $doctors = $patients = $appointments = $consultations = $logs = null;
-
 if ($section === 'doctors') {
     $where = $s ? "WHERE docname LIKE '%$s%' OR docemail LIKE '%$s%' OR specialty LIKE '%$s%'" : '';
     $doctors = $con->query("SELECT * FROM doctor $where ORDER BY docid DESC");
-}
-if ($section === 'patients') {
+} elseif ($section === 'patients') {
     $where = $s ? "WHERE pname LIKE '%$s%' OR pphone LIKE '%$s%'" : '';
     $patients = $con->query("SELECT * FROM patients $where ORDER BY created_at DESC");
-}
-if ($section === 'appointments') {
+} elseif ($section === 'appointments') {
     $where = $s ? "WHERE a.patient_name LIKE '%$s%' OR d.docname LIKE '%$s%'" : '';
-    $appointments = $con->query("SELECT a.*, d.docname FROM appointments a LEFT JOIN doctor d ON a.doctor_id=d.docid $where ORDER BY a.app_date DESC LIMIT 200");
-}
-if ($section === 'consultations') {
-    $where = $s ? "WHERE a.patient_name LIKE '%$s%' OR d.docname LIKE '%$s%'" : '';
-    $consultations = $con->query("SELECT c.*, d.docname, a.patient_name FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id $where ORDER BY c.date_consultation DESC LIMIT 200");
-}
-if ($section === 'logs') {
-    $where = $s ? "WHERE action LIKE '%$s%' OR details LIKE '%$s%'" : '';
+    $appointments = $con->query("SELECT a.*, d.docname FROM appointments a LEFT JOIN doctor d ON a.doctor_id=d.docid $where ORDER BY a.app_date DESC LIMIT 100");
+} elseif ($section === 'logs') {
     if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows > 0) {
-        $logs = $con->query("SELECT * FROM admin_logs $where ORDER BY created_at DESC LIMIT 200");
+        $logs = $con->query("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 150");
     }
-}
-
-// Détail consultation
-$consultation_detail = null;
-if (isset($_GET['view_consultation'])) {
-    $cid = (int)$_GET['view_consultation'];
-    $consultation_detail = $con->query("SELECT c.*, d.docname, d.docemail, a.patient_name, a.patient_phone, a.app_type FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id WHERE c.id=")->fetch_assoc();
-}
-
-// Détail médecin pour édition
-$edit_doctor = null;
-if (isset($_GET['edit_doctor'])) {
-    $did = (int)$_GET['edit_doctor'];
-    $edit_doctor = $con->query("SELECT * FROM doctor WHERE docid=$did")->fetch_assoc();
 }
 
 $section_labels = [
@@ -193,6 +152,9 @@ $section_labels = [
     'consultations' => 'Consultations',
     'logs'          => "Logs d'activité",
 ];
+
+// On libère le tampon pour commencer l'affichage HTML
+ob_end_flush();
 ?>
 <!DOCTYPE html>
 <html lang="fr">
