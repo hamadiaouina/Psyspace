@@ -37,7 +37,7 @@ function logAction($con, $admin_id, $action, $details) {
 
 $admin_name    = htmlspecialchars($_SESSION['admin_name'] ?? 'Admin');
 $admin_initial = strtoupper(substr($_SESSION['admin_name'] ?? 'A', 0, 1));
-$current_file  = basename($_SERVER['PHP_SELF']); // Détecte dashboard_admin.php automatiquement
+$current_file  = basename($_SERVER['PHP_SELF']);
 
 /* ══════════════════════════════════════════════════
    3. TRAITEMENT DES ACTIONS (POST)
@@ -61,9 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'delete_doctor':
             $id = (int)$_POST['rid'];
+            $r  = $con->query("SELECT docname FROM doctor WHERE docid=$id")->fetch_assoc();
             $stmt = $con->prepare("DELETE FROM doctor WHERE docid=?");
             $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
-            logAction($con, $admin_id, 'delete_doctor', "Deleted Doc ID $id");
+            logAction($con, $admin_id, 'delete_doctor', "Deleted: ".($r['docname']??$id));
             break;
 
         case 'delete_appointment':
@@ -73,19 +74,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             logAction($con, $admin_id, 'delete_appointment', "Appt $id deleted");
             break;
 
+        case 'delete_consultation':
+            $id = (int)$_POST['rid'];
+            $stmt = $con->prepare("DELETE FROM consultations WHERE id=?");
+            $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
+            logAction($con, $admin_id, 'delete_consultation', "Consultation $id deleted");
+            break;
+
+        case 'delete_patient':
+            $id = (int)$_POST['rid'];
+            $r  = $con->query("SELECT pname FROM patients WHERE id=$id")->fetch_assoc();
+            $stmt = $con->prepare("DELETE FROM patients WHERE id=?");
+            $stmt->bind_param("i",$id); $stmt->execute(); $stmt->close();
+            logAction($con, $admin_id, 'delete_patient', "Deleted: ".($r['pname']??$id));
+            break;
+
+        case 'edit_doctor':
+            $id       = (int)$_POST['docid'];
+            $docname  = trim($_POST['docname']  ?? '');
+            $docemail = trim($_POST['docemail'] ?? '');
+            $specialty= trim($_POST['specialty']?? '');
+            if ($docname && $docemail) {
+                $stmt = $con->prepare("UPDATE doctor SET docname=?, docemail=?, specialty=? WHERE docid=?");
+                $stmt->bind_param("sssi", $docname, $docemail, $specialty, $id);
+                $stmt->execute(); $stmt->close();
+                logAction($con, $admin_id, 'edit_doctor', "Edited doctor ID $id -> $docname");
+            }
+            break;
+
+        case 'reset_password':
+            $id      = (int)$_POST['docid'];
+            $newpass = trim($_POST['new_password'] ?? '');
+            if (strlen($newpass) >= 8) {
+                $hash = password_hash($newpass, PASSWORD_ARGON2ID);
+                $stmt = $con->prepare("UPDATE doctor SET docpassword=? WHERE docid=?");
+                $stmt->bind_param("si", $hash, $id);
+                $stmt->execute(); $stmt->close();
+                logAction($con, $admin_id, 'reset_password', "Password reset for doctor ID $id");
+            }
+            break;
+
+        case 'clean_tokens':
+            $con->query("UPDATE doctor SET reset_token=NULL, token_expiry=NULL WHERE reset_token IS NOT NULL");
+            logAction($con, $admin_id, 'clean_tokens', "All reset tokens cleaned");
+            break;
+
         case 'export_csv':
-            if (ob_get_level()) ob_end_clean(); // Nettoyage critique pour éviter 404 Nginx
+            if (ob_get_level()) ob_end_clean();
             $type = $_POST['export_type'] ?? 'doctors';
             $queries = [
-                'doctors'  => "SELECT docid, docname, docemail FROM doctor",
-                'patients' => "SELECT id, pname, pphone FROM patients",
+                'doctors'       => "SELECT docid as ID, docname as Nom, docemail as Email, specialty as Specialite, status as Statut, dob as Naissance FROM doctor ORDER BY docid DESC",
+                'patients'      => "SELECT id as ID, pname as Nom, pphone as Telephone, pdob as Naissance, created_at as Inscription FROM patients ORDER BY id DESC",
+                'appointments'  => "SELECT a.id, a.patient_name as Patient, a.patient_phone as Telephone, d.docname as Medecin, a.app_date as Date, a.app_type as Type FROM appointments a LEFT JOIN doctor d ON a.doctor_id=d.docid ORDER BY a.app_date DESC",
+                'consultations' => "SELECT c.id, a.patient_name as Patient, d.docname as Medecin, c.date_consultation as Date, c.duree_minutes as Duree FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id ORDER BY c.date_consultation DESC",
             ];
             $q = $queries[$type] ?? $queries['doctors'];
             $res = $con->query($q);
             header('Content-Type: text/csv; charset=utf-8');
-            header('Content-Disposition: attachment; filename="export_'.$type.'.csv"');
+            header('Content-Disposition: attachment; filename="psyspace_'.$type.'_'.date('Y-m-d').'.csv"');
             $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM pour Excel
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF));
             if ($res && $res->num_rows > 0) {
                 $first = $res->fetch_assoc();
                 fputcsv($out, array_keys($first));
@@ -97,7 +145,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
     }
 
-    // Redirection blindée
     header("Location: " . $current_file . "?section=" . urlencode($section)); 
     exit();
 }
@@ -109,7 +156,6 @@ $section = $_GET['section'] ?? 'overview';
 $search  = trim($_GET['q'] ?? '');
 $s = $con->real_escape_string($search);
 
-// Stats Rapides
 $stat_doctors       = (int)$con->query("SELECT COUNT(*) c FROM doctor")->fetch_assoc()['c'];
 $stat_active        = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE status='active'")->fetch_assoc()['c'];
 $stat_suspended     = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE status='suspended'")->fetch_assoc()['c'];
@@ -118,16 +164,14 @@ $stat_consultations = (int)$con->query("SELECT COUNT(*) c FROM consultations")->
 $stat_appointments  = (int)$con->query("SELECT COUNT(*) c FROM appointments")->fetch_assoc()['c'];
 $stat_patients      = (int)$con->query("SELECT COUNT(*) c FROM patients")->fetch_assoc()['c'];
 
-// Graphique (7 derniers jours)
 $chart_data = [];
 for ($i = 6; $i >= 0; $i--) {
     $date  = date('Y-m-d', strtotime("-$i days"));
     $label = date('d/m', strtotime("-$i days"));
     $appts = (int)$con->query("SELECT COUNT(*) c FROM appointments WHERE DATE(app_date)='$date'")->fetch_assoc()['c'];
-    $chart_data[] = ['label' => $label, 'appointments' => $appts];
+    $chart_data[] = ['label' => $label, 'appointments' => $appts, 'doctors' => 0];
 }
 
-// Requêtes selon la section
 $doctors = $patients = $appointments = $consultations = $logs = null;
 if ($section === 'doctors') {
     $where = $s ? "WHERE docname LIKE '%$s%' OR docemail LIKE '%$s%' OR specialty LIKE '%$s%'" : '';
@@ -138,10 +182,55 @@ if ($section === 'doctors') {
 } elseif ($section === 'appointments') {
     $where = $s ? "WHERE a.patient_name LIKE '%$s%' OR d.docname LIKE '%$s%'" : '';
     $appointments = $con->query("SELECT a.*, d.docname FROM appointments a LEFT JOIN doctor d ON a.doctor_id=d.docid $where ORDER BY a.app_date DESC LIMIT 100");
+} elseif ($section === 'consultations') {
+    $where = $s ? "WHERE a.patient_name LIKE '%$s%' OR d.docname LIKE '%$s%'" : '';
+    $consultations = $con->query("SELECT c.*, d.docname, a.patient_name FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id $where ORDER BY c.date_consultation DESC LIMIT 100");
 } elseif ($section === 'logs') {
+    $where = $s ? "WHERE action LIKE '%$s%' OR details LIKE '%$s%'" : '';
     if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows > 0) {
-        $logs = $con->query("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 150");
+        $logs = $con->query("SELECT * FROM admin_logs $where ORDER BY created_at DESC LIMIT 150");
     }
+}
+
+// Détail consultation
+$consultation_detail = null;
+if (isset($_GET['view_consultation'])) {
+    $cid = (int)$_GET['view_consultation'];
+    $consultation_detail = $con->query("SELECT c.*, d.docname, d.docemail, a.patient_name, a.patient_phone FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id WHERE c.id=$cid")->fetch_assoc();
+}
+
+// Édition médecin
+$edit_doctor = null;
+if (isset($_GET['edit_doctor'])) {
+    $did = (int)$_GET['edit_doctor'];
+    $edit_doctor = $con->query("SELECT * FROM doctor WHERE docid=$did")->fetch_assoc();
+}
+
+// Security Center
+$sec = [];
+if ($section === 'security') {
+    $sec['weak_hash']        = $con->query("SELECT docid, docname, docemail FROM doctor WHERE docpassword LIKE '\$2y\$%'");
+    $sec['weak_hash_count']  = $sec['weak_hash'] ? $sec['weak_hash']->num_rows : 0;
+    $sec['stale_tokens']     = $con->query("SELECT docid, docname, docemail, token_expiry FROM doctor WHERE reset_token IS NOT NULL");
+    $sec['stale_token_count']= $sec['stale_tokens'] ? $sec['stale_tokens']->num_rows : 0;
+    $sec['pending_count']    = $stat_pending;
+    $sec['brute_ips_count']  = 0;
+    $sec['brute_force']      = null;
+    $sec['total_failed']     = 0;
+    if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows > 0) {
+        $sec['brute_force']    = $con->query("SELECT ip, COUNT(*) as attempts, MAX(created_at) as last_attempt FROM admin_logs WHERE action='login_failed' GROUP BY ip HAVING attempts >= 3 ORDER BY attempts DESC LIMIT 50");
+        $sec['brute_ips_count']= $sec['brute_force'] ? $sec['brute_force']->num_rows : 0;
+        $sec['total_failed']   = (int)$con->query("SELECT COUNT(*) c FROM admin_logs WHERE action='login_failed'")->fetch_assoc()['c'];
+    }
+    $score = 100;
+    if ($sec['weak_hash_count'] > 0)   $score -= min(30, $sec['weak_hash_count'] * 10);
+    if ($sec['stale_token_count'] > 0) $score -= min(20, $sec['stale_token_count'] * 5);
+    if ($sec['brute_ips_count'] > 0)   $score -= min(25, $sec['brute_ips_count'] * 8);
+    if ($sec['pending_count'] > 5)     $score -= 10;
+    $score = max(0, $score);
+    $sec['score']       = $score;
+    $sec['score_label'] = $score >= 90 ? 'Excellent' : ($score >= 70 ? 'Bon' : ($score >= 50 ? 'Moyen' : 'Critique'));
+    $sec['score_color'] = $score >= 90 ? 'var(--ok)' : ($score >= 70 ? 'var(--in)' : ($score >= 50 ? 'var(--wa)' : 'var(--er)'));
 }
 
 $section_labels = [
@@ -151,9 +240,9 @@ $section_labels = [
     'appointments'  => 'Rendez-vous',
     'consultations' => 'Consultations',
     'logs'          => "Logs d'activité",
+    'security'      => 'Security Center',
 ];
 
-// On libère le tampon pour commencer l'affichage HTML
 ob_end_flush();
 ?>
 <!DOCTYPE html>
@@ -181,12 +270,8 @@ a{text-decoration:none;color:inherit;}
 button,input,select,textarea{font-family:inherit;}
 ::-webkit-scrollbar{width:5px;height:5px;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
-
-/* LAYOUT */
 .layout{display:flex;min-height:100vh;}
 .main{margin-left:var(--sb);flex:1;display:flex;flex-direction:column;min-width:0;}
-
-/* SIDEBAR */
 .sidebar{width:var(--sb);flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;}
 .sb-brand{padding:18px 16px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .sb-logo{font-size:15px;font-weight:700;letter-spacing:-.02em;}
@@ -207,19 +292,13 @@ button,input,select,textarea{font-family:inherit;}
 .sb-urole{font-size:10px;color:var(--tx3);}
 .sb-out{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:var(--r);font-size:12px;font-weight:500;color:var(--tx2);border:1px solid var(--border);transition:all .12s;width:100%;background:none;cursor:pointer;}
 .sb-out:hover{background:var(--er-l);color:var(--er);border-color:rgba(220,38,38,.2);}
-
-/* TOPBAR */
 .topbar{height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;}
 .tb-title{font-size:14px;font-weight:700;}
 .tb-meta{font-size:10.5px;color:var(--tx3);margin-top:1px;}
 .tb-right{display:flex;align-items:center;gap:10px;}
 .tb-clock{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;color:var(--tx2);background:var(--bg);padding:5px 12px;border-radius:8px;border:1px solid var(--border);}
 .tb-alert{font-size:10px;font-weight:700;padding:4px 10px;border-radius:6px;background:var(--er-l);color:var(--er);border:1px solid rgba(220,38,38,.2);}
-
-/* CONTENT */
 .content{padding:20px 22px;flex:1;}
-
-/* STATS */
 .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
 .sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh);transition:box-shadow .15s,transform .15s;}
 .sc:hover{box-shadow:var(--sh2);transform:translateY(-1px);}
@@ -228,16 +307,11 @@ button,input,select,textarea{font-family:inherit;}
 .sc-badge{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:5px;}
 .sc-val{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1;}
 .sc-lbl{font-size:11px;color:var(--tx3);font-weight:500;margin-top:4px;}
-
-/* TOOLBAR */
 .toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
 .search-box{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 12px;flex:1;min-width:200px;max-width:340px;}
 .search-box input{border:none;outline:none;font-size:13px;color:var(--tx);background:transparent;width:100%;}
 .search-box input::placeholder{color:var(--tx3);}
 .search-box svg{color:var(--tx3);flex-shrink:0;}
-.filter-sel{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--tx2);background:var(--surface);cursor:pointer;outline:none;}
-
-/* CARD */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:16px;}
 .card:last-child{margin-bottom:0;}
 .card-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid var(--border);}
@@ -247,9 +321,6 @@ button,input,select,textarea{font-family:inherit;}
 .ch-cnt{font-size:10px;font-weight:700;background:var(--bg);color:var(--tx3);padding:2px 8px;border-radius:99px;border:1px solid var(--border);}
 .ch-link{font-size:11px;font-weight:600;color:var(--in);}
 .ch-link:hover{text-decoration:underline;}
-.ch-actions{display:flex;gap:6px;align-items:center;}
-
-/* TABLE */
 .tbl-wrap{overflow-x:auto;}
 table{width:100%;border-collapse:collapse;}
 thead th{padding:9px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tx3);background:var(--bg);white-space:nowrap;border-bottom:1px solid var(--border);}
@@ -259,8 +330,6 @@ tbody tr:hover{background:#fafbfc;}
 td{padding:10px 14px;font-size:12.5px;color:var(--tx2);vertical-align:middle;}
 td.name{color:var(--tx);font-weight:600;}
 td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
-
-/* BADGE */
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:700;white-space:nowrap;}
 .b-ok{background:var(--ok-l);color:var(--ok);border:1px solid rgba(5,150,105,.2);}
 .b-wa{background:var(--wa-l);color:var(--wa);border:1px solid rgba(217,119,6,.2);}
@@ -268,8 +337,6 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 .b-in{background:var(--in-l);color:var(--in);border:1px solid rgba(37,99,235,.2);}
 .b-pu{background:var(--pu-l);color:var(--pu);border:1px solid rgba(124,58,237,.2);}
 .b-n{background:var(--bg);color:var(--tx3);border:1px solid var(--border);}
-
-/* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;border:1px solid;font-size:11px;font-weight:600;cursor:pointer;transition:all .12s;background:none;}
 .btn-ok{color:var(--ok);border-color:rgba(5,150,105,.25);background:var(--ok-l);}
 .btn-ok:hover{background:#d1fae5;}
@@ -285,15 +352,11 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 .btn-ghost:hover{background:var(--bg);color:var(--tx);}
 .btn-primary{color:#fff;border-color:var(--in);background:var(--in);}
 .btn-primary:hover{background:#1d4ed8;}
-
-/* OV GRID */
 .ov-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .ov-row{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border2);transition:background .1s;}
 .ov-row:last-child{border-bottom:none;}
 .ov-row:hover{background:var(--bg);}
 .ov-av{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
-
-/* CHART */
 .chart-wrap{padding:16px 20px 8px;}
 .chart-bars{display:flex;align-items:flex-end;gap:8px;height:100px;}
 .chart-bar-grp{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;}
@@ -303,17 +366,12 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 .chart-legend{display:flex;gap:14px;margin-top:10px;padding:0 4px;}
 .chart-legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--tx3);}
 .chart-legend-dot{width:8px;height:8px;border-radius:2px;}
-
-/* EMPTY */
 .empty{padding:48px 20px;text-align:center;color:var(--tx3);}
 .empty-icon{font-size:24px;margin-bottom:8px;opacity:.4;}
 .empty p{font-size:12px;}
-
-/* MODAL */
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:999;opacity:0;pointer-events:none;transition:opacity .2s;}
 .overlay.show{opacity:1;pointer-events:all;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.15);transform:translateY(10px) scale(.97);transition:transform .2s;}
-.modal-lg{max-width:600px;}
 .overlay.show .modal{transform:translateY(0) scale(1);}
 .modal-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:12px;}
 .modal h3{font-size:15px;font-weight:700;margin-bottom:5px;}
@@ -324,8 +382,6 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 .form-input{width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--tx);outline:none;transition:border-color .15s;}
 .form-input:focus{border-color:var(--in);box-shadow:0 0 0 3px rgba(37,99,235,.08);}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
-
-/* DETAIL PANEL */
 .detail-section{margin-bottom:16px;}
 .detail-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tx3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);}
 .detail-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border2);font-size:12.5px;}
@@ -333,19 +389,18 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 .detail-key{color:var(--tx2);}
 .detail-val{font-weight:600;color:var(--tx);text-align:right;max-width:60%;}
 .detail-text{background:var(--bg);border-radius:8px;padding:12px;font-size:12px;line-height:1.7;color:var(--tx2);max-height:200px;overflow-y:auto;white-space:pre-wrap;}
-
-/* LOGS */
 .log-row{display:flex;align-items:flex-start;gap:10px;padding:8px 14px;border-bottom:1px solid var(--border2);}
 .log-row:last-child{border-bottom:none;}
 .log-dot{width:7px;height:7px;border-radius:50%;margin-top:4px;flex-shrink:0;}
 .log-action{font-size:12px;font-weight:600;color:var(--tx);}
 .log-detail{font-size:11px;color:var(--tx3);}
 .log-time{font-size:10px;font-family:'DM Mono',monospace;color:var(--tx3);margin-left:auto;white-space:nowrap;}
-
-/* EXPORT BAR */
-.export-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);}
-.export-bar span{font-size:11px;color:var(--tx3);font-weight:600;}
-
+/* Security Center */
+.sec-risk-row{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border2);}
+.sec-risk-row:last-child{border-bottom:none;}
+.sec-risk-icon{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0;}
+.sec-risk-title{font-size:12.5px;font-weight:600;color:var(--tx);}
+.sec-risk-desc{font-size:11px;color:var(--tx3);margin-top:2px;}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr);}.ov-grid{grid-template-columns:1fr;}}
 </style>
@@ -386,6 +441,10 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
     <a href="?section=logs" class="sb-item <?= $section==='logs'?'on':'' ?>">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
       Logs d'activité
+    </a>
+    <a href="?section=security" class="sb-item <?= $section==='security'?'on':'' ?>">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+      Security Center
     </a>
   </nav>
   <div class="sb-foot">
@@ -446,31 +505,23 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 
 <?php if($section==='overview'): ?>
 
-    <!-- GRAPHIQUE 7 JOURS -->
     <div class="card" style="margin-bottom:16px;">
       <div class="card-head">
         <div class="ch-left"><div class="ch-dot" style="background:var(--in);"></div><div class="ch-title">Activité — 7 derniers jours</div></div>
       </div>
       <div class="chart-wrap">
-        <?php
-        $max_val = 1;
-        foreach ($chart_data as $d) $max_val = max($max_val, $d['appointments'], $d['doctors']);
-        ?>
+        <?php $max_val=1; foreach($chart_data as $d) $max_val=max($max_val,$d['appointments']); ?>
         <div class="chart-bars">
-          <?php foreach ($chart_data as $d): ?>
+          <?php foreach($chart_data as $d): ?>
           <div class="chart-bar-grp">
             <div style="display:flex;gap:2px;align-items:flex-end;width:100%;height:90px;">
-              <div class="chart-bar" style="flex:1;height:<?= max(2, round($d['appointments']/$max_val*90)) ?>px;background:var(--in);opacity:.8;" title="<?= $d['appointments'] ?> RDV"></div>
-              <div class="chart-bar" style="flex:1;height:<?= max(2, round($d['doctors']/$max_val*90)) ?>px;background:var(--ok);opacity:.8;" title="<?= $d['doctors'] ?> médecins"></div>
+              <div class="chart-bar" style="flex:1;height:<?= max(2,round($d['appointments']/$max_val*90)) ?>px;background:var(--in);opacity:.8;" title="<?= $d['appointments'] ?> RDV"></div>
             </div>
             <div class="chart-lbl"><?= $d['label'] ?></div>
           </div>
           <?php endforeach; ?>
         </div>
-        <div class="chart-legend">
-          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--in);"></div>Rendez-vous</div>
-          <div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--ok);"></div>Médecins inscrits</div>
-        </div>
+        <div class="chart-legend"><div class="chart-legend-item"><div class="chart-legend-dot" style="background:var(--in);"></div>Rendez-vous</div></div>
       </div>
     </div>
 
@@ -481,7 +532,10 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
           <a href="?section=doctors" class="ch-link">Voir tout →</a>
         </div>
         <?php $ld=$con->query("SELECT * FROM doctor ORDER BY docid DESC LIMIT 6");
-        if($ld && $ld->num_rows): while($d=$ld->fetch_assoc()): ?>
+        if($ld && $ld->num_rows): while($d=$ld->fetch_assoc()):
+          $bclass=$d['status']==='active'?'b-ok':($d['status']==='suspended'?'b-pu':'b-wa');
+          $blabel=$d['status']==='active'?'● Actif':($d['status']==='suspended'?'⏸ Suspendu':'○ Attente');
+        ?>
         <div class="ov-row">
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="ov-av" style="background:var(--in-l);color:var(--in);"><?= strtoupper(substr($d['docname'],0,1)) ?></div>
@@ -490,10 +544,6 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
               <div style="font-size:10.5px;color:var(--tx3);"><?= htmlspecialchars($d['specialty']??$d['docemail']) ?></div>
             </div>
           </div>
-          <?php
-          $bclass = $d['status']==='active'?'b-ok':($d['status']==='suspended'?'b-pu':'b-wa');
-          $blabel = $d['status']==='active'?'● Actif':($d['status']==='suspended'?'⏸ Suspendu':'○ Attente');
-          ?>
           <span class="badge <?= $bclass ?>"><?= $blabel ?></span>
         </div>
         <?php endwhile; else: ?><div class="empty"><div class="empty-icon">👨‍⚕️</div><p>Aucun médecin</p></div><?php endif; ?>
@@ -568,8 +618,8 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
         <thead><tr><th>#</th><th>Médecin</th><th>Email</th><th>Spécialité</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody>
         <?php if($doctors && $doctors->num_rows): while($d=$doctors->fetch_assoc()):
-          $bclass = $d['status']==='active'?'b-ok':($d['status']==='suspended'?'b-pu':'b-wa');
-          $blabel = $d['status']==='active'?'● Actif':($d['status']==='suspended'?'⏸ Suspendu':'○ Attente');
+          $bclass=$d['status']==='active'?'b-ok':($d['status']==='suspended'?'b-pu':'b-wa');
+          $blabel=$d['status']==='active'?'● Actif':($d['status']==='suspended'?'⏸ Suspendu':'○ Attente');
         ?>
         <tr>
           <td class="mono" style="color:var(--tx3);"><?= $d['docid'] ?></td>
@@ -584,11 +634,8 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
           <td><span class="badge <?= $bclass ?>"><?= $blabel ?></span></td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap;">
-              <!-- Modifier -->
               <a href="?section=doctors&edit_doctor=<?= $d['docid'] ?>" class="btn btn-in">✏ Modifier</a>
-              <!-- Réinitialiser MDP -->
               <button class="btn btn-pu" data-modal="resetpw" data-docid="<?= $d['docid'] ?>" data-docname="<?= htmlspecialchars($d['docname'],ENT_QUOTES) ?>">🔑 MDP</button>
-              <!-- Activer/Suspendre/Activer -->
               <?php if($d['status']==='active'): ?>
               <button class="btn btn-wa" data-modal="toggle" data-action="toggle_doctor" data-docid="<?= $d['docid'] ?>" data-newstatus="suspended" data-title="Suspendre ?" data-msg="Dr. <?= htmlspecialchars($d['docname'],ENT_QUOTES) ?> ne pourra plus se connecter.">⏸ Suspendre</button>
               <?php elseif($d['status']==='suspended'): ?>
@@ -596,7 +643,6 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
               <?php else: ?>
               <button class="btn btn-ok" data-modal="toggle" data-action="toggle_doctor" data-docid="<?= $d['docid'] ?>" data-newstatus="active" data-title="Activer ?" data-msg="Dr. <?= htmlspecialchars($d['docname'],ENT_QUOTES) ?> pourra se connecter.">✓ Activer</button>
               <?php endif; ?>
-              <!-- Supprimer -->
               <button class="btn btn-er" data-modal="delete" data-action="delete_doctor" data-rid="<?= $d['docid'] ?>" data-title="Supprimer ce médecin ?" data-msg="Action irréversible. Toutes les données seront perdues.">🗑</button>
             </div>
           </td>
@@ -606,7 +652,6 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
       </table></div>
     </div>
 
-    <!-- PANEL ÉDITION MÉDECIN -->
     <?php if($edit_doctor): ?>
     <div class="card" style="border:2px solid var(--in);">
       <div class="card-head" style="background:var(--in-l);">
@@ -633,7 +678,7 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
             </div>
           </div>
           <div class="modal-btns" style="justify-content:flex-start;">
-            <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
+            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
             <a href="?section=doctors" class="btn btn-ghost">Annuler</a>
           </div>
         </form>
@@ -744,7 +789,6 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
       </form>
     </div>
 
-    <!-- DÉTAIL CONSULTATION -->
     <?php if($consultation_detail): ?>
     <div class="card" style="border:2px solid var(--pu);margin-bottom:16px;">
       <div class="card-head" style="background:var(--pu-l);">
@@ -827,21 +871,12 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
     <div class="card">
       <div class="card-head">
         <div class="ch-left"><div class="ch-dot" style="background:var(--er);"></div><div class="ch-title">Journal d'activité admin</div></div>
-        <span style="font-size:11px;color:var(--tx3);">200 entrées max</span>
+        <span style="font-size:11px;color:var(--tx3);">150 entrées max</span>
       </div>
       <?php
-      $log_colors = [
-        'delete_doctor'       => 'var(--er)',
-        'delete_patient'      => 'var(--er)',
-        'delete_appointment'  => 'var(--er)',
-        'delete_consultation' => 'var(--er)',
-        'edit_doctor'         => 'var(--in)',
-        'reset_password'      => 'var(--pu)',
-        'toggle_doctor'       => 'var(--wa)',
-        'export_csv'          => 'var(--ok)',
-      ];
+      $log_colors=['delete_doctor'=>'var(--er)','delete_patient'=>'var(--er)','delete_appointment'=>'var(--er)','delete_consultation'=>'var(--er)','edit_doctor'=>'var(--in)','reset_password'=>'var(--pu)','toggle_doctor'=>'var(--wa)','export_csv'=>'var(--ok)','login_failed'=>'var(--er)','admin_login'=>'var(--ok)','doctor_login'=>'var(--in)','clean_tokens'=>'var(--wa)'];
       if($logs && $logs->num_rows): while($l=$logs->fetch_assoc()):
-        $col = $log_colors[$l['action']] ?? 'var(--tx3)';
+        $col=$log_colors[$l['action']]??'var(--tx3)';
       ?>
       <div class="log-row">
         <div class="log-dot" style="background:<?= $col ?>;"></div>
@@ -855,6 +890,127 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
       <div class="empty"><div class="empty-icon">📋</div><p>Aucun log<?= $search?' pour "'.$search.'"':'. Les actions apparaîtront ici automatiquement.' ?></p></div>
       <?php endif; ?>
     </div>
+
+<?php elseif($section==='security'): ?>
+
+    <!-- SCORE + RÉSUMÉ -->
+    <div style="display:grid;grid-template-columns:260px 1fr;gap:16px;margin-bottom:16px;">
+
+      <div class="card" style="border:2px solid <?= $sec['score_color'] ?>;">
+        <div style="padding:24px;text-align:center;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--tx3);margin-bottom:14px;">Score de sécurité</div>
+          <div style="position:relative;width:110px;height:110px;margin:0 auto 14px;">
+            <svg viewBox="0 0 36 36" style="width:110px;height:110px;transform:rotate(-90deg);">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--border)" stroke-width="3"/>
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="<?= $sec['score_color'] ?>" stroke-width="3"
+                stroke-dasharray="<?= $sec['score'] ?> 100" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <span style="font-size:24px;font-weight:800;color:<?= $sec['score_color'] ?>;"><?= $sec['score'] ?></span>
+              <span style="font-size:10px;color:var(--tx3);">/100</span>
+            </div>
+          </div>
+          <div style="font-size:15px;font-weight:700;color:<?= $sec['score_color'] ?>;"><?= $sec['score_label'] ?></div>
+          <div style="font-size:11px;color:var(--tx3);margin-top:4px;">Calculé en temps réel</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="ch-left"><div class="ch-dot" style="background:var(--er);"></div><div class="ch-title">Risques détectés</div></div></div>
+
+        <div class="sec-risk-row">
+          <div class="sec-risk-icon" style="background:<?= $sec['brute_ips_count']>0?'var(--er-l)':'var(--ok-l)' ?>;"><?= $sec['brute_ips_count']>0?'🚨':'✅' ?></div>
+          <div style="flex:1;">
+            <div class="sec-risk-title">Brute force — IPs suspectes</div>
+            <div class="sec-risk-desc"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP(s) avec 3+ tentatives échouées · $sec[total_failed] échec(s) total":'Aucune IP suspecte détectée' ?></div>
+          </div>
+          <span class="badge <?= $sec['brute_ips_count']>0?'b-er':'b-ok' ?>"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP":'OK' ?></span>
+        </div>
+
+        <div class="sec-risk-row">
+          <div class="sec-risk-icon" style="background:<?= $sec['weak_hash_count']>0?'var(--wa-l)':'var(--ok-l)' ?>;"><?= $sec['weak_hash_count']>0?'⚠️':'✅' ?></div>
+          <div style="flex:1;">
+            <div class="sec-risk-title">Mots de passe non-Argon2 (bcrypt)</div>
+            <div class="sec-risk-desc"><?= $sec['weak_hash_count']>0?"$sec[weak_hash_count] compte(s) avec hash bcrypt — recommandé : Argon2id":'Tous les comptes utilisent Argon2id' ?></div>
+          </div>
+          <span class="badge <?= $sec['weak_hash_count']>0?'b-wa':'b-ok' ?>"><?= $sec['weak_hash_count']>0?"$sec[weak_hash_count]":'OK' ?></span>
+        </div>
+
+        <div class="sec-risk-row">
+          <div class="sec-risk-icon" style="background:<?= $sec['stale_token_count']>0?'var(--wa-l)':'var(--ok-l)' ?>;"><?= $sec['stale_token_count']>0?'🔑':'✅' ?></div>
+          <div style="flex:1;">
+            <div class="sec-risk-title">Tokens de réinitialisation actifs</div>
+            <div class="sec-risk-desc"><?= $sec['stale_token_count']>0?"$sec[stale_token_count] token(s) non nettoyé(s) en base":'Aucun token traînant en base' ?></div>
+          </div>
+          <?php if($sec['stale_token_count']>0): ?>
+          <form method="POST" style="display:inline;">
+            <input type="hidden" name="action" value="clean_tokens">
+            <input type="hidden" name="section" value="security">
+            <button type="submit" class="btn btn-wa" style="font-size:10px;padding:3px 8px;">🧹 Nettoyer</button>
+          </form>
+          <?php else: ?>
+          <span class="badge b-ok">OK</span>
+          <?php endif; ?>
+        </div>
+
+        <div class="sec-risk-row">
+          <div class="sec-risk-icon" style="background:<?= $sec['pending_count']>5?'var(--wa-l)':'var(--ok-l)' ?>;"><?= $sec['pending_count']>5?'⏳':'✅' ?></div>
+          <div style="flex:1;">
+            <div class="sec-risk-title">Comptes en attente d'activation</div>
+            <div class="sec-risk-desc"><?= $sec['pending_count']>0?"$sec[pending_count] compte(s) non activé(s)":'Tous les comptes sont activés' ?></div>
+          </div>
+          <span class="badge <?= $sec['pending_count']>5?'b-wa':'b-n' ?>"><?= $sec['pending_count'] ?></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- BRUTE FORCE DÉTAIL -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-head">
+        <div class="ch-left"><div class="ch-dot" style="background:var(--er);"></div><div class="ch-title">IPs suspectes — Brute force</div><span class="ch-cnt"><?= $sec['brute_ips_count'] ?> IP</span></div>
+        <span style="font-size:11px;color:var(--tx3);">Seuil : 3+ tentatives échouées</span>
+      </div>
+      <?php if($sec['brute_force'] && $sec['brute_force']->num_rows>0): ?>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Adresse IP</th><th>Tentatives</th><th>Dernière tentative</th><th>Niveau de risque</th></tr></thead>
+        <tbody>
+        <?php while($bf=$sec['brute_force']->fetch_assoc()): ?>
+        <tr>
+          <td class="mono" style="color:var(--er);font-weight:600;"><?= htmlspecialchars($bf['ip']) ?></td>
+          <td><span class="badge <?= $bf['attempts']>=10?'b-er':($bf['attempts']>=5?'b-wa':'b-n') ?>"><?= $bf['attempts'] ?> tentatives</span></td>
+          <td class="mono"><?= date('d/m/Y H:i',strtotime($bf['last_attempt'])) ?></td>
+          <td><span class="badge <?= $bf['attempts']>=10?'b-er':($bf['attempts']>=5?'b-wa':'b-in') ?>"><?= $bf['attempts']>=10?'🔴 Critique':($bf['attempts']>=5?'🟠 Élevé':'🟡 Modéré') ?></span></td>
+        </tr>
+        <?php endwhile; ?>
+        </tbody>
+      </table></div>
+      <?php else: ?>
+      <div class="empty"><div class="empty-icon">🛡️</div><p>Aucune IP suspecte. La plateforme est protégée.</p></div>
+      <?php endif; ?>
+    </div>
+
+    <!-- COMPTES HASH FAIBLES -->
+    <?php if($sec['weak_hash_count']>0): ?>
+    <div class="card">
+      <div class="card-head">
+        <div class="ch-left"><div class="ch-dot" style="background:var(--wa);"></div><div class="ch-title">Comptes avec hash bcrypt</div><span class="ch-cnt"><?= $sec['weak_hash_count'] ?></span></div>
+        <span style="font-size:11px;color:var(--tx3);">Réinitialiser leur MDP pour migrer vers Argon2id</span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>#</th><th>Médecin</th><th>Email</th><th>Action</th></tr></thead>
+        <tbody>
+        <?php while($wh=$sec['weak_hash']->fetch_assoc()): ?>
+        <tr>
+          <td class="mono" style="color:var(--tx3);"><?= $wh['docid'] ?></td>
+          <td class="name"><?= htmlspecialchars($wh['docname']) ?></td>
+          <td><?= htmlspecialchars($wh['docemail']) ?></td>
+          <td><button class="btn btn-pu" data-modal="resetpw" data-docid="<?= $wh['docid'] ?>" data-docname="<?= htmlspecialchars($wh['docname'],ENT_QUOTES) ?>">🔑 Réinitialiser MDP</button></td>
+        </tr>
+        <?php endwhile; ?>
+        </tbody>
+      </table></div>
+    </div>
+    <?php endif; ?>
 
 <?php endif; ?>
 
@@ -905,18 +1061,16 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 </div>
 
 <script>
-/* ── Horloge ── */
 (function tick(){
     var n=new Date(),el=document.getElementById('clock');
     if(el)el.textContent=[n.getHours(),n.getMinutes(),n.getSeconds()].map(function(x){return(''+x).padStart(2,'0')}).join(':');
     setTimeout(tick,1000);
 })();
 
-/* ── Modals ── */
 var ovDelete  = document.getElementById('ov-delete');
 var ovResetpw = document.getElementById('ov-resetpw');
 
-function closeAll() {
+function closeAll(){
     ovDelete.classList.remove('show');
     ovResetpw.classList.remove('show');
 }
@@ -926,7 +1080,6 @@ document.getElementById('rp-cancel').addEventListener('click', closeAll);
 ovDelete.addEventListener('click',  function(e){ if(e.target===this) closeAll(); });
 ovResetpw.addEventListener('click', function(e){ if(e.target===this) closeAll(); });
 
-/* ── Délégation d'événements — zéro onclick dans le HTML ── */
 document.addEventListener('click', function(e) {
     var btn = e.target.closest('[data-modal]');
     if (!btn) return;
@@ -941,12 +1094,12 @@ document.addEventListener('click', function(e) {
         var title     = btn.getAttribute('data-title')     || 'Confirmer ?';
         var msg       = btn.getAttribute('data-msg')       || '';
 
-        document.getElementById('md-title').textContent  = title;
-        document.getElementById('md-msg').textContent    = msg;
-        document.getElementById('md-action').value       = action;
-        document.getElementById('md-rid').value          = rid;
-        document.getElementById('md-docid').value        = docid;
-        document.getElementById('md-ns').value           = newstatus;
+        document.getElementById('md-title').textContent = title;
+        document.getElementById('md-msg').textContent   = msg;
+        document.getElementById('md-action').value      = action;
+        document.getElementById('md-rid').value         = rid;
+        document.getElementById('md-docid').value       = docid;
+        document.getElementById('md-ns').value          = newstatus;
 
         var confirmBtn = document.getElementById('md-confirm');
         var icon       = document.getElementById('md-icon');
@@ -965,8 +1118,8 @@ document.addEventListener('click', function(e) {
     }
 
     if (modal === 'resetpw') {
-        var docid   = btn.getAttribute('data-docid')   || '';
-        var docname = btn.getAttribute('data-docname')  || '';
+        var docid   = btn.getAttribute('data-docid')  || '';
+        var docname = btn.getAttribute('data-docname') || '';
         document.getElementById('rp-docid').value = docid;
         document.getElementById('rp-msg').textContent = 'Nouveau mot de passe pour Dr. ' + docname;
         document.getElementById('rp-password').value = '';
