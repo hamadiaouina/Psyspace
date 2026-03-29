@@ -119,7 +119,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     header("Location: dashboard_admin.php?section=" . urlencode($section)); 
     exit();
 }
-?>
 
 /* ══════════════════════════════════════════════════
    DONNÉES
