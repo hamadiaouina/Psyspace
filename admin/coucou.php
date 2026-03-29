@@ -1,4 +1,3 @@
-<?php echo "test"; ?>
 <?php
 session_start();
 include "../connection.php";
