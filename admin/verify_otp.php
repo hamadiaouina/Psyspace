@@ -49,6 +49,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+    <link rel="icon" type="image/png" href="assets/images/logo.png">
     <meta charset="UTF-8">
     <title>Vérification de sécurité | PsySpace</title>
     <style>
