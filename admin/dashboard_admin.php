@@ -5,9 +5,8 @@ include "../connection.php";
 // 1. On s'assure que la connexion est bien initialisée
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
-// 2. LA SÉCURITÉ (C'est ici que ça bloquait)
+// 2. LA SÉCURITÉ : Correction du chemin vers login.php pour éviter la 404
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    // On utilise ./login.php pour être sûr qu'il reste dans le dossier admin
     header("Location: ./login.php"); 
     exit();
 }
@@ -16,33 +15,32 @@ if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
 $admin_name    = htmlspecialchars($_SESSION['admin_name'] ?? 'Admin');
 $admin_initial = strtoupper(substr($admin_name, 0, 1));
 
-// --- TOUT LE RESTE DE TES 1000 LIGNES COMMENCE ICI ---
+// 4. DÉFINITION DE LA FONCTION LOG (Placée ici pour être accessible partout)
+function logAction($con, $admin_id, $action, $details) {
+    if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
+        $con->query("CREATE TABLE admin_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            admin_id INT,
+            action VARCHAR(100),
+            details TEXT,
+            ip VARCHAR(45),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+    }
+    $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
+    $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
+    $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
+    $stmt->execute(); 
+    $stmt->close();
+}
 
 /* ══════════════════════════════════════════════════
-   ACTIONS POST
+    ACTIONS POST
 ══════════════════════════════════════════════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action  = $_POST['action']  ?? '';
     $section = $_POST['section'] ?? 'overview';
     $admin_id = $_SESSION['admin_id'];
-
-    // Logger une action
-    function logAction($con, $admin_id, $action, $details) {
-        if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows === 0) {
-            $con->query("CREATE TABLE admin_logs (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                admin_id INT,
-                action VARCHAR(100),
-                details TEXT,
-                ip VARCHAR(45),
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )");
-        }
-        $ip   = $_SERVER['REMOTE_ADDR'] ?? '';
-        $stmt = $con->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (?,?,?,?)");
-        $stmt->bind_param("isss", $admin_id, $action, $details, $ip);
-        $stmt->execute(); $stmt->close();
-    }
 
     switch ($action) {
         case 'toggle_doctor':
@@ -124,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Content-Type: text/csv; charset=utf-8');
             header('Content-Disposition: attachment; filename="psyspace_'.$type.'_'.date('Y-m-d').'.csv"');
             $out = fopen('php://output', 'w');
-            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM UTF-8
+            fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); 
             if ($res && $res->num_rows > 0) {
                 $first = $res->fetch_assoc();
                 fputcsv($out, array_keys($first));
@@ -136,11 +134,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
     }
 
-    header("Location: dashboard.php?section=".$section); exit();
+    // CORRECTION : Redirection vers dashboard_admin.php (pas dashboard.php)
+    header("Location: dashboard_admin.php?section=".$section); 
+    exit();
 }
 
 /* ══════════════════════════════════════════════════
-   DONNÉES
+    DONNÉES
 ══════════════════════════════════════════════════ */
 $section = $_GET['section'] ?? 'overview';
 $search  = trim($_GET['q'] ?? '');
@@ -153,14 +153,13 @@ $stat_consultations = (int)$con->query("SELECT COUNT(*) c FROM consultations")->
 $stat_appointments  = (int)$con->query("SELECT COUNT(*) c FROM appointments")->fetch_assoc()['c'];
 $stat_patients      = (int)$con->query("SELECT COUNT(*) c FROM patients")->fetch_assoc()['c'];
 
-// Données pour graphique (7 derniers jours)
+// Données pour graphique
 $chart_data = [];
 for ($i = 6; $i >= 0; $i--) {
     $date = date('Y-m-d', strtotime("-$i days"));
     $label = date('d/m', strtotime("-$i days"));
     $appts = (int)$con->query("SELECT COUNT(*) c FROM appointments WHERE DATE(app_date)='$date'")->fetch_assoc()['c'];
-    $docs  = (int)$con->query("SELECT COUNT(*) c FROM doctor WHERE DATE(created_at)='$date' 2>/dev/null")->fetch_assoc()['c'] ?? 0;
-    $chart_data[] = ['label'=>$label,'appointments'=>$appts,'doctors'=>$docs];
+    $chart_data[] = ['label'=>$label,'appointments'=>$appts];
 }
 
 // Requêtes avec recherche
@@ -173,7 +172,7 @@ if ($section === 'doctors') {
 }
 if ($section === 'patients') {
     $where = $s ? "WHERE pname LIKE '%$s%' OR pphone LIKE '%$s%'" : '';
-    $patients = $con->query("SELECT * FROM patients $where ORDER BY created_at DESC");
+    $patients = $con->query("SELECT * FROM patients $where ORDER BY id DESC");
 }
 if ($section === 'appointments') {
     $where = $s ? "WHERE a.patient_name LIKE '%$s%' OR d.docname LIKE '%$s%'" : '';
@@ -188,13 +187,6 @@ if ($section === 'logs') {
     if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows > 0) {
         $logs = $con->query("SELECT * FROM admin_logs $where ORDER BY created_at DESC LIMIT 200");
     }
-}
-
-// Détail consultation
-$consultation_detail = null;
-if (isset($_GET['view_consultation'])) {
-    $cid = (int)$_GET['view_consultation'];
-    $consultation_detail = $con->query("SELECT c.*, d.docname, d.docemail, a.patient_name, a.patient_phone, a.app_type FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id WHERE c.id=")->fetch_assoc();
 }
 
 // Détail médecin pour édition
