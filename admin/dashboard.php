@@ -186,7 +186,7 @@ if ($section === 'logs') {
 $consultation_detail = null;
 if (isset($_GET['view_consultation'])) {
     $cid = (int)$_GET['view_consultation'];
-    $consultation_detail = $con->query("SELECT c.*, d.docname, d.docemail, a.patient_name, a.patient_phone FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id WHERE c.id=$cid")->fetch_assoc();
+    $consultation_detail = $con->query("SELECT c.*, d.docname, d.docemail, a.patient_name, a.patient_phone, a.app_type FROM consultations c LEFT JOIN doctor d ON c.doctor_id=d.docid LEFT JOIN appointments a ON c.appointment_id=a.id WHERE c.id=")->fetch_assoc();
 }
 
 // Détail médecin pour édition
@@ -208,7 +208,6 @@ $section_labels = [
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<link rel="icon" type="image/png" href="assets/images/logo.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Admin · PsySpace</title>
@@ -820,10 +819,10 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
               <div class="detail-text"><?= htmlspecialchars($consultation_detail['resume_ia']) ?></div>
             </div>
             <?php endif; ?>
-            <?php if(!empty($consultation_detail['notes'])): ?>
+            <?php if(!empty($consultation_detail['transcription_brute'])): ?>
             <div class="detail-section">
-              <div class="detail-title">Notes du médecin</div>
-              <div class="detail-text"><?= htmlspecialchars($consultation_detail['notes']) ?></div>
+              <div class="detail-title">Transcription brute</div>
+              <div class="detail-text"><?= htmlspecialchars($consultation_detail['transcription_brute']) ?></div>
             </div>
             <?php endif; ?>
           </div>
