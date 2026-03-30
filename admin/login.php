@@ -24,7 +24,6 @@ if (empty($allowed_ip) || $user_ip !== trim($allowed_ip)) {
     exit();
 }
 ?>
-?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
