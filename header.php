@@ -184,19 +184,20 @@ ob_start(function($buffer) {
                         </span>
                     </a>
                 </div>
+<nav class="hidden md:flex items-center gap-1">
+    <a href="guide.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Guide</a>
+    <a href="securite.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Sécurité</a>
+    <a href="chatbot.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Assistant</a>
+    <a href="contact.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Contact</a>
 
-                <nav class="hidden md:flex items-center gap-1">
-                    <a href="guide.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Guide</a>
-                    <a href="securite.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Sécurité</a>
-                    <a href="chatbot.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Assistant</a>
-                    <a href="contact.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Contact</a>
-
-<?php if ($is_admin_device): ?>
-    <a href="admin/login.php" class="px-4 py-2 text-sm font-bold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-100 dark:text-red-400 dark:border-red-900/30 dark:bg-red-900/20 transition-all rounded-md">
-       🛡️ Admin Panel
-    </a>
-<?php endif; ?>
-                </nav>
+    <?php if ($is_admin_device): ?>
+        <a href="/admin/login.php" 
+           style="position: relative; z-index: 60;"
+           class="ml-2 px-4 py-2 text-sm font-bold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-100 dark:text-red-400 dark:border-red-900/30 dark:bg-red-900/20 transition-all rounded-md">
+            Admin Panel
+        </a>
+    <?php endif; ?>
+</nav>
 
                 <div class="flex items-center gap-2">
                     <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-all">
