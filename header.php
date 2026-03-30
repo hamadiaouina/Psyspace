@@ -131,8 +131,6 @@ ob_start(function($buffer) {
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
-    <link rel="manifest" href="manifest.json">
-
 <script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
