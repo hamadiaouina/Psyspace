@@ -1136,32 +1136,34 @@ document.addEventListener('click', function(e) {
 /* ── Dark Mode ── */
 (function() {
     // Application immédiate au chargement pour éviter le flash blanc
-    if (localStorage.getItem('psyadmin_dark') === '1') {
-        document.documentElement.classList.add('dark');
-    }
-})();
+   /* ── Dark Mode Logic ── */
+// 1. Application immédiate (évite le flash blanc au chargement)
+if (localStorage.getItem('psyadmin_dark') === '1') {
+    document.documentElement.classList.add('dark');
+}
 
 document.addEventListener('DOMContentLoaded', function() {
-    // On récupère le bon ID : darkModeToggle
-    var btn = document.getElementById('darkModeToggle');
+    // On cible le BON ID : darkModeToggle
+    const darkModeBtn = document.getElementById('darkModeToggle');
     
-    if (btn) {
-        // Initialiser l'icône au chargement
-        btn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+    if (darkModeBtn) {
+        // Ajuster l'icône au chargement selon l'état actuel
+        darkModeBtn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
 
-        btn.addEventListener('click', function() {
-            // Toggle de la classe dark sur le <html>
-            var isDark = document.documentElement.classList.toggle('dark');
+        darkModeBtn.addEventListener('click', function() {
+            // Basculer la classe 'dark' sur la balise <html>
+            const isDark = document.documentElement.classList.toggle('dark');
             
-            // Mise à jour de l'icône
-            btn.textContent = isDark ? '☀️' : '🌙';
+            // Changer l'icône (Soleil si sombre, Lune si clair)
+            darkModeBtn.textContent = isDark ? '☀️' : '🌙';
             
-            // Sauvegarde du choix (1 pour activé, 0 pour désactivé)
+            // Sauvegarder le choix de l'utilisateur
             localStorage.setItem('psyadmin_dark', isDark ? '1' : '0');
             
-            console.log("Dark mode : " + (isDark ? "ON" : "OFF"));
+            console.log("Mode sombre : " + (isDark ? "Activé" : "Désactivé"));
         });
     }
+});
 });
 </script>
 </body>
