@@ -1133,19 +1133,35 @@ document.addEventListener('click', function(e) {
         ovResetpw.classList.add('show');
     }
 /* ── Dark Mode ── */
-(function(){
-    if(localStorage.getItem('psyadmin_dark')==='1'){
+/* ── Dark Mode ── */
+(function() {
+    // Application immédiate au chargement pour éviter le flash blanc
+    if (localStorage.getItem('psyadmin_dark') === '1') {
         document.documentElement.classList.add('dark');
     }
 })();
-document.addEventListener('DOMContentLoaded', function(){
-    var btn = document.getElementById('darkBtn');
-    if(document.documentElement.classList.contains('dark')) btn.textContent='☀️';
-    btn.addEventListener('click', function(){
-        var on = document.documentElement.classList.toggle('dark');
-        localStorage.setItem('psyadmin_dark', on?'1':'0');
-        btn.textContent = on ? '☀️' : '🌙';
-    });
+
+document.addEventListener('DOMContentLoaded', function() {
+    // On récupère le bon ID : darkModeToggle
+    var btn = document.getElementById('darkModeToggle');
+    
+    if (btn) {
+        // Initialiser l'icône au chargement
+        btn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+
+        btn.addEventListener('click', function() {
+            // Toggle de la classe dark sur le <html>
+            var isDark = document.documentElement.classList.toggle('dark');
+            
+            // Mise à jour de l'icône
+            btn.textContent = isDark ? '☀️' : '🌙';
+            
+            // Sauvegarde du choix (1 pour activé, 0 pour désactivé)
+            localStorage.setItem('psyadmin_dark', isDark ? '1' : '0');
+            
+            console.log("Dark mode : " + (isDark ? "ON" : "OFF"));
+        });
+    }
 });
 </script>
 </body>
