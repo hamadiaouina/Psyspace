@@ -162,7 +162,9 @@ ob_start(function($buffer) {
 </head>
 
 <body class="font-sans antialiased bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
-
+<div style="position:fixed; top:0; left:0; width:100%; z-index:9999; background:yellow; color:black; text-align:center; font-weight:bold; padding:10px; border-bottom:2px solid black;">
+    IP détectée par le serveur : <span style="color:red; font-size:18px;"><?php echo $user_ip; ?></span>
+</div>
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-lg dark:border-white/5 dark:bg-slate-900/80">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
