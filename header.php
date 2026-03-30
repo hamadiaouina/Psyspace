@@ -1,31 +1,42 @@
 <?php
-// 1. Récupération de l'IP du visiteur (Nettoyage spécial Azure)
-$user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
+// 1. Récupération et Nettoyage Radical de l'IP
+$user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+// Nettoyage si plusieurs IPs (Proxys)
 if (strpos($user_ip, ',') !== false) {
     $user_ip = trim(explode(',', $user_ip)[0]);
 }
+// Suppression du port (ex: 197.1.2.3:443 -> 197.1.2.3)
+if (strpos($user_ip, ':') !== false && strpos($user_ip, '.') !== false) {
+    $user_ip = explode(':', $user_ip)[0];
+}
 
-// 2. Récupération de l'IP autorisée (On check Azure d'abord, puis le .env en local)
+$user_ip = trim($user_ip);
+
+// 2. Récupération de l'IP autorisée
 $allowed_ip = getenv('ALLOWED_ADMIN_IP'); 
 
+// Si getenv échoue (parfois sur Azure PHP-FPM), on tente $_SERVER
 if (!$allowed_ip) {
-    $env_path = __DIR__ . '/.env';
-    if (file_exists($env_path)) {
-        $lines = file($env_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        foreach ($lines as $line) {
-            if (strpos(trim($line), 'ALLOWED_ADMIN_IP=') === 0) {
-                $allowed_ip = trim(explode('=', $line, 2)[1]);
-                break;
-            }
+    $allowed_ip = $_SERVER['ALLOWED_ADMIN_IP'] ?? null;
+}
+
+// 3. Secours Local (.env)
+if (!$allowed_ip && file_exists(__DIR__ . '/.env')) {
+    $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), 'ALLOWED_ADMIN_IP=') === 0) {
+            $allowed_ip = trim(explode('=', $line, 2)[1]);
+            break;
         }
     }
 }
+$allowed_ip = trim($allowed_ip);
 
-// 3. Vérification
-$is_admin_device = ($allowed_ip && $user_ip === $allowed_ip);
-
-// --- DEBUG (Affiche l'IP dans le code source pour vérifier si ça ne marche pas) ---
-// echo "";
+// 4. Comparaison STRICTE
+$is_admin_device = (!empty($allowed_ip) && trim($user_ip) === trim($allowed_ip));
+// --- LOG DE COMPARAISON (Invisible pour les autres, regarde le code source CTRL+U) ---
+echo "";
 ?>
 <?php
 /**
@@ -162,9 +173,6 @@ ob_start(function($buffer) {
 </head>
 
 <body class="font-sans antialiased bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
-<div style="position:fixed; top:0; left:0; width:100%; z-index:9999; background:yellow; color:black; text-align:center; font-weight:bold; padding:10px; border-bottom:2px solid black;">
-    IP détectée par le serveur : <span style="color:red; font-size:18px;"><?php echo $user_ip; ?></span>
-</div>
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-lg dark:border-white/5 dark:bg-slate-900/80">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
