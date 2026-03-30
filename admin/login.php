@@ -1,3 +1,31 @@
+<?php
+session_start();
+
+// Fonction pour lire le .env (si tu n'as pas déjà un chargeur de bibliothèque)
+function getEnvValue($key) {
+    $path = __DIR__ . '/../.env'; // Ajuste le chemin vers ton fichier .env
+    if (file_exists($path)) {
+        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            if (strpos(trim($line), '#') === 0) continue;
+            list($name, $value) = explode('=', $line, 2);
+            if (trim($name) == $key) return trim($value);
+        }
+    }
+    return null;
+}
+
+// 1. Récupérer l'IP autorisée depuis le .env
+$ip_autorisee = getEnvValue('ALLOWED_ADMIN_IP');
+$ip_visiteur = $_SERVER['REMOTE_ADDR'];
+
+// 2. Vérification stricte
+if ($ip_visiteur !== $ip_autorisee) {
+    // On redirige vers l'accueil pour que personne ne sache que la page existe
+    header("Location: ../index.php"); 
+    exit();
+}
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>

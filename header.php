@@ -1,4 +1,23 @@
 <?php
+// On récupère l'IP du visiteur (en gérant le cas Azure/Proxy)
+$user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
+
+// On lit le .env pour l'IP autorisée
+$allowed_ip = null;
+$env_path = __DIR__ . '/.env'; // Ajuste si ton .env est à la racine
+if (file_exists($env_path)) {
+    $lines = file($env_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos(trim($line), 'ALLOWED_ADMIN_IP=') === 0) {
+            $allowed_ip = trim(explode('=', $line, 2)[1]);
+            break;
+        }
+    }
+}
+
+$is_admin_device = ($user_ip === $allowed_ip);
+?>
+<?php
 /**
  * PSYSPACE - HEADER DE SÉCURITÉ FINAL (VERSION FORCE SECURE)
  */
@@ -151,7 +170,13 @@ ob_start(function($buffer) {
                     <a href="securite.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Sécurité</a>
                     <a href="chatbot.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Assistant</a>
                     <a href="contact.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Contact</a>
-
+                <?php if ($is_admin_device): ?>
+    <li class="nav-item">
+        <a href="admin/login.php" class="nav-link" style="color: #ef4444; font-weight: bold;">
+            <i class="fas fa-user-shield"></i> Admin Panel
+        </a>
+    </li>
+<?php endif; ?>
                 </nav>
 
                 <div class="flex items-center gap-2">
