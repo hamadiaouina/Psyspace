@@ -1,30 +1,29 @@
 <?php
 session_start();
 
-// Fonction pour lire le .env (si tu n'as pas déjà un chargeur de bibliothèque)
-function getEnvValue($key) {
-    $path = __DIR__ . '/../.env'; // Ajuste le chemin vers ton fichier .env
-    if (file_exists($path)) {
-        $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        foreach ($lines as $line) {
-            if (strpos(trim($line), '#') === 0) continue;
-            list($name, $value) = explode('=', $line, 2);
-            if (trim($name) == $key) return trim($value);
-        }
-    }
-    return null;
+// 1. Récupération intelligente de l'IP (Spécial Azure)
+$user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+if (strpos($user_ip, ',') !== false) {
+    $user_ip = trim(explode(',', $user_ip)[0]);
+}
+if (strpos($user_ip, ':') !== false && strpos($user_ip, '.') !== false) {
+    $user_ip = explode(':', $user_ip)[0];
+}
+$user_ip = trim($user_ip);
+
+// 2. Récupération de l'IP autorisée (Depuis Azure ou .env)
+$allowed_ip = getenv('ALLOWED_ADMIN_IP'); 
+if (!$allowed_ip) {
+    $allowed_ip = $_SERVER['ALLOWED_ADMIN_IP'] ?? null;
 }
 
-// 1. Récupérer l'IP autorisée depuis le .env
-$ip_autorisee = getEnvValue('ALLOWED_ADMIN_IP');
-$ip_visiteur = $_SERVER['REMOTE_ADDR'];
-
-// 2. Vérification stricte
-if ($ip_visiteur !== $ip_autorisee) {
-    // On redirige vers l'accueil pour que personne ne sache que la page existe
+// 3. Vérification
+if (empty($allowed_ip) || $user_ip !== trim($allowed_ip)) {
+    // Si l'IP ne match pas, on dégage vers l'accueil
     header("Location: ../index.php"); 
     exit();
 }
+?>
 ?>
 <!DOCTYPE html>
 <html lang="fr">
