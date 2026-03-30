@@ -14,14 +14,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = 'psyspace.all@gmail.com';
-        $mail->Password   = 'lszg gkpz ylbg ypdt';
+        $mail->Username   = '$smtp_user';
+        $mail->Password   = '$smtp_pass';
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
         $mail->CharSet    = 'UTF-8';
 
-        $mail->setFrom('psyspace.all@gmail.com', 'PsySpace Support');
-        $mail->addAddress('psyspace.all@gmail.com');
+        $mail->setFrom('$smtp_user', 'PsySpace Support');
+        $mail->addAddress('$smtp_user');
         $mail->addReplyTo($_POST['email'], $_POST['name']);
         $mail->isHTML(true);
         $mail->Subject = "Nouveau message : " . $_POST['subject_type'] . " de " . $_POST['name'];

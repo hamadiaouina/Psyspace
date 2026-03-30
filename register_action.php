@@ -66,8 +66,8 @@ try {
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = 'psyspace.all@gmail.com'; 
-    $mail->Password   = 'lszg gkpz ylbg ypdt'; 
+    $mail->Username   = '$smtp_user'; 
+    $mail->Password   = '$smtp_pass'; 
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
