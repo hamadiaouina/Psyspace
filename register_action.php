@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-// 1. Diagnostic d'erreurs
+// 1. Diagnostic d'erreurs (À commenter avant la mise en production)
 ini_set('display_errors', '1');
 ini_set('display_startup_errors', '1');
 error_reporting(E_ALL);
@@ -9,7 +9,7 @@ error_reporting(E_ALL);
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// 2. Chemins PHPMailer - Utilisation de __DIR__ pour la stabilité
+// 2. Chemins PHPMailer
 require __DIR__ . '/vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/vendor/PHPMailer/src/SMTP.php';
@@ -34,7 +34,7 @@ if (empty($nom) || empty($prenom) || empty($email) || empty($password)) {
 }
 
 $fullName = $prenom . " " . $nom;
-// Argon2id est excellent pour un PFE, très pro.
+// Argon2id est parfait pour un PFE
 $hashed_password = password_hash($password, PASSWORD_ARGON2ID);
 $otp = (int)rand(100000, 999999);
 
@@ -50,7 +50,6 @@ if ($res->num_rows > 0) {
 $stmt->close();
 
 // 5. Insertion en base
-// Vérifie bien que ta table 'doctor' possède exactement ces colonnes
 $sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status, dob) VALUES (?, ?, ?, ?, 'pending', ?)";
 $insertStmt = $con->prepare($sql);
 $insertStmt->bind_param("sssis", $email, $fullName, $hashed_password, $otp, $dob);
@@ -63,16 +62,21 @@ $insertStmt->close();
 // 6. Envoi de l'OTP
 $mail = new PHPMailer(true);
 try {
+    // RÉCUPÉRATION DES VARIABLES AZURE
+    $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
+    $smtp_pass = getenv('SMTP_PASSWORD') ?: ''; 
+
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
     $mail->SMTPAuth   = true;
-    $mail->Username   = '$smtp_user'; 
-    $mail->Password   = '$smtp_pass'; 
+    $mail->Username   = $smtp_user; 
+    $mail->Password   = $smtp_pass; 
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
 
-    $mail->setFrom('no-reply@psyspace.me', 'PsySpace AI');
+    // Expéditeur (Utilise l'email SMTP_USER pour éviter le spam)
+    $mail->setFrom($smtp_user, 'PsySpace AI');
     $mail->addAddress($email, $fullName);
 
     $mail->isHTML(true);
@@ -94,7 +98,7 @@ try {
     exit();
 
 } catch (Exception $e) {
-    // Nettoyage si le mail échoue pour permettre de retenter l'inscription
+    // Nettoyage si le mail échoue
     $con->query("DELETE FROM doctor WHERE docemail = '" . mysqli_real_escape_string($con, $email) . "'");
     header("Location: register.php?error=mailfail");
     exit();

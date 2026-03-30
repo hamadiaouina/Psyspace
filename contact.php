@@ -2,36 +2,48 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require 'vendor/PHPMailer/src/Exception.php';
-require 'vendor/PHPMailer/src/PHPMailer.php';
-require 'vendor/PHPMailer/src/SMTP.php';
+// Utilisation de __DIR__ pour garantir que le chemin est correct peu importe où est le fichier
+require __DIR__ . '/vendor/PHPMailer/src/Exception.php';
+require __DIR__ . '/vendor/PHPMailer/src/PHPMailer.php';
+require __DIR__ . '/vendor/PHPMailer/src/SMTP.php';
 
- $message_sent = false;
+$message_sent = false;
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $mail = new PHPMailer(true);
     try {
+        // RÉCUPÉRATION SÉCURISÉE DES VARIABLES AZURE
+        $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
+        $smtp_pass = getenv('SMTP_PASSWORD') ?: '';
+
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = '$smtp_user';
-        $mail->Password   = '$smtp_pass';
+        $mail->Username   = $smtp_user; // Pas de guillemets
+        $mail->Password   = $smtp_pass; // Pas de guillemets
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
         $mail->CharSet    = 'UTF-8';
 
-        $mail->setFrom('$smtp_user', 'PsySpace Support');
-        $mail->addAddress('$smtp_user');
-        $mail->addReplyTo($_POST['email'], $_POST['name']);
+        // Configuration de l'envoi
+        $mail->setFrom($smtp_user, 'PsySpace Support');
+        $mail->addAddress($smtp_user); // On reçoit le message sur l'adresse admin
+        
+        // Permet de répondre directement à l'utilisateur qui a rempli le formulaire
+        $user_email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
+        $user_name  = htmlspecialchars($_POST['name']);
+        $mail->addReplyTo($user_email, $user_name);
+
         $mail->isHTML(true);
-        $mail->Subject = "Nouveau message : " . $_POST['subject_type'] . " de " . $_POST['name'];
+        $mail->Subject = "Nouveau message : " . htmlspecialchars($_POST['subject_type']) . " de " . $user_name;
+        
         $mail->Body = "
             <div style='background:#f8fafc; padding:40px; font-family:sans-serif; color:#0f172a;'>
                 <div style='background:#ffffff; border:1px solid #e2e8f0; padding:32px; border-radius:16px; max-width:600px; margin:0 auto;'>
                     <h2 style='color:#4f46e5; margin-top:0;'>Nouveau message — PsySpace</h2>
                     <hr style='border:none; border-top:1px solid #e2e8f0; margin:20px 0;'>
-                    <p><strong>Nom :</strong> " . htmlspecialchars($_POST['name']) . "</p>
-                    <p><strong>Email :</strong> " . htmlspecialchars($_POST['email']) . "</p>
+                    <p><strong>Nom :</strong> " . $user_name . "</p>
+                    <p><strong>Email :</strong> " . $user_email . "</p>
                     <p><strong>Sujet :</strong> " . htmlspecialchars($_POST['subject_type']) . "</p>
                     <div style='background:#f8fafc; padding:20px; margin-top:20px; border-radius:10px; color:#475569; line-height:1.6; border-left:3px solid #4f46e5;'>
                         " . nl2br(htmlspecialchars($_POST['message'])) . "
@@ -41,7 +53,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $mail->send();
         $message_sent = true;
-    } catch (Exception $e) {}
+    } catch (Exception $e) {
+        // Optionnel : tu peux logger l'erreur pour débugger
+        // error_log("Erreur Mail: " . $mail->ErrorInfo);
+    }
 }
 
 include "header.php";

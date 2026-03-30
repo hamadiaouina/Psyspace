@@ -41,16 +41,21 @@ if ($result && $result->num_rows > 0) {
 
     $mail = new PHPMailer(true);
     try {
+        // RÉCUPÉRATION DES VARIABLES AZURE
+        $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
+        $smtp_pass = getenv('SMTP_PASSWORD') ?: '';
+
         $mail->isSMTP();
         $mail->Host       = 'smtp.gmail.com';
         $mail->SMTPAuth   = true;
-        $mail->Username   = '$smtp_user';
-        $mail->Password   = '$smtp_pass';
+        $mail->Username   = $smtp_user; // Pas de guillemets
+        $mail->Password   = $smtp_pass; // Pas de guillemets
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port       = 587;
         $mail->CharSet    = 'UTF-8';
-        $mail->setFrom('$smtp_user', 'PsySpace Shield');
-        $mail->addAddress('$smtp_user');
+        
+        $mail->setFrom($smtp_user, 'PsySpace Shield');
+        $mail->addAddress($smtp_user); // Envoi à l'admin (toi)
         $mail->isHTML(true);
 
         if (password_verify($password, $admin['admpassword'])) {
