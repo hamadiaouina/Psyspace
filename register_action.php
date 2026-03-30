@@ -64,7 +64,7 @@ $mail = new PHPMailer(true);
 try {
     // RÉCUPÉRATION DES VARIABLES AZURE
     $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
-    $smtp_pass = getenv('SMTP_PASSWORD') ?: ''; 
+    $smtp_pass = getenv('SMTP_PASS') ?: ''; 
 
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
