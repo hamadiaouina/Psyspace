@@ -131,6 +131,13 @@ ob_start(function($buffer) {
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
+    <link rel="manifest" href="manifest.json">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="assets/images/logo.png">
