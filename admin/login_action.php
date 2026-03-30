@@ -21,13 +21,16 @@ $password = trim($_POST['password'] ?? '');
 $ip       = $_SERVER['REMOTE_ADDR'] ?? 'Inconnue';
 $heure    = date('d/m/Y à H:i:s');
 
+/* ══════════════════════════════════════
+   RECHERCHE ADMIN
+══════════════════════════════════════ */
 $sql    = "SELECT * FROM admin WHERE admemail = '$email' LIMIT 1";
 $result = $con->query($sql);
 
 if ($result && $result->num_rows > 0) {
     $admin = $result->fetch_assoc();
 
-    // Configuration commune de PHPMailer
+    // On prépare PHPMailer une seule fois pour tout le script
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
@@ -43,9 +46,7 @@ if ($result && $result->num_rows > 0) {
         $mail->isHTML(true);
 
         if (password_verify($password, $admin['admpassword'])) {
-            /* ══════════════════════════════════════
-               SUCCÈS : ENVOI DU CODE OTP (BLEU)
-            ══════════════════════════════════════ */
+            // 1. GÉNÉRATION DU CODE OTP (Connexion réussie)
             $otp = rand(100000, 999999);
             $admin_id = $admin['admid'];
             $con->query("UPDATE admin SET otp_code = '$otp' WHERE admid = '$admin_id'");
@@ -57,7 +58,7 @@ if ($result && $result->num_rows > 0) {
                 <div style='padding:24px;background:#f8fafc;text-align:center;'>
                     <p style='color:#1e293b;font-size:16px;'>Utilisez le code suivant pour accéder au Dashboard Admin :</p>
                     <div style='font-size:32px; font-weight:bold; color:#4f46e5; background:#fff; padding:15px; border-radius:8px; border:1px dashed #4f46e5; display:inline-block; margin:10px 0;'>$otp</div>
-                    <p style='color:#64748b;font-size:12px;'>Tentative depuis l'IP : $ip le $heure</p>
+                    <p style='color:#64748b;font-size:12px;'>Tentative réussie depuis l'IP : $ip le $heure</p>
                 </div>
             </div>";
             
@@ -67,21 +68,19 @@ if ($result && $result->num_rows > 0) {
             exit();
 
         } else {
-            /* ══════════════════════════════════════
-               ÉCHEC : ALERTE MAUVAIS MDP (ROUGE)
-            ══════════════════════════════════════ */
-            $mail->Subject = "⚠️ Alerte de Sécurité : Tentative échouée";
+            // 2. ALERTE TENTATIVE ÉCHOUÉE (Mauvais mot de passe)
+            $mail->Subject = "⚠️ ALERTE : Tentative de connexion échouée";
             $mail->Body    = "
             <div style='font-family:sans-serif;max-width:500px;margin:0 auto;border:2px solid #ef4444;border-radius:12px;overflow:hidden;'>
-                <div style='background:#ef4444;padding:20px;text-align:center;'><h2 style='color:#fff;margin:0;'>🚫 Échec de Connexion</h2></div>
+                <div style='background:#ef4444;padding:20px;text-align:center;'><h2 style='color:#fff;margin:0;'>🚫 Accès Refusé</h2></div>
                 <div style='padding:24px;background:#fff;'>
-                    <p style='color:#1e293b;font-size:16px;'>Une tentative de connexion avec un <b>mauvais mot de passe</b> a été détectée.</p>
+                    <p style='color:#1e293b;font-size:16px;'>Une tentative de connexion avec un <b>mot de passe incorrect</b> a été détectée.</p>
                     <hr style='border:0;border-top:1px solid #eee;margin:20px 0;'>
-                    <p><b>Compte ciblé :</b> $email</p>
-                    <p><b>IP de l'intrus :</b> <span style='color:#ef4444;font-family:monospace;'>$ip</span></p>
-                    <p><b>Date/Heure :</b> $heure</p>
-                    <div style='margin-top:20px;padding:10px;background:#fef2f2;border-left:4px solid #ef4444;color:#991b1b;font-size:13px;'>
-                        Si ce n'est pas vous, votre compte est peut-être sous attaque.
+                    <p><b>Compte visé :</b> $email</p>
+                    <p><b>Origine (IP) :</b> <span style='color:#ef4444;font-family:monospace;'>$ip</span></p>
+                    <p><b>Date :</b> $heure</p>
+                    <div style='margin-top:20px;padding:15px;background:#fef2f2;border-left:4px solid #ef4444;color:#991b1b;font-size:13px;'>
+                        <strong>Note :</strong> Si ce n'est pas vous, votre compte fait peut-être l'objet d'une tentative d'intrusion.
                     </div>
                 </div>
             </div>";
