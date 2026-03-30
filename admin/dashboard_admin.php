@@ -251,7 +251,6 @@ ob_end_flush();
 <link rel="icon" type="image/png" href="assets/images/logo.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/png" href="../assets/images/logo.png">
 <title>Admin · PsySpace</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -403,6 +402,12 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
 .sec-risk-title{font-size:12.5px;font-weight:600;color:var(--tx);}
 .sec-risk-desc{font-size:11px;color:var(--tx3);margin-top:2px;}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr);}}
+/* DARK MODE */
+.dark{--bg:#0f172a;--surface:#1e293b;--border:#334155;--border2:#1e293b;--tx:#f1f5f9;--tx2:#94a3b8;--tx3:#64748b;}
+.dark .sidebar,.dark .topbar{background:var(--surface) !important;}
+.dark tbody tr:hover{background:#273548;}
+.dark .tb-clock,.dark .search-box input{background:var(--surface);}
+.dark .modal{background:var(--surface);border-color:var(--border);}
 @media(max-width:900px){.stats{grid-template-columns:repeat(2,1fr);}.ov-grid{grid-template-columns:1fr;}}
 </style>
 </head>
@@ -470,6 +475,7 @@ td.mono{font-family:'DM Mono',monospace;font-size:11.5px;}
     <div class="tb-right">
       <?php if($stat_pending>0): ?><div class="tb-alert">⚠ <?= $stat_pending ?> en attente</div><?php endif; ?>
       <?php if($stat_suspended>0): ?><div class="tb-alert" style="background:var(--pu-l);color:var(--pu);border-color:rgba(124,58,237,.2);">⏸ <?= $stat_suspended ?> suspendu<?= $stat_suspended>1?'s':'' ?></div><?php endif; ?>
+      <button id="darkBtn" title="Mode sombre" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .15s;" aria-label="Toggle dark mode">🌙</button>
       <div class="tb-clock" id="clock">--:--:--</div>
     </div>
   </div>
@@ -1126,6 +1132,20 @@ document.addEventListener('click', function(e) {
         document.getElementById('rp-password').value = '';
         ovResetpw.classList.add('show');
     }
+/* ── Dark Mode ── */
+(function(){
+    if(localStorage.getItem('psyadmin_dark')==='1'){
+        document.documentElement.classList.add('dark');
+    }
+})();
+document.addEventListener('DOMContentLoaded', function(){
+    var btn = document.getElementById('darkBtn');
+    if(document.documentElement.classList.contains('dark')) btn.textContent='☀️';
+    btn.addEventListener('click', function(){
+        var on = document.documentElement.classList.toggle('dark');
+        localStorage.setItem('psyadmin_dark', on?'1':'0');
+        btn.textContent = on ? '☀️' : '🌙';
+    });
 });
 </script>
 </body>
