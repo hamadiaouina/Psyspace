@@ -56,6 +56,9 @@
                 Projet PFE par <span class="font-semibold text-slate-900 dark:text-white">Hamadi Aouina</span>
             </p>
             <div class="flex items-center gap-6">
+                <button id="pwa-install-btn" class="hidden text-[11px] font-bold text-indigo-600 border border-indigo-200 px-3 py-1 rounded-full hover:bg-indigo-50 transition-all dark:border-indigo-900 dark:text-indigo-400">
+                    Installer l'App
+                </button>
                 <span class="text-[11px] text-slate-400">v1.0-stable</span>
             </div>
         </div>
@@ -64,22 +67,18 @@
 </footer>
 
 <script nonce="<?= $nonce ?? '' ?>">
-    // 1. Gestion du Menu Mobile
+    // 1. Menu Mobile
     const menuBtn = document.getElementById('menu-btn');
     const mobileMenu = document.getElementById('mobile-menu');
-
     if (menuBtn && mobileMenu) {
-        menuBtn.addEventListener('click', () => {
-            mobileMenu.classList.toggle('hidden');
-        });
+        menuBtn.addEventListener('click', () => mobileMenu.classList.toggle('hidden'));
     }
 
-    // 2. Gestion du Toggle Dark Mode
+    // 2. Dark Mode Logic
     const themeToggleBtn = document.getElementById('theme-toggle');
     const darkIcon = document.getElementById('theme-toggle-dark-icon');
     const lightIcon = document.getElementById('theme-toggle-light-icon');
 
-    // Fonction pour mettre à jour les icônes
     function updateIcons() {
         if (document.documentElement.classList.contains('dark')) {
             darkIcon?.classList.add('hidden');
@@ -89,16 +88,35 @@
             lightIcon?.classList.add('hidden');
         }
     }
-
-    // Initialisation icônes
     updateIcons();
 
     if (themeToggleBtn) {
         themeToggleBtn.addEventListener('click', function() {
             document.documentElement.classList.toggle('dark');
-            const isDark = document.documentElement.classList.contains('dark');
-            localStorage.setItem('color-theme', isDark ? 'dark' : 'light');
+            localStorage.setItem('color-theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
             updateIcons();
+        });
+    }
+
+    // 3. PWA Install Logic (Pour forcer l'apparition sur Chrome)
+    let deferredPrompt;
+    const installBtn = document.getElementById('pwa-install-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        // On affiche le bouton "Installer l'App" dans le footer
+        if (installBtn) installBtn.classList.remove('hidden');
+    });
+
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') installBtn.classList.add('hidden');
+                deferredPrompt = null;
+            }
         });
     }
 </script>
