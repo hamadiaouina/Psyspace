@@ -27,7 +27,7 @@ if (empty($allowed_ip) || $user_ip !== trim($allowed_ip)) {
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <link rel="icon" type="image/png" href="../assets/images/logo.png">
+    <link rel="icon" type="image/png" href="/assets/images/logo.png">
     <meta charset="UTF-8">
     <title>PsySpace | Administration</title>
     <style>
