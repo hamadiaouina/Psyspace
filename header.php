@@ -1,21 +1,31 @@
 <?php
-// On récupère l'IP du visiteur (en gérant le cas Azure/Proxy)
+// 1. Récupération de l'IP du visiteur (Nettoyage spécial Azure)
 $user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
+if (strpos($user_ip, ',') !== false) {
+    $user_ip = trim(explode(',', $user_ip)[0]);
+}
 
-// On lit le .env pour l'IP autorisée
-$allowed_ip = null;
-$env_path = __DIR__ . '/.env'; // Ajuste si ton .env est à la racine
-if (file_exists($env_path)) {
-    $lines = file($env_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        if (strpos(trim($line), 'ALLOWED_ADMIN_IP=') === 0) {
-            $allowed_ip = trim(explode('=', $line, 2)[1]);
-            break;
+// 2. Récupération de l'IP autorisée (On check Azure d'abord, puis le .env en local)
+$allowed_ip = getenv('ALLOWED_ADMIN_IP'); 
+
+if (!$allowed_ip) {
+    $env_path = __DIR__ . '/.env';
+    if (file_exists($env_path)) {
+        $lines = file($env_path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        foreach ($lines as $line) {
+            if (strpos(trim($line), 'ALLOWED_ADMIN_IP=') === 0) {
+                $allowed_ip = trim(explode('=', $line, 2)[1]);
+                break;
+            }
         }
     }
 }
 
-$is_admin_device = ($user_ip === $allowed_ip);
+// 3. Vérification
+$is_admin_device = ($allowed_ip && $user_ip === $allowed_ip);
+
+// --- DEBUG (Affiche l'IP dans le code source pour vérifier si ça ne marche pas) ---
+// echo "";
 ?>
 <?php
 /**
@@ -170,12 +180,11 @@ ob_start(function($buffer) {
                     <a href="securite.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Sécurité</a>
                     <a href="chatbot.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Assistant</a>
                     <a href="contact.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Contact</a>
-                <?php if ($is_admin_device): ?>
-    <li class="nav-item">
-        <a href="admin/login.php" class="nav-link" style="color: #ef4444; font-weight: bold;">
-            <i class="fas fa-user-shield"></i> Admin Panel
-        </a>
-    </li>
+
+<?php if ($is_admin_device): ?>
+    <a href="admin/login.php" class="px-4 py-2 text-sm font-bold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-100 dark:text-red-400 dark:border-red-900/30 dark:bg-red-900/20 transition-all rounded-md">
+       🛡️ Admin Panel
+    </a>
 <?php endif; ?>
                 </nav>
 
