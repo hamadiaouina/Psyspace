@@ -6,22 +6,22 @@
 // --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
 
 // --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
-// On définit la clé directement ici (plus de problème de fichier .env)
-$admin_secret_key = "AdminHamadi325658974DKA2365SPETRTERDS523"; 
+/// --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
+// On récupère la clé depuis les variables d'environnement (plus de clé en dur !)
+$admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: ""; 
 
-// 1. Vérification : Est-ce que le cookie est déjà sur ton PC ?
-$is_admin_device = (isset($_COOKIE['psyspace_boss_key']) && $_COOKIE['psyspace_boss_key'] === $admin_secret_key);
+// Vérification du badge
+$is_admin_device = (isset($_COOKIE['psyspace_boss_key']) && $_COOKIE['psyspace_boss_key'] === $admin_secret_key && !empty($admin_secret_key));
 
-// 2. Activation : Si tu tapes l'URL, on te donne le cookie
-if (isset($_GET['psypass']) && $_GET['psypass'] === $admin_secret_key) {
+// Activation manuelle via URL
+if (isset($_GET['psypass']) && !empty($admin_secret_key) && $_GET['psypass'] === $admin_secret_key) {
     setcookie("psyspace_boss_key", $admin_secret_key, [
-        'expires' => time() + (10 * 365 * 24 * 60 * 60), // 10 ans
+        'expires' => time() + (10 * 365 * 24 * 60 * 60),
         'path' => '/',
         'httponly' => true,
         'secure' => true, 
         'samesite' => 'Lax'
     ]);
-    // On recharge la page pour activer le cookie immédiatement
     header("Location: index.php");
     exit;
 }
