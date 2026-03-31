@@ -107,9 +107,9 @@ ob_start(function($buffer) {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
   }
-  <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4f46e5">
 </script>
+      <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4f46e5">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="assets/images/logo.png">
