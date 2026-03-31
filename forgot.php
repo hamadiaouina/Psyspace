@@ -56,7 +56,7 @@ if(isset($_POST['reset-request'])){
             $mail->CharSet = 'UTF-8';
             $mail->Subject = "Réinitialisation de votre mot de passe - PsySpace";
             
-            $url = "http://localhost/Website/reset_password.php?token=$token";
+            $url = "https://psyspace.me/reset_password.php?token=$token";
 
             $mail->Body = "
             <div style='background-color: #f8fafc; padding: 40px 0; font-family: sans-serif;'>
