@@ -1,95 +1,73 @@
 <?php
-// 1. Récupération et Nettoyage Radical de l'IP
-$user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+/**
+ * PSYSPACE - HEADER DE SÉCURITÉ FINAL & RECONNAISSANCE MATÉRIELLE
+ */
 
-// Nettoyage si plusieurs IPs (Proxys)
-if (strpos($user_ip, ',') !== false) {
-    $user_ip = trim(explode(',', $user_ip)[0]);
-}
-// Suppression du port (ex: 197.1.2.3:443 -> 197.1.2.3)
-if (strpos($user_ip, ':') !== false && strpos($user_ip, '.') !== false) {
-    $user_ip = explode(':', $user_ip)[0];
-}
-
-$user_ip = trim($user_ip);
-
-// 2. Récupération de l'IP autorisée
-$allowed_ip = getenv('ALLOWED_ADMIN_IP'); 
-
-// Si getenv échoue (parfois sur Azure PHP-FPM), on tente $_SERVER
-if (!$allowed_ip) {
-    $allowed_ip = $_SERVER['ALLOWED_ADMIN_IP'] ?? null;
-}
-
-// 3. Secours Local (.env)
-if (!$allowed_ip && file_exists(__DIR__ . '/.env')) {
+// --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
+$admin_secret_key = "";
+if (file_exists(__DIR__ . '/.env')) {
     $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
-        if (strpos(trim($line), 'ALLOWED_ADMIN_IP=') === 0) {
-            $allowed_ip = trim(explode('=', $line, 2)[1]);
+        if (strpos(trim($line), 'ADMIN_BADGE_TOKEN=') === 0) {
+            $admin_secret_key = trim(explode('=', $line, 2)[1]);
             break;
         }
     }
 }
-$allowed_ip = trim($allowed_ip);
 
-// 4. Comparaison STRICTE
-$is_admin_device = (!empty($allowed_ip) && trim($user_ip) === trim($allowed_ip));
-// --- LOG DE COMPARAISON (Invisible pour les autres, regarde le code source CTRL+U) ---
-echo "";
-?>
-<?php
-/**
- * PSYSPACE - HEADER DE SÉCURITÉ FINAL (VERSION FORCE SECURE)
- */
+// Vérification du badge sur le PC
+$is_admin_device = (isset($_COOKIE['psyspace_boss_key']) && $_COOKIE['psyspace_boss_key'] === $admin_secret_key && !empty($admin_secret_key));
 
-// 1. Activation du Firewall
+// Activation manuelle via URL (Ex: ?psypass=TON_CODE)
+if (isset($_GET['psypass']) && $_GET['psypass'] === $admin_secret_key && !empty($admin_secret_key)) {
+    setcookie("psyspace_boss_key", $admin_secret_key, [
+        'expires' => time() + (10 * 365 * 24 * 60 * 60), // 10 ans
+        'path' => '/',
+        'httponly' => true,
+        'secure' => true, 
+        'samesite' => 'Strict'
+    ]);
+    header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
+    exit;
+}
+
+// --- B. SÉCURITÉ & FIREWALL ---
 if (file_exists(__DIR__ . '/security/firewall.php')) {
     require_once __DIR__ . '/security/firewall.php';
 }
 
-// 2. CONFIGURATION DES COOKIES (Version Radical pour score 100%)
-// On active le flag Secure si on n'est pas sur localhost
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
 
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
     'domain' => '', 
-    'secure' => !$is_localhost, // FORCE TRUE en ligne, même si la détection HTTPS bug
+    'secure' => !$is_localhost,
     'httponly' => true,
     'samesite' => 'Lax'
 ]);
 
-// ... RESTE DU CODE (Headers, CSP, etc.)
-// 3. Initialisation de la session et de la connexion
 session_start();
 include "connection.php";
 
-// 4. Nettoyage des headers
+// --- C. NETTOYAGE & HEADERS DE SÉCURITÉ ---
 header_remove("Content-Security-Policy");
 header_remove("X-Content-Security-Policy");
 header_remove("X-Frame-Options");
 
-// 5. Génération du Nonce (Protection XSS)
 $nonce = base64_encode(random_bytes(16));
 $GLOBALS['csp_nonce'] = $nonce;
 
-// 6. Détection de l'environnement pour HSTS
-$is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
-
 if (!$is_localhost) {
-    // HSTS (Indispensable pour la prod)
     header("Strict-Transport-Security: max-age=31536000; includeSubDomains; preload");
 }
 
-// 7. Headers de sécurité standards
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
 
-// 8. Content Security Policy (CSP)
+// --- D. CONTENT SECURITY POLICY (CSP) ---
 if (!$is_localhost) {
     header("Content-Security-Policy: " .
         "default-src 'self'; " .
@@ -105,22 +83,21 @@ if (!$is_localhost) {
         "upgrade-insecure-requests;"
     );
 } else {
-    // On ajoute 'unsafe-inline' partout pour le développement local
     header("Content-Security-Policy: " .
         "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
         "script-src 'self' 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' https: http: https://challenges.cloudflare.com; " .
         "frame-src 'self' https://challenges.cloudflare.com; " . 
         "img-src 'self' data: https: http: blob: https://images.unsplash.com; " .
         "connect-src 'self' https: http: blob: wss:; " .
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " . // Ajouté style-src
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
         "font-src 'self' https: http: data:; " .
         "object-src 'none';"
     );
 }
 
-// 9. Injection automatique du Nonce
+// --- E. INJECTION AUTOMATIQUE DU NONCE ---
 ob_start(function($buffer) {
-    $n = $GLOBALS['csp_nonce'];
+    $n = $GLOBALS['csp_nonce'] ?? '';
     return preg_replace(
         '/<script(?![^>]*\bnonce\b)([^>]*)>/i',
         '<script nonce="' . $n . '"$1>',
