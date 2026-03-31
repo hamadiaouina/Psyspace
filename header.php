@@ -4,30 +4,34 @@
  */
 
 // --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
+
+// --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
 $admin_secret_key = "";
 if (file_exists(__DIR__ . '/.env')) {
     $lines = file(__DIR__ . '/.env', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
     foreach ($lines as $line) {
         if (strpos(trim($line), 'ADMIN_BADGE_TOKEN=') === 0) {
             $admin_secret_key = trim(explode('=', $line, 2)[1]);
+            // On nettoie les guillemets si présents dans le .env
+            $admin_secret_key = str_replace(['"', "'"], '', $admin_secret_key);
             break;
         }
     }
 }
 
-// Vérification du badge sur le PC
+// Vérification du badge
 $is_admin_device = (isset($_COOKIE['psyspace_boss_key']) && $_COOKIE['psyspace_boss_key'] === $admin_secret_key && !empty($admin_secret_key));
 
-// Activation manuelle via URL (Ex: ?psypass=TON_CODE)
+// Activation manuelle
 if (isset($_GET['psypass']) && $_GET['psypass'] === $admin_secret_key && !empty($admin_secret_key)) {
     setcookie("psyspace_boss_key", $admin_secret_key, [
-        'expires' => time() + (10 * 365 * 24 * 60 * 60), // 10 ans
+        'expires' => time() + (10 * 365 * 24 * 60 * 60), 
         'path' => '/',
         'httponly' => true,
         'secure' => true, 
-        'samesite' => 'Strict'
+        'samesite' => 'Lax' // Changé de Strict à Lax pour Azure
     ]);
-    header("Location: " . strtok($_SERVER["REQUEST_URI"], '?'));
+    header("Location: index.php");
     exit;
 }
 
