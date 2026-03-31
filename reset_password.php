@@ -1,58 +1,53 @@
 <?php
-include "connection.php";
+include "connection.php"; // Vérifie bien que ce fichier est à jour avec les infos du serveur
 $message = "";
 $show_form = false;
 
-// 1. Vérification du token
-if(isset($_GET['token'])){
-    $token = mysqli_real_escape_string($con, $_GET['token']);
-    $query = "SELECT * FROM doctor WHERE reset_token='$token' AND token_expiry > NOW()";
+// 1. On récupère le token (soit de l'URL, soit du formulaire envoyé)
+$token = isset($_GET['token']) ? $_GET['token'] : (isset($_POST['token']) ? $_POST['token'] : '');
+
+if(!empty($token)){
+    $safe_token = mysqli_real_escape_string($con, $token);
+    
+    // On vérifie si le token existe et n'a pas expiré sur le serveur
+    $query = "SELECT * FROM doctor WHERE reset_token='$safe_token' AND token_expiry > NOW()";
     $res = mysqli_query($con, $query);
     
     if(mysqli_num_rows($res) > 0) {
         $show_form = true;
-        $doctor = mysqli_fetch_assoc($res);
     } else {
-        $message = "<div class='p-5 text-rose-800 bg-rose-50 rounded-[2rem] border-2 border-rose-100 font-bold text-xs uppercase italic'>Lien invalide ou expiré. Veuillez refaire une demande.</div>";
+        $message = "<div class='p-5 text-rose-800 bg-rose-50 rounded-2xl border-2 border-rose-100 font-bold text-center'>Lien invalide ou expiré.</div>";
     }
 }
 
-// 2. Traitement du nouveau mot de passe
+// 2. Traitement du changement
 if(isset($_POST['update-password'])){
     $pass1 = $_POST['pass1'];
     $pass2 = $_POST['pass2'];
-    $token = mysqli_real_escape_string($con, $_POST['token']);
 
     if($pass1 !== $pass2){
-        $message = "<div class='p-4 mb-4 text-rose-800 bg-rose-50 rounded-2xl font-bold text-xs'>Les mots de passe ne sont pas identiques.</div>";
+        $message = "<div class='p-4 mb-4 text-rose-800 bg-rose-50 rounded-2xl font-bold text-xs text-center'>Les mots de passe ne correspondent pas.</div>";
         $show_form = true;
     } else {
-        // --- IMPORTANT : HACHAGE COMME DANS LE REGISTER ---
         $new_hashed_password = password_hash($pass1, PASSWORD_DEFAULT);
         
-        // Mise à jour en base : on change le mdp ET on vide le token pour la sécurité
         $update_query = "UPDATE doctor SET 
                          docpassword = '$new_hashed_password', 
                          reset_token = NULL, 
                          token_expiry = NULL 
-                         WHERE reset_token = '$token'";
+                         WHERE reset_token = '$safe_token'";
 
         if(mysqli_query($con, $update_query)){
-            $message = "
-                <div class='p-6 text-emerald-800 bg-emerald-50 rounded-3xl border border-emerald-100 font-black italic'>
-                    ✓ MOT DE PASSE ENREGISTRÉ !<br>
-                    <small class='font-normal uppercase text-[10px] tracking-widest text-emerald-600 italic'>Redirection vers la connexion...</small>
-                </div>";
-            
-            // Redirection automatique vers le login après 3 secondes
+            $message = "<div class='p-6 text-emerald-800 bg-emerald-50 rounded-3xl border border-emerald-100 font-black text-center italic'>✓ MOT DE PASSE MIS À JOUR !</div>";
             header("Refresh: 3; url=login.php");
             $show_form = false;
         } else {
-            $message = "<div class='p-4 mb-4 text-red-800 bg-red-50 rounded-2xl font-bold'>Erreur base de données.</div>";
+            $message = "<div class='p-4 mb-4 text-red-800 bg-red-50 rounded-2xl font-bold text-center'>Erreur serveur.</div>";
         }
     }
 }
 ?>
+<input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
 
 <!DOCTYPE html>
 <html lang="fr">
