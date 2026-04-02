@@ -152,31 +152,53 @@ ob_start(function($buffer) {
 </head>
 
 <body class="font-sans antialiased bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
+    <div class="relative bg-indigo-600 dark:bg-indigo-500">
+        <div class="max-w-7xl mx-auto py-2 px-3 sm:px-6 lg:px-8">
+            <div class="text-center pr-16 sm:px-16">
+                <p class="font-medium text-white text-xs sm:text-sm">
+                    <span class="md:hidden">PsySpace est disponible sur mobile.</span>
+                    <span class="hidden md:inline">L'expérience PsySpace évolue : Découvrez notre interface mobile PWA.</span>
+                    <span class="block sm:inline-block ml-2">
+                        <a href="mobile.php" class="text-white font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white transition-all">
+                            En savoir plus <span aria-hidden="true">&rarr;</span>
+                        </a>
+                    </span>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <header class="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur-lg dark:border-white/5 dark:bg-slate-900/80">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
+                
                 <div class="flex items-center gap-3">
                     <a href="index.php" class="flex items-center gap-2.5 group">
                         <img src="assets/images/logo.png" alt="Logo" class="h-8 w-auto">
-                        <span class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-                            Psy<span class="text-indigo-600 dark:text-indigo-400">Space</span>
-                        </span>
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                            <span class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                                Psy<span class="text-indigo-600 dark:text-indigo-400">Space</span>
+                            </span>
+                            <span class="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 uppercase tracking-widest">
+                                PWA
+                            </span>
+                        </div>
                     </a>
                 </div>
-<nav class="hidden md:flex items-center gap-1">
-    <a href="guide.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Guide</a>
-    <a href="securite.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Sécurité</a>
-    <a href="chatbot.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Assistant</a>
-    <a href="contact.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Contact</a>
 
-    <?php if ($is_admin_device): ?>
-        <a href="/admin/login.php" 
-           style="position: relative; z-index: 60;"
-           class="ml-2 px-4 py-2 text-sm font-bold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-100 dark:text-red-400 dark:border-red-900/30 dark:bg-red-900/20 transition-all rounded-md">
-            Admin Panel
-        </a>
-    <?php endif; ?>
-</nav>
+                <nav class="hidden md:flex items-center gap-1">
+                    <a href="guide.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Guide</a>
+                    <a href="securite.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Sécurité</a>
+                    <a href="chatbot.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Assistant</a>
+                    <a href="contact.php" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 dark:text-slate-300 dark:hover:text-white transition-colors rounded-md">Contact</a>
+
+                    <?php if ($is_admin_device): ?>
+                        <a href="/admin/login.php" 
+                           class="ml-2 px-4 py-2 text-sm font-bold text-red-600 border border-red-200 bg-red-50/50 hover:bg-red-100 dark:text-red-400 dark:border-red-900/30 dark:bg-red-900/20 transition-all rounded-md relative z-50">
+                            Admin Panel
+                        </a>
+                    <?php endif; ?>
+                </nav>
 
                 <div class="flex items-center gap-2">
                     <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-all">
@@ -185,7 +207,7 @@ ob_start(function($buffer) {
                     </button>
                     <a href="login.php" class="hidden sm:block px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors">Connexion</a>
                     <a href="register.php" class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-all shadow-md">Inscription</a>
-                    <button id="menu-btn" class="md:hidden p-2 text-slate-500">
+                    <button id="menu-btn" class="md:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                     </button>
                 </div>
@@ -197,32 +219,40 @@ ob_start(function($buffer) {
                 <a href="guide.php" class="block py-2 text-slate-600 dark:text-slate-300">Guide Pratique</a>
                 <a href="securite.php" class="block py-2 text-slate-600 dark:text-slate-300">Sécurité</a>
                 <a href="chatbot.php" class="block py-2 text-slate-600 dark:text-slate-300">Assistant AI</a>
+                <a href="mobile.php" class="block py-2 font-bold text-indigo-600">Installer l'App</a>
                 <hr class="border-slate-100 dark:border-white/5">
-                <a href="login.php" class="block py-2 font-bold text-indigo-600">Connexion</a>
+                <a href="login.php" class="block py-2 text-slate-600 dark:text-slate-300">Connexion</a>
             </div>
         </div>
     </header>
 
-<script nonce="<?= $nonce ?>">
-    // On termine bien chaque instruction avec un ";"
-    window.tailwind = window.tailwind || {};
-    tailwind.config = {
-        darkMode: 'class',
-        theme: {
-            extend: {
-                fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] }
-            }
-        }
-    };
+    <script nonce="<?= $nonce ?>">
+        // Logique Menu Mobile
+        document.getElementById('menu-btn').addEventListener('click', () => {
+            const menu = document.getElementById('mobile-menu');
+            menu.classList.toggle('hidden');
+        });
 
-    // Le ";" au début ici est MAGIQUE : il empêche l'erreur "is not a function"
-    ;(function() {
-        const theme = localStorage.getItem('color-theme');
-        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (theme === 'dark' || (!theme && systemDark)) {
-            document.documentElement.classList.add('dark');
+        // Logique Dark Mode
+        const themeToggleBtn = document.getElementById('theme-toggle');
+        const darkIcon = document.getElementById('theme-toggle-dark-icon');
+        const lightIcon = document.getElementById('theme-toggle-light-icon');
+
+        if (document.documentElement.classList.contains('dark')) {
+            lightIcon.classList.remove('hidden');
         } else {
-            document.documentElement.classList.remove('dark');
+            darkIcon.classList.remove('hidden');
         }
-    })();
-</script>
+
+        themeToggleBtn.addEventListener('click', function() {
+            darkIcon.classList.toggle('hidden');
+            lightIcon.classList.toggle('hidden');
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('color-theme', 'light');
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('color-theme', 'dark');
+            }
+        });
+    </script>
