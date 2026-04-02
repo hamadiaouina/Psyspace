@@ -29,9 +29,9 @@ $stmt2->close();
 $session_num = count($prev_consults) + 1;
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $csrf = $_SESSION['csrf_token'];
-$_SESSION['pending_patient_id']   = $appointment_id;   // lu par save_consultation.php
-$_SESSION['pending_patient_name'] = $patient_selected;
-$_SESSION['pending_doctor_id']    = $doctor_id;
+$_SESSION['pending_appointment_id'] = $appointment_id;   // lu par save_consultation.php
+$_SESSION['pending_patient_name']   = $patient_selected;
+$_SESSION['pending_doctor_id']      = $doctor_id;
 
 $appt_date = date('d/m/Y');
 $stmt3 = $conn->prepare("SELECT app_date FROM appointments WHERE id=? LIMIT 1");
