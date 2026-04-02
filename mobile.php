@@ -1,108 +1,101 @@
 <?php include "header.php"; ?>
 
-<main class="max-w-4xl mx-auto px-4 py-12 min-h-[80vh] flex flex-col justify-center">
-    <div class="text-center space-y-10">
-        <div class="space-y-3">
-            <h1 class="text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                PsySpace <span class="text-indigo-600 dark:text-indigo-400">Mobile</span>
-            </h1>
-            <p class="text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium leading-relaxed">
-                Accès optimisé via Progressive Web App (PWA). 
-                Aucune installation via store requise.
-            </p>
+<main class="max-w-6xl mx-auto px-6 py-20 min-h-[85vh] flex flex-col justify-center">
+    
+    <div class="max-w-3xl mb-20">
+        <div class="inline-flex items-center px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-[11px] font-semibold uppercase tracking-widest mb-4">
+            Module de Déploiement PWA v1.0
         </div>
+        <h1 class="text-5xl md:text-6xl font-extrabold text-slate-950 dark:text-white tracking-tighter leading-tight mb-5">
+            Accès optimisé <span class="text-indigo-600 dark:text-indigo-400">PsySpace Mobile</span>
+        </div>
+        <p class="text-xl text-slate-600 dark:text-slate-400 max-w-2xl font-normal leading-relaxed">
+            Plateforme accessible via Progressive Web App. Cette technologie permet une utilisation fluide sur terminaux mobiles sans installation via les stores applicatifs traditionnels.
+        </p>
+    </div>
 
-        <div class="relative inline-block group">
-            <div class="absolute -inset-0.5 bg-slate-200 dark:bg-slate-800 rounded-3xl opacity-50"></div>
-            <div class="relative bg-white dark:bg-slate-950 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-white/5">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://psyspace.me" 
-                     alt="Deployment QR Code" 
-                     class="mx-auto mb-6 grayscale hover:grayscale-0 transition-all duration-500">
-                
-                <div class="flex items-center justify-center gap-3">
-                    <div class="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
-                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
-                        Scan to Deploy
-                    </span>
-                </div>
+    <div class="grid lg:grid-cols-3 gap-12 items-start w-full">
+        
+        <div class="lg:col-span-1 p-8 bg-white dark:bg-slate-950 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 flex flex-col items-center">
+            <div class="p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 mb-6">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https://psyspace.me" 
+                     alt="Code QR de déploiement PsySpace" 
+                     class="w-56 h-56 md:w-60 md:h-60 grayscale hover:grayscale-0 transition-all duration-300">
+            </div>
+            
+            <div class="flex items-center gap-3 w-full justify-center">
+                <div class="h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                <span class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                    Scanner pour initialiser
+                </span>
             </div>
         </div>
 
-        <div class="grid md:grid-cols-2 gap-8 mt-12 text-left">
-            <div class="group p-6 bg-transparent border-l border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-colors">
-                <h3 class="font-bold text-slate-900 dark:text-white mb-4 flex items-center text-sm uppercase tracking-wider">
-                    <span class="w-8 h-[1px] bg-indigo-500 mr-3"></span>
-                    Environnement Android
+        <div class="lg:col-span-2 space-y-10">
+            
+            <div class="p-8 bg-transparent border border-slate-100 dark:border-slate-800 rounded-2xl hover:border-indigo-100 dark:hover:border-indigo-900/50 transition-colors">
+                <h3 class="text-sm font-semibold text-slate-950 dark:text-white uppercase tracking-wider mb-6 flex items-center gap-3">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    Protocole d'Installation : Environnement Android
                 </h3>
-                <ul class="space-y-4 text-sm text-slate-500 dark:text-slate-400">
-                    <li class="flex items-baseline gap-3">
-                        <span class="text-indigo-500 font-mono">01.</span>
-                        <span>Lancer le scan via l'appareil photo du terminal.</span>
-                    </li>
-                    <li class="flex items-baseline gap-3">
-                        <span class="text-indigo-500 font-mono">02.</span>
-                        <span>Accepter l'invite de déploiement automatique en bas d'écran.</span>
-                    </li>
-                    <li class="flex items-baseline gap-3">
-                        <span class="text-indigo-500 font-mono">03.</span>
-                        <span>Optionnel : Menu Chrome > "Installer l'application".</span>
-                    </li>
-                </ul>
+                <ol class="space-y-4 text-sm text-slate-600 dark:text-slate-400 list-decimal list-inside font-medium">
+                    <li>Activer le scanner optique du terminal mobile.</li>
+                    <li>Scanner le code QR ci-contre pour charger l'URL sécurisée.</li>
+                    <li>Accepter l'invite de déploiement automatique ("Ajouter à l'écran d'accueil").</li>
+                    <li>Alternative : Menu Navigateur > "Installer l'application".</li>
+                </ol>
             </div>
 
-            <div class="group p-6 bg-transparent border-l border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-colors">
-                <h3 class="font-bold text-slate-900 dark:text-white mb-4 flex items-center text-sm uppercase tracking-wider">
-                    <span class="w-8 h-[1px] bg-indigo-500 mr-3"></span>
-                    Environnement iOS
+            <div class="p-8 bg-transparent border border-slate-100 dark:border-slate-800 rounded-2xl hover:border-indigo-100 dark:hover:border-indigo-900/50 transition-colors">
+                <h3 class="text-sm font-semibold text-slate-950 dark:text-white uppercase tracking-wider mb-6 flex items-center gap-3">
+                    <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+                    Protocole d'Installation : Environnement iOS
                 </h3>
-                <ul class="space-y-4 text-sm text-slate-500 dark:text-slate-400">
-                    <li class="flex items-baseline gap-3">
-                        <span class="text-indigo-500 font-mono">01.</span>
-                        <span>Ouvrir l'URL cible exclusivement sous le navigateur Safari.</span>
-                    </li>
-                    <li class="flex items-baseline gap-3">
-                        <span class="text-indigo-500 font-mono">02.</span>
-                        <span>Activer l'option "Partager" dans la barre d'outils native.</span>
-                    </li>
-                    <li class="flex items-baseline gap-3">
-                        <span class="text-indigo-500 font-mono">03.</span>
-                        <span>Sélectionner "Sur l'écran d'accueil" pour finaliser.</span>
-                    </li>
-                </ul>
+                <ol class="space-y-4 text-sm text-slate-600 dark:text-slate-400 list-decimal list-inside font-medium">
+                    <li>Ouvrir l'URL cible exclusivement via le navigateur Safari.</li>
+                    <li>Utiliser la fonction native "Partager" dans la barre d'outils.</li>
+                    <li>Sélectionner l'option "Sur l'écran d'accueil" pour finaliser le déploiement.</li>
+                </ol>
             </div>
+            
         </div>
+
     </div>
 </main>
 
-<div id="iphone-arrow" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden md:hidden z-50">
-    <div class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl border border-white/10">
-        Action requise en bas d'écran
-    </div>
+<div id="iphone-helper" class="fixed bottom-6 left-6 right-6 p-5 md:hidden hidden z-50 bg-slate-950 dark:bg-white rounded-xl shadow-2xl border border-white/10 dark:border-slate-200 flex items-center justify-between">
+    <span class="text-xs font-bold uppercase tracking-wider text-white dark:text-slate-950">Action requise : Menu Partager > Écran d'accueil</span>
+    <svg class="w-5 h-5 text-indigo-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+    </svg>
 </div>
 
-<script>
-let deferredPrompt;
+<script nonce="<?= $nonce ?>">
+    let deferredPrompt;
 
-window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    
-    setTimeout(() => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            deferredPrompt.userChoice.then((choiceResult) => {
-                deferredPrompt = null;
-            });
-        }
-    }, 2000);
-});
+    // Interception de l'événement d'installation native (Android/Chrome)
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault(); // Empêche l'affichage immédiat
+        deferredPrompt = e;
+        
+        // Déclenchement contrôlé après temporisation
+        setTimeout(() => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    deferredPrompt = null; // Reset après choix
+                });
+            }
+        }, 2500); // 2.5s pour laisser l'utilisateur lire
+    });
 
-const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    // Détection spécifique pour l'aide iOS
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
-if (isIOS && !isStandalone) {
-    document.getElementById('iphone-arrow').classList.remove('hidden');
-}
+    if (isIOS && !isStandalone) {
+        document.getElementById('iphone-helper').classList.remove('hidden');
+    }
 </script>
 
 <?php include "footer.php"; ?>
