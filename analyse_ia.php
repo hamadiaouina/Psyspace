@@ -1624,7 +1624,7 @@ function addFeed(type, title, body) {
 async function callAI(prompt, max) {
   max=max||1200;
   var res=await fetch('proxy_ia.php',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt:prompt,max_tokens:max})});
+    body:JSON.stringify({prompt:prompt,max_tokens:max,csrf_token:CSRF})});
   if(!res.ok) throw new Error('HTTP '+res.status);
   var d=await res.json();
   if(d.error) throw new Error(d.error.message||'API error');
