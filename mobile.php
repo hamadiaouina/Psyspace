@@ -1,65 +1,72 @@
 <?php include "header.php"; ?>
 
 <main class="max-w-4xl mx-auto px-4 py-12 min-h-[80vh] flex flex-col justify-center">
-    <div class="text-center space-y-8">
-        <div class="space-y-2">
+    <div class="text-center space-y-10">
+        <div class="space-y-3">
             <h1 class="text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                PsySpace <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500">Mobile</span>
+                PsySpace <span class="text-indigo-600 dark:text-indigo-400">Mobile</span>
             </h1>
-            <p class="text-lg text-slate-600 dark:text-slate-400 max-w-md mx-auto">
-                Transformez ce site en application mobile en un instant.
+            <p class="text-slate-500 dark:text-slate-400 max-w-sm mx-auto font-medium leading-relaxed">
+                Accès optimisé via Progressive Web App (PWA). 
+                Aucune installation via store requise.
             </p>
         </div>
 
         <div class="relative inline-block group">
-            <div class="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-violet-500 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-            <div class="relative bg-white dark:bg-slate-900 p-6 rounded-2xl shadow-2xl border border-slate-200 dark:border-white/10">
-                <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https://psyspace.me" 
-                     alt="QR Code PsySpace" 
-                     class="mx-auto mb-4 rounded-lg">
-                <div class="flex items-center justify-center space-x-2 text-indigo-600 dark:text-indigo-400 font-bold">
-                    <span class="relative flex h-3 w-3">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+            <div class="absolute -inset-0.5 bg-slate-200 dark:bg-slate-800 rounded-3xl opacity-50"></div>
+            <div class="relative bg-white dark:bg-slate-950 p-8 rounded-3xl shadow-sm border border-slate-200 dark:border-white/5">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://psyspace.me" 
+                     alt="Deployment QR Code" 
+                     class="mx-auto mb-6 grayscale hover:grayscale-0 transition-all duration-500">
+                
+                <div class="flex items-center justify-center gap-3">
+                    <div class="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse"></div>
+                    <span class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+                        Scan to Deploy
                     </span>
-                    <span>Scannez pour installer</span>
                 </div>
             </div>
         </div>
 
-        <div class="grid md:grid-cols-2 gap-6 mt-12 text-left">
-            <div id="android-guide" class="p-6 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm">
-                <div class="flex items-center mb-4">
-                    <span class="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg mr-3">🤖</span>
-                    <h3 class="font-bold text-slate-900 dark:text-white text-lg">Sur Android</h3>
-                </div>
-                <ul class="space-y-3 text-sm text-slate-600 dark:text-slate-400">
-                    <li class="flex items-start">
-                        <span class="font-bold text-indigo-600 mr-2">1.</span> Scannez le code et ouvrez le site.
+        <div class="grid md:grid-cols-2 gap-8 mt-12 text-left">
+            <div class="group p-6 bg-transparent border-l border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-colors">
+                <h3 class="font-bold text-slate-900 dark:text-white mb-4 flex items-center text-sm uppercase tracking-wider">
+                    <span class="w-8 h-[1px] bg-indigo-500 mr-3"></span>
+                    Environnement Android
+                </h3>
+                <ul class="space-y-4 text-sm text-slate-500 dark:text-slate-400">
+                    <li class="flex items-baseline gap-3">
+                        <span class="text-indigo-500 font-mono">01.</span>
+                        <span>Lancer le scan via l'appareil photo du terminal.</span>
                     </li>
-                    <li class="flex items-start">
-                        <span class="font-bold text-indigo-600 mr-2">2.</span> Une bannière <strong>"Ajouter à l'écran d'accueil"</strong> devrait apparaître.
+                    <li class="flex items-baseline gap-3">
+                        <span class="text-indigo-500 font-mono">02.</span>
+                        <span>Accepter l'invite de déploiement automatique en bas d'écran.</span>
                     </li>
-                    <li class="flex items-start">
-                        <span class="font-bold text-indigo-600 mr-2">3.</span> Si non, cliquez sur les <span class="bg-slate-200 dark:bg-slate-700 px-1 rounded">⋮</span> en haut à droite.
+                    <li class="flex items-baseline gap-3">
+                        <span class="text-indigo-500 font-mono">03.</span>
+                        <span>Optionnel : Menu Chrome > "Installer l'application".</span>
                     </li>
                 </ul>
             </div>
 
-            <div id="ios-guide" class="p-6 bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-white/10 shadow-sm">
-                <div class="flex items-center mb-4">
-                    <span class="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg mr-3">🍎</span>
-                    <h3 class="font-bold text-slate-900 dark:text-white text-lg">Sur iPhone</h3>
-                </div>
-                <ul class="space-y-3 text-sm text-slate-600 dark:text-slate-400">
-                    <li class="flex items-start">
-                        <span class="font-bold text-indigo-600 mr-2">1.</span> Ouvrez le lien dans <strong>Safari</strong>.
+            <div class="group p-6 bg-transparent border-l border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition-colors">
+                <h3 class="font-bold text-slate-900 dark:text-white mb-4 flex items-center text-sm uppercase tracking-wider">
+                    <span class="w-8 h-[1px] bg-indigo-500 mr-3"></span>
+                    Environnement iOS
+                </h3>
+                <ul class="space-y-4 text-sm text-slate-500 dark:text-slate-400">
+                    <li class="flex items-baseline gap-3">
+                        <span class="text-indigo-500 font-mono">01.</span>
+                        <span>Ouvrir l'URL cible exclusivement sous le navigateur Safari.</span>
                     </li>
-                    <li class="flex items-start">
-                        <span class="font-bold text-indigo-600 mr-2">2.</span> Appuyez sur le bouton <strong>Partager</strong> <span class="text-lg">⎋</span>.
+                    <li class="flex items-baseline gap-3">
+                        <span class="text-indigo-500 font-mono">02.</span>
+                        <span>Activer l'option "Partager" dans la barre d'outils native.</span>
                     </li>
-                    <li class="flex items-start">
-                        <span class="font-bold text-indigo-600 mr-2">3.</span> Sélectionnez <strong>"Sur l'écran d'accueil"</strong>.
+                    <li class="flex items-baseline gap-3">
+                        <span class="text-indigo-500 font-mono">03.</span>
+                        <span>Sélectionner "Sur l'écran d'accueil" pour finaliser.</span>
                     </li>
                 </ul>
             </div>
@@ -67,41 +74,34 @@
     </div>
 </main>
 
-<div id="iphone-arrow" class="fixed bottom-6 left-50 transform -translate-x-1/2 text-center hidden md:hidden z-50">
-    <p class="bg-indigo-600 text-white px-4 py-2 rounded-full text-sm font-bold shadow-lg animate-bounce">
-        Cliquez ici pour installer ⬇️
-    </p>
+<div id="iphone-arrow" class="fixed bottom-8 left-1/2 -translate-x-1/2 hidden md:hidden z-50">
+    <div class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-2xl border border-white/10">
+        Action requise en bas d'écran
+    </div>
 </div>
 
 <script>
-// --- LOGIQUE D'INSTALLATION AUTOMATIQUE (ANDROID) ---
 let deferredPrompt;
 
 window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     
-    // On attend 2 secondes après le scan pour déclencher la popup
     setTimeout(() => {
         if (deferredPrompt) {
             deferredPrompt.prompt();
             deferredPrompt.userChoice.then((choiceResult) => {
-                if (choiceResult.outcome === 'accepted') {
-                    console.log('User accepted the PWA install');
-                }
                 deferredPrompt = null;
             });
         }
     }, 2000);
 });
 
-// --- DÉTECTION iOS POUR AFFICHER LA FLÈCHE ---
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
 
 if (isIOS && !isStandalone) {
     document.getElementById('iphone-arrow').classList.remove('hidden');
-    document.getElementById('iphone-arrow').style.left = "50%";
 }
 </script>
 
