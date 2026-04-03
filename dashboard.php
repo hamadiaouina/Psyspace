@@ -326,6 +326,37 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
 </div>
 
 <script>
+    // 1. Demander la permission dès le chargement
+if (Notification.permission !== "granted") {
+    Notification.requestPermission();
+}
+
+// 2. Fonction pour jouer le son et afficher la notif
+function alertPro(patientName, time) {
+    // Son professionnel (un petit "ding" épuré)
+    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
+    audio.play();
+
+    // La notification système (apparaît en bas à droite sous Windows/macOS)
+    if (Notification.permission === "granted") {
+        new Notification("PsySpace : Consultation Imminente", {
+            body: "Rendez-vous avec " + patientName + " à " + time,
+            icon: "icon-192.png" // Ton icône PWA
+        });
+    }
+}
+
+// 3. Système de "Check" automatique (Polling)
+// On demande au serveur toutes les minutes s'il y a un RDV proche
+setInterval(() => {
+    fetch('api_check_now.php')
+    .then(response => response.json())
+    .then(data => {
+        if(data.alert === true) {
+            alertPro(data.patient, data.time);
+        }
+    });
+}, 60000); // 60000ms = 1 minute
 <?php if($next_rdv): ?>
 var targetTs = <?= strtotime($next_rdv['app_date']) ?> * 1000;
 function updateCountdown() {
