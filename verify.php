@@ -30,9 +30,20 @@
     .fade-in {
         animation: fadeIn 0.8s ease-out;
     }
+    
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(15px); }
         to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Animation pour le timer en fin de délai */
+    .pulse-red {
+        animation: pulse-red 1s infinite;
+    }
+    @keyframes pulse-red {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
     }
 </style>
 
@@ -48,43 +59,53 @@
             <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Vérification</h2>
             <p class="text-slate-500 mt-3 text-sm font-medium leading-relaxed">
                 Un code a été envoyé à :<br>
-                <span class="text-blue-600 font-bold"><?php echo htmlspecialchars($_GET['email']); ?></span>
+                <span class="text-blue-600 font-bold"><?php echo htmlspecialchars($_GET['email'] ?? ''); ?></span>
             </p>
         </div>
 
-        <?php if(isset($_GET['error']) && $_GET['error'] == "wrongotp"): ?>
-            <div class="mb-8 p-4 bg-red-50 border-l-2 border-red-500 text-red-700 text-[11px] rounded-r-lg font-bold flex items-center gap-3">
+        <?php if(isset($_GET['error'])): ?>
+            <div class="mb-8 p-4 bg-red-50 border-l-2 border-red-500 text-red-700 text-[12px] rounded-r-lg font-bold flex items-center gap-3">
                 <span>⚠️</span>
-                Code incorrect. Veuillez réessayer.
+                <?php 
+                    if($_GET['error'] == "wrongotp") echo "Code incorrect. Veuillez réessayer.";
+                    if($_GET['error'] == "expired_or_wrong") echo "Code invalide ou délai de 5 min dépassé.";
+                ?>
             </div>
         <?php endif; ?>
 
-<form action="verify_action.php" method="POST" class="space-y-8">
-    <input type="hidden" name="email" value="<?php echo htmlspecialchars($_GET['email'] ?? ''); ?>">
-    
-    <div class="space-y-2">
-        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Saisir le code à 6 chiffres</label>
-        <input type="text" 
-               name="otp" 
-               maxlength="6" 
-               inputmode="numeric" 
-               pattern="[0-9]*" 
-               autocomplete="one-time-code"
-               required
-               class="input-otp w-full text-center text-4xl tracking-[0.8rem] font-black py-5 rounded-2xl text-slate-900"
-               placeholder="000000">
-    </div>
+        <form action="verify_action.php" method="POST" class="space-y-8">
+            <input type="hidden" name="email" value="<?php echo htmlspecialchars($_GET['email'] ?? ''); ?>">
+            
+            <div class="space-y-4">
+                <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Saisir le code à 6 chiffres</label>
+                <input type="text" 
+                       name="otp" 
+                       maxlength="6" 
+                       inputmode="numeric" 
+                       pattern="[0-9]*" 
+                       autocomplete="one-time-code"
+                       required
+                       class="input-otp w-full text-center text-4xl tracking-[0.8rem] font-black py-5 rounded-2xl text-slate-900"
+                       placeholder="000000">
+            </div>
 
-    <button type="submit" 
-        class="w-full bg-blue-600 text-white text-sm font-bold py-4 rounded-xl hover:bg-slate-900 transition-all duration-300 shadow-xl shadow-blue-100 transform active:scale-[0.98]">
-        Vérifier mon identité
-    </button>
-</form>
+            <div class="bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Validité du code</p>
+                <div id="countdown" class="text-2xl font-mono font-bold text-blue-600">
+                    05:00
+                </div>
+            </div>
+
+            <button type="submit" 
+                class="w-full bg-blue-600 text-white text-sm font-bold py-4 rounded-xl hover:bg-slate-900 transition-all duration-300 shadow-xl shadow-blue-100 transform active:scale-[0.98]">
+                Vérifier mon identité
+            </button>
+        </form>
 
         <div class="mt-12 pt-8 border-t border-slate-100">
             <p class="text-sm text-slate-500 font-medium">
                 Vous n'avez rien reçu ?<br>
-                <a href="#" class="text-blue-600 font-bold hover:text-slate-900 transition-colors inline-block mt-2">Renvoyer un nouveau code</a>
+                <a href="register.php" class="text-blue-600 font-bold hover:text-slate-900 transition-colors inline-block mt-2">Relancer une inscription</a>
             </p>
             
             <a href="login.php" class="mt-6 text-[10px] text-slate-400 hover:text-blue-600 font-bold uppercase tracking-widest transition-colors block">
@@ -93,5 +114,41 @@
         </div>
     </div>
 </main>
+
+<script>
+    // Configuration du timer (300 secondes = 5 minutes)
+    let timeLeft = 300; 
+    const countdownDisplay = document.getElementById('countdown');
+
+    const timerInterval = setInterval(function() {
+        let minutes = Math.floor(timeLeft / 60);
+        let seconds = timeLeft % 60;
+
+        // Formatage pour toujours avoir deux chiffres (ex: 04:09)
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        seconds = seconds < 10 ? '0' + seconds : seconds;
+
+        countdownDisplay.textContent = minutes + ':' + seconds;
+
+        // Alerte visuelle quand il reste moins d'une minute
+        if (timeLeft <= 60) {
+            countdownDisplay.classList.remove('text-blue-600');
+            countdownDisplay.classList.add('text-red-500', 'pulse-red');
+        }
+
+        // Fin du temps imparti
+        if (timeLeft <= 0) {
+            clearInterval(timerInterval);
+            // On peut mettre un message sympa avant la redirection
+            countdownDisplay.textContent = "EXPIRÉ";
+            
+            setTimeout(() => {
+                window.location.href = "register.php?error=timeout";
+            }, 1000);
+        }
+
+        timeLeft--;
+    }, 1000);
+</script>
 
 <?php include "footer.php"; ?>
