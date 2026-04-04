@@ -12,6 +12,7 @@ Docker/mysql_data/
 
 # Dépendances (si tu en as)
 node_modules/
+**/node_modules/
 vendor/
 
 # Logs / cache
