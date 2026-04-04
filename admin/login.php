@@ -1,24 +1,12 @@
 <?php
 session_start();
 
-// 1. Récupération intelligente de l'IP (Spécial Azure)
-$user_ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-if (strpos($user_ip, ',') !== false) {
-    $user_ip = trim(explode(',', $user_ip)[0]);
-}
-if (strpos($user_ip, ':') !== false && strpos($user_ip, '.') !== false) {
-    $user_ip = explode(':', $user_ip)[0];
-}
-$user_ip = trim($user_ip);
+// 1. Récupération du token depuis l'.env (ou variable d'environnement Cloud)
+$admin_token = getenv('ADMIN_BADGE_TOKEN');
 
-// 2. Récupération de l'IP autorisée
-$allowed_ip = getenv('ALLOWED_ADMIN_IP'); 
-if (!$allowed_ip) {
-    $allowed_ip = $_SERVER['ALLOWED_ADMIN_IP'] ?? null;
-}
-
-// 3. Vérification
-if (empty($allowed_ip) || $user_ip !== trim($allowed_ip)) {
+// 2. Sécurité : Si le cookie n'existe pas ou ne correspond pas au token de l'.env
+if (!isset($_COOKIE['admin_secret_device']) || $_COOKIE['admin_secret_device'] !== $admin_token) {
+    // Redirection flash vers l'accueil si l'appareil n'est pas "badgé"
     header("Location: ../index.php"); 
     exit();
 }
@@ -38,17 +26,7 @@ if (empty($allowed_ip) || $user_ip !== trim($allowed_ip)) {
         input:focus { border-color: #6366f1; }
         button { width: 100%; background: #4f46e5; color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s; margin-top: 10px; }
         button:hover { background: #4338ca; }
-        
-        /* Style du bouton retour */
-        .btn-back { 
-            display: block; 
-            text-align: center; 
-            margin-top: 20px; 
-            color: #94a3b8; 
-            text-decoration: none; 
-            font-size: 14px; 
-            transition: color 0.2s;
-        }
+        .btn-back { display: block; text-align: center; margin-top: 20px; color: #94a3b8; text-decoration: none; font-size: 14px; transition: color 0.2s; }
         .btn-back:hover { color: white; }
     </style>
 </head>
@@ -60,7 +38,6 @@ if (empty($allowed_ip) || $user_ip !== trim($allowed_ip)) {
             <input type="password" name="password" placeholder="Mot de passe" required>
             <button type="submit">Se connecter</button>
         </form>
-        
         <a href="../index.php" class="btn-back">← Retour à l'accueil</a>
     </div>
 </body>
