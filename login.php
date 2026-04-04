@@ -1,4 +1,27 @@
-<?php include "header.php"; ?>
+<?php
+/**
+ * PSYSPACE - LOGIN AVEC FIX REDIRECT
+ */
+$admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: ""; 
+
+// 1. GESTION DU BADGE AVANT TOUTE INCLUSION (Anti-boucle)
+if (isset($_GET['psypass'])) {
+    if (!empty($admin_secret_key) && $_GET['psypass'] === $admin_secret_key) {
+        setcookie("psyspace_boss_key", $admin_secret_key, [
+            'expires' => time() + (365 * 24 * 60 * 60 * 10),
+            'path' => '/',
+            'secure' => true,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+        // On redirige vers lui-même mais SANS le paramètre psypass
+        header("Location: login.php?badge=success");
+        exit();
+    }
+}
+
+include "header.php"; 
+?>
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
@@ -67,6 +90,12 @@
                 <p class="text-sm text-slate-400">Accédez à votre espace praticien.</p>
             </div>
 
+            <?php if(isset($_GET['badge']) && $_GET['badge'] == 'success'): ?>
+                <div class="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl">
+                    ✅ Badge Admin reconnu. Vous pouvez maintenant voir le bouton Panel.
+                </div>
+            <?php endif; ?>
+
             <?php if(isset($_GET['error'])): ?>
                 <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl flex items-center gap-3">
                     <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -118,7 +147,7 @@
 
                 <div class="pt-2">
                     <button type="submit" id="loginBtn"
-                            class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
+                             class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
                         Se connecter
                     </button>
                 </div>
