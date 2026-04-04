@@ -1,32 +1,4 @@
-<?php
-/**
- * PSYSPACE - LOGIN AVEC FIX REDIRECT
- */
-session_start();
-
-// 1. RÉCUPÉRATION DE LA CLÉ DEPUIS AZURE
-$admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: ""; 
-
-// 2. GESTION DU BADGE (Si on arrive avec ?psypass=...)
-if (isset($_GET['psypass'])) {
-    if (!empty($admin_secret_key) && $_GET['psypass'] === $admin_secret_key) {
-        // Création du cookie sécurisé
-        setcookie("psyspace_boss_key", $admin_secret_key, [
-            'expires' => time() + (365 * 24 * 60 * 60), // 1 an
-            'path' => '/',
-            'secure' => true,
-            'httponly' => true,
-            'samesite' => 'Lax'
-        ]);
-        
-        // Redirection propre pour nettoyer l'URL
-        header("Location: login.php?badge=success");
-        exit();
-    }
-}
-
-include "header.php"; 
-?>
+<?php include "header.php"; ?>
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
@@ -79,7 +51,7 @@ include "header.php";
 
             <div class="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4">
                 <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-300 shrink-0">
-                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
                 <div>
                     <p class="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-0.5">Connexion sécurisée</p>
@@ -95,22 +67,16 @@ include "header.php";
                 <p class="text-sm text-slate-400">Accédez à votre espace praticien.</p>
             </div>
 
-            <?php if(isset($_GET['badge']) && $_GET['badge'] == 'success'): ?>
-                <div class="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl">
-                    ✅ Badge Admin activé. Les options d'administration sont débloquées.
-                </div>
-            <?php endif; ?>
-
             <?php if(isset($_GET['error'])): ?>
                 <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl flex items-center gap-3">
-                    <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <span>
                         <?php
                             switch($_GET['error']) {
                                 case "wrongpw": echo "Identifiants incorrects."; break;
                                 case "noaccount": echo "Aucun compte trouvé."; break;
-                                case "mailfail": echo "Erreur lors de l'envoi du mail de sécurité."; break;
-                                case "captcha": echo "Vérification Turnstile échouée."; break;
+                                case "notactive": echo "Compte en attente d'activation."; break;
+                                case "captcha": echo "Vérification de sécurité échouée."; break;
                                 default: echo "Une erreur est survenue.";
                             }
                         ?>
@@ -118,7 +84,8 @@ include "header.php";
                 </div>
             <?php endif; ?>
 
-            <form id="loginForm" action="login_action.php" method="POST" class="space-y-5">
+            <form id="loginForm" action="login_action.php" method="POST" class="space-y-5" novalidate>
+
                 <div class="space-y-1.5">
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email</label>
                     <input type="email" id="loginEmail" name="email" required
@@ -136,7 +103,13 @@ include "header.php";
                     <input type="password" id="loginPassword" name="password" required
                            placeholder="••••••••"
                            class="input-field">
-                    <p id="pwError" class="text-xs text-red-500 hidden">8 caractères minimum requis.</p>
+                    <p id="pwError" class="text-xs text-red-500 hidden">Le mot de passe doit faire 8 caractères minimum.</p>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="remember" name="remember" value="1"
+                           class="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-600 cursor-pointer">
+                    <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">Rester connecté</label>
                 </div>
 
                 <div class="pt-2 flex justify-center">
@@ -145,7 +118,7 @@ include "header.php";
 
                 <div class="pt-2">
                     <button type="submit" id="loginBtn"
-                             class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all shadow-sm">
+                            class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
                         Se connecter
                     </button>
                 </div>
@@ -164,7 +137,7 @@ include "header.php";
     </div>
 </main>
 
-<script>
+<script nonce="<?= $nonce ?>">
 document.addEventListener('DOMContentLoaded', () => {
     const emailInput = document.getElementById('loginEmail');
     const passInput  = document.getElementById('loginPassword');
@@ -197,6 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     emailInput.addEventListener('input', validate);
     passInput.addEventListener('input', validate);
+    validate();
 });
 </script>
 

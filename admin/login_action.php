@@ -1,114 +1,79 @@
 <?php
 session_start();
-// On force l'inclusion de la connexion avec un chemin absolu pour éviter les erreurs Azure
 require_once __DIR__ . "/../connection.php";
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
-
 require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
 
-if (!isset($con)) { $con = $conn ?? null; }
-
-// --- VÉRIFICATION DU BADGE (SÉCURITÉ SUPPLÉMENTAIRE) ---
+// 1. Sécurité : Vérification du badge
 $admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: "";
 if (!isset($_COOKIE['psyspace_boss_key']) || $_COOKIE['psyspace_boss_key'] !== $admin_secret_key) {
-    // Si on essaie de poster ici sans le badge, on dégage à l'accueil
     header("Location: ../index.php?error=unauthorized_action");
     exit();
 }
 
+// 2. Sécurité : Rediriger si on essaie d'accéder à ce fichier directement sans poster de formulaire
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header("Location: login.php");
     exit();
 }
 
-// 1. RÉCUPÉRATION IP AZURE
-$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'Inconnue';
-if (strpos($ip, ',') !== false) { $ip = trim(explode(',', $ip)[0]); }
-$ip = filter_var($ip, FILTER_VALIDATE_IP) ?: 'Format IP Invalide';
+// --- LE RESTE DU TRAITEMENT ---
+if (!isset($con)) { $con = $conn ?? null; }
 
-$email    = mysqli_real_escape_string($con, trim($_POST['email'] ?? ''));
+$email    = trim($_POST['email'] ?? '');
 $password = trim($_POST['password'] ?? '');
-$heure    = date('d/m/Y à H:i:s');
 
-/* ══════════════════════════════════════
-    RECHERCHE ADMIN
-══════════════════════════════════════ */
-$sql    = "SELECT * FROM admin WHERE admemail = '$email' LIMIT 1";
-$result = $con->query($sql);
+$stmt = $con->prepare("SELECT * FROM admin WHERE admemail = ? LIMIT 1");
+$stmt->bind_param("s", $email);
+$stmt->execute();
+$result = $stmt->get_result();
 
-if ($result && $result->num_rows > 0) {
-    $admin = $result->fetch_assoc();
-    $mail = new PHPMailer(true);
+$smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
+$smtp_pass = getenv('SMTP_PASS') ?: '';
+$mail = new PHPMailer(true);
 
-    try {
-        // CONFIGURATION SMTP (Variables Azure)
-        $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
-        $smtp_pass = getenv('SMTP_PASS') ?: '';
+try {
+    $mail->isSMTP();
+    $mail->Host       = 'smtp.gmail.com';
+    $mail->SMTPAuth   = true;
+    $mail->Username   = $smtp_user;
+    $mail->Password   = $smtp_pass;
+    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->Port       = 587;
+    $mail->CharSet    = 'UTF-8';
+    $mail->setFrom($smtp_user, 'PsySpace Shield');
+    $mail->addAddress($smtp_user);
+    $mail->isHTML(true);
 
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $smtp_user;
-        $mail->Password   = $smtp_pass;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-        $mail->CharSet    = 'UTF-8';
-        
-        $mail->setFrom($smtp_user, 'PsySpace Shield');
-        $mail->addAddress($smtp_user);
-        $mail->isHTML(true);
+    if ($result && $result->num_rows > 0) {
+        $admin = $result->fetch_assoc();
 
         if (password_verify($password, $admin['admpassword'])) {
-            // 2. SUCCÈS -> GÉNÉRATION OTP
             $otp = rand(100000, 999999);
-            $admin_id = $admin['admid'];
-            $con->query("UPDATE admin SET otp_code = '$otp' WHERE admid = '$admin_id'");
+            $update_stmt = $con->prepare("UPDATE admin SET otp_code = ? WHERE admid = ?");
+            $update_stmt->bind_param("si", $otp, $admin['admid']);
+            $update_stmt->execute();
 
             $mail->Subject = "🔑 Code de vérification Admin - $otp";
-            $mail->Body    = "
-            <div style='font-family:sans-serif;max-width:500px;margin:0 auto;border:2px solid #4f46e5;border-radius:12px;overflow:hidden;'>
-                <div style='background:#4f46e5;padding:20px;text-align:center;'><h2 style='color:#fff;margin:0;'>Code de Sécurité</h2></div>
-                <div style='padding:24px;background:#f8fafc;text-align:center;'>
-                    <p style='color:#1e293b;font-size:16px;'>Utilisez le code suivant pour accéder au Dashboard Admin :</p>
-                    <div style='font-size:32px; font-weight:bold; color:#4f46e5; background:#fff; padding:15px; border-radius:8px; border:1px dashed #4f46e5; display:inline-block; margin:10px 0;'>$otp</div>
-                    <p style='color:#64748b;font-size:12px;'>Tentative réussie depuis l'IP : <b>$ip</b> le $heure</p>
-                </div>
-            </div>";
-            
+            $mail->Body    = "<h2>Code : $otp</h2>";
             $mail->send();
+            
             $_SESSION['temp_admin_id'] = $admin['admid'];
             header("Location: verify_otp.php");
             exit();
-
         } else {
-            // 3. ÉCHEC MOT DE PASSE
-            $mail->Subject = "⚠️ ALERTE : Tentative de connexion échouée";
-            $mail->Body    = "
-            <div style='font-family:sans-serif;max-width:500px;margin:0 auto;border:2px solid #ef4444;border-radius:12px;overflow:hidden;'>
-                <div style='background:#ef4444;padding:20px;text-align:center;'><h2 style='color:#fff;margin:0;'>🚫 Accès Refusé</h2></div>
-                <div style='padding:24px;background:#fff;'>
-                    <p style='color:#1e293b;font-size:16px;'>Tentative avec mot de passe incorrect.</p>
-                    <p><b>Compte :</b> $email</p>
-                    <p><b>IP :</b> $ip</p>
-                </div>
-            </div>";
-
-            $mail->send();
             header("Location: login.php?error=wrongpw");
             exit();
         }
-
-    } catch (Exception $e) {
-        error_log("PHPMailer Error: " . $mail->ErrorInfo);
-        header("Location: login.php?error=mailfail");
+    } else {
+        header("Location: login.php?error=noaccount");
         exit();
     }
-} else {
-    // 4. AUCUN COMPTE TROUVÉ
-    header("Location: login.php?error=noaccount");
+} catch (Exception $e) {
+    header("Location: login.php?error=mailfail");
     exit();
 }
