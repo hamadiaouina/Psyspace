@@ -8,12 +8,10 @@
 // --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
 /// --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
 // On récupère la clé depuis les variables d'environnement (plus de clé en dur !)
+// --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
 $admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: ""; 
 
-// Vérification du badge
-$is_admin_device = (isset($_COOKIE['psyspace_boss_key']) && $_COOKIE['psyspace_boss_key'] === $admin_secret_key && !empty($admin_secret_key));
-
-// Activation manuelle via URL
+// 1. Activation manuelle via URL (On change le header ici)
 if (isset($_GET['psypass']) && !empty($admin_secret_key) && $_GET['psypass'] === $admin_secret_key) {
     setcookie("psyspace_boss_key", $admin_secret_key, [
         'expires' => time() + (10 * 365 * 24 * 60 * 60),
@@ -22,8 +20,19 @@ if (isset($_GET['psypass']) && !empty($admin_secret_key) && $_GET['psypass'] ===
         'secure' => true, 
         'samesite' => 'Lax'
     ]);
-    header("Location: index.php");
-    exit;
+    
+    // ON NETTOIE L'URL : On redirige vers une URL propre sans "psypass"
+    // Cela casse la boucle de redirection immédiatement.
+    header("Location: index.php?badge=active");
+    exit();
+}
+
+// 2. Vérification du badge pour l'affichage
+$is_admin_device = false;
+if (!empty($admin_secret_key) && isset($_COOKIE['psyspace_boss_key'])) {
+    if ($_COOKIE['psyspace_boss_key'] === $admin_secret_key) {
+        $is_admin_device = true;
+    }
 }
 
 // --- B. SÉCURITÉ & FIREWALL ---
