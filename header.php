@@ -9,7 +9,12 @@
 /// --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
 // On récupère la clé depuis les variables d'environnement (plus de clé en dur !)
 // --- A. RECONNAISSANCE MATÉRIELLE (BADGE INVISIBLE) ---
-$admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: ""; 
+$admin_secret_key = getenv('ADMIN_BADGE_TOKEN');
+if ($admin_secret_key === false || $admin_secret_key === '') {
+    // La clé ADMIN_BADGE_TOKEN est obligatoire - ne jamais autoriser une clé vide
+    error_log('SECURITY: ADMIN_BADGE_TOKEN environment variable is not configured.');
+    $admin_secret_key = null;
+}
 
 // 1. Activation manuelle via URL (On change le header ici)
 if (isset($_GET['psypass']) && !empty($admin_secret_key) && $_GET['psypass'] === $admin_secret_key) {
@@ -41,6 +46,16 @@ if (file_exists(__DIR__ . '/security/firewall.php')) {
 }
 
 $is_localhost = in_array($_SERVER['REMOTE_ADDR'], ['127.0.0.1', '::1']) || $_SERVER['SERVER_NAME'] === 'localhost';
+
+// --- HTTP vers HTTPS : redirection forcée en production ---
+if (!$is_localhost && (!isset($_SERVER['HTTPS']) || $_SERVER['HTTPS'] !== 'on')) {
+    // Utiliser SERVER_NAME (contrôlé par la config serveur) plutôt que HTTP_HOST
+    // pour éviter l'injection d'en-tête HTTP Host
+    $safe_host = $_SERVER['SERVER_NAME'];
+    $redirect_url = 'https://' . $safe_host . $_SERVER['REQUEST_URI'];
+    header('Location: ' . $redirect_url, true, 301);
+    exit();
+}
 
 session_set_cookie_params([
     'lifetime' => 0,
@@ -87,9 +102,10 @@ if (!$is_localhost) {
         "upgrade-insecure-requests;"
     );
 } else {
+    // CSP de développement : plus stricte pour détecter les problèmes avant la production
     header("Content-Security-Policy: " .
-        "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http:; " .
-        "script-src 'self' 'nonce-{$nonce}' 'unsafe-inline' 'unsafe-eval' https: http: https://challenges.cloudflare.com; " .
+        "default-src 'self'; " .
+        "script-src 'self' 'nonce-{$nonce}' https://challenges.cloudflare.com https://cdn.tailwindcss.com; " .
         "frame-src 'self' https://challenges.cloudflare.com; " . 
         "img-src 'self' data: https: http: blob: https://images.unsplash.com; " .
         "connect-src 'self' https: http: blob: wss:; " .
