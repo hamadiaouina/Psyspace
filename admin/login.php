@@ -1,12 +1,11 @@
 <?php
 session_start();
 
-// 1. Récupération du token depuis l'.env (ou variable d'environnement Cloud)
+// 1. Récupération du token depuis l'.env
 $admin_token = getenv('ADMIN_BADGE_TOKEN');
 
-// 2. Sécurité : Si le cookie n'existe pas ou ne correspond pas au token de l'.env
-if (!isset($_COOKIE['admin_secret_device']) || $_COOKIE['admin_secret_device'] !== $admin_token) {
-    // Redirection flash vers l'accueil si l'appareil n'est pas "badgé"
+// 2. SÉCURITÉ : On utilise le MÊME nom que dans l'index
+if (!isset($_COOKIE['psyspace_boss_key']) || $_COOKIE['psyspace_boss_key'] !== $admin_token || empty($admin_token)) {
     header("Location: ../index.php"); 
     exit();
 }
