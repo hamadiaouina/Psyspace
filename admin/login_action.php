@@ -8,34 +8,48 @@ require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
 
-// 1. Sécurité : Vérification du badge
+// --- 1. SÉCURITÉ : VÉRIFICATION DU BADGE ---
 $admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: "";
 if (!isset($_COOKIE['psyspace_boss_key']) || $_COOKIE['psyspace_boss_key'] !== $admin_secret_key) {
     header("Location: ../index.php?error=unauthorized_action");
     exit();
 }
 
-// 2. Sécurité : Rediriger si on essaie d'accéder à ce fichier directement sans poster de formulaire
+// Bloquer l'accès direct via l'URL
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header("Location: login.php");
     exit();
 }
 
-// --- LE RESTE DU TRAITEMENT ---
+// --- 2. SÉCURITÉ : COMPTEUR DE TENTATIVES ANTI BRUTE-FORCE ---
+if (!isset($_SESSION['admin_attempts'])) {
+    $_SESSION['admin_attempts'] = 0;
+}
+if ($_SESSION['admin_attempts'] >= 3) {
+    header("Location: ../index.php?error=security_lock");
+    exit();
+}
+
 if (!isset($con)) { $con = $conn ?? null; }
 
-$email    = trim($_POST['email'] ?? '');
-$password = trim($_POST['password'] ?? '');
+// Récupération des données et de l'IP de l'attaquant/utilisateur
+$email_attempt = trim($_POST['email'] ?? '');
+$password_attempt = trim($_POST['password'] ?? '');
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'IP Inconnue';
+$date_heure = date('d/m/Y à H:i:s');
+$user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Inconnu';
 
+// --- 3. REQUÊTE PRÉPARÉE ---
 $stmt = $con->prepare("SELECT * FROM admin WHERE admemail = ? LIMIT 1");
-$stmt->bind_param("s", $email);
+$stmt->bind_param("s", $email_attempt);
 $stmt->execute();
 $result = $stmt->get_result();
 
+// --- 4. PRÉPARATION DE L'EMAIL ---
 $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
 $smtp_pass = getenv('SMTP_PASS') ?: '';
-$mail = new PHPMailer(true);
 
+$mail = new PHPMailer(true);
 try {
     $mail->isSMTP();
     $mail->Host       = 'smtp.gmail.com';
@@ -46,34 +60,89 @@ try {
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
     $mail->setFrom($smtp_user, 'PsySpace Shield');
-    $mail->addAddress($smtp_user);
+    $mail->addAddress($smtp_user); // C'est TOI qui reçois l'email
     $mail->isHTML(true);
 
     if ($result && $result->num_rows > 0) {
         $admin = $result->fetch_assoc();
 
-        if (password_verify($password, $admin['admpassword'])) {
+        if (password_verify($password_attempt, $admin['admpassword'])) {
+            // ==========================================
+            // SCÉNARIO 1 : SUCCÈS (Bon email, bon MDP)
+            // ==========================================
+            $_SESSION['admin_attempts'] = 0; // Reset des tentatives
             $otp = rand(100000, 999999);
+            
+            // Sauvegarde de l'OTP
             $update_stmt = $con->prepare("UPDATE admin SET otp_code = ? WHERE admid = ?");
             $update_stmt->bind_param("si", $otp, $admin['admid']);
             $update_stmt->execute();
 
             $mail->Subject = "🔑 Code de vérification Admin - $otp";
-            $mail->Body    = "<h2>Code : $otp</h2>";
+            $mail->Body    = "
+            <div style='border:2px solid #4f46e5; padding:20px; border-radius:10px; font-family:sans-serif;'>
+                <h2 style='color:#4f46e5; text-align:center;'>Code d'accès Admin</h2>
+                <div style='font-size:30px; text-align:center; font-weight:bold; padding:15px; background:#f3f4f6;'>$otp</div>
+                <hr>
+                <p>Connexion réussie le <b>$date_heure</b></p>
+                <p>IP : <b>$ip</b></p>
+            </div>";
             $mail->send();
             
             $_SESSION['temp_admin_id'] = $admin['admid'];
             header("Location: verify_otp.php");
             exit();
+
         } else {
+            // ==========================================
+            // SCÉNARIO 2 : ÉCHEC (Bon email, Mauvais MDP)
+            // ==========================================
+            $_SESSION['admin_attempts']++;
+            
+            $mail->Subject = "⚠️ ALERTE : Mauvais mot de passe Admin";
+            $mail->Body    = "
+            <div style='border:2px solid #ef4444; padding:20px; border-radius:10px; font-family:sans-serif;'>
+                <h2 style='color:#ef4444;'>Tentative de connexion échouée</h2>
+                <p>Quelqu'un a essayé de se connecter à un compte admin existant avec un mauvais mot de passe.</p>
+                <ul>
+                    <li><b>Email ciblé :</b> $email_attempt</li>
+                    <li><b>Mot de passe testé :</b> $password_attempt</li>
+                    <li><b>IP de l'attaquant :</b> $ip</li>
+                    <li><b>Heure :</b> $date_heure</li>
+                    <li><b>Appareil :</b> $user_agent</li>
+                </ul>
+            </div>";
+            $mail->send();
+            
             header("Location: login.php?error=wrongpw");
             exit();
         }
     } else {
+        // ==========================================
+        // SCÉNARIO 3 : ÉCHEC (Email Inconnu)
+        // ==========================================
+        $_SESSION['admin_attempts']++;
+
+        $mail->Subject = "🚨 INTRUSION : Tentative avec Email Inconnu";
+        $mail->Body    = "
+        <div style='border:2px solid #f97316; padding:20px; border-radius:10px; font-family:sans-serif;'>
+            <h2 style='color:#f97316;'>Alerte Intrusion Admin</h2>
+            <p>Un utilisateur a tenté d'accéder au panel admin avec une adresse email qui n'existe pas dans la base.</p>
+            <ul>
+                <li><b>Email testé :</b> $email_attempt</li>
+                <li><b>Mot de passe testé :</b> $password_attempt</li>
+                <li><b>IP de l'attaquant :</b> $ip</li>
+                <li><b>Heure :</b> $date_heure</li>
+                <li><b>Appareil :</b> $user_agent</li>
+            </ul>
+        </div>";
+        $mail->send();
+        
         header("Location: login.php?error=noaccount");
         exit();
     }
 } catch (Exception $e) {
+    // Si l'envoi de mail plante, on redirige quand même vers l'erreur de connexion sans planter la page
     header("Location: login.php?error=mailfail");
     exit();
 }
