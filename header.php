@@ -100,6 +100,9 @@ ob_start(function($buffer) {
     );
 });
 ?>
+<?php if(isset($_GET['error']) && $_GET['error'] == 'security_lock'): ?>
+    <script>alert("Accès bloqué après 3 tentatives infructueuses par mesure de sécurité.");</script>
+<?php endif; ?>
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
