@@ -1,8 +1,8 @@
 <?php
 session_start();
 
-// 1. Diagnostic d'erreurs
-ini_set('display_errors', '1');
+// 1. SÉCURITÉ : Cacher les erreurs en production (Évite les fuites de structure DB)
+ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -12,14 +12,24 @@ require __DIR__ . '/vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/vendor/PHPMailer/src/SMTP.php';
 
-include "connection.php"; 
+require_once __DIR__ . "/connection.php"; 
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: register.php");
     exit();
 }
 
-// 3. Récupération
+// --- 2. ANTI-SPAM (Rate Limiting) ---
+// Empêche un robot de créer plusieurs comptes à la suite
+if (isset($_SESSION['last_register_attempt']) && (time() - $_SESSION['last_register_attempt']) < 30) {
+    // Bloque pendant 30 secondes
+    header("Location: register.php?error=spam_protection");
+    exit();
+}
+$_SESSION['last_register_attempt'] = time();
+
+
+// 3. RÉCUPÉRATION ET NETTOYAGE DES DONNÉES
 $nom      = trim($_POST['nom']      ?? '');
 $prenom   = trim($_POST['prenom']   ?? '');
 $email    = trim($_POST['email']    ?? '');
@@ -31,52 +41,59 @@ if (empty($nom) || empty($prenom) || empty($email) || empty($password)) {
     exit();
 }
 
-// --- NOUVEAUTÉ : NETTOYAGE DES INSCRIPTIONS EXPIRÉES (5 MIN) ---
-// On supprime les comptes 'pending' avec cet email s'ils ont plus de 5 minutes
-$cleanup_query = "DELETE FROM doctor WHERE docemail = ? AND status = 'pending' AND created_at < NOW() - INTERVAL 5 MINUTE";
-$stmt_cleanup = $con->prepare($cleanup_query);
-$stmt_cleanup->bind_param("s", $email);
-$stmt_cleanup->execute();
-$stmt_cleanup->close();
-// --------------------------------------------------------------
-
-$fullName = $prenom . " " . $nom;
-$hashed_password = password_hash($password, PASSWORD_ARGON2ID);
-$otp = (int)rand(100000, 999999);
-
-// 4. Vérification email unique (Après le nettoyage)
-$stmt = $con->prepare("SELECT docid, status FROM doctor WHERE docemail = ?");
-$stmt->bind_param("s", $email);
-$stmt->execute();
-$res = $stmt->get_result();
-
-if ($row = $res->fetch_assoc()) {
-    if ($row['status'] === 'pending') {
-        // Le compte est 'pending' mais a MOINS de 5 min (puisqu'il n'a pas été supprimé par le cleanup)
-        header("Location: register.php?error=pending_recent"); 
-        exit();
-    } else {
-        // Le compte est déjà 'active'
-        header("Location: register.php?error=emailexist");
-        exit();
-    }
+// Vérification stricte du format de l'email
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    header("Location: register.php?error=invalid_email");
+    exit();
 }
-$stmt->close();
 
-// 5. Insertion en base
-// Note: Assure-toi que ta table doctor a bien la colonne created_at (TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
-$sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status, dob) VALUES (?, ?, ?, ?, 'pending', ?)";
-$insertStmt = $con->prepare($sql);
-$insertStmt->bind_param("sssis", $email, $fullName, $hashed_password, $otp, $dob);
-
-if (!$insertStmt->execute()) {
-    die("Erreur SQL : " . $insertStmt->error);
+// Vérification de la force du mot de passe (Minimum 8 caractères)
+if (strlen($password) < 8) {
+    header("Location: register.php?error=weak_password");
+    exit();
 }
-$insertStmt->close();
 
-// 6. Envoi de l'OTP
-$mail = new PHPMailer(true);
+if (!isset($con)) { $con = $conn ?? null; }
+
 try {
+    // --- 4. NETTOYAGE DES INSCRIPTIONS EXPIRÉES (5 MIN) ---
+    $cleanup_query = "DELETE FROM doctor WHERE docemail = ? AND status = 'pending' AND created_at < NOW() - INTERVAL 5 MINUTE";
+    $stmt_cleanup = $con->prepare($cleanup_query);
+    $stmt_cleanup->bind_param("s", $email);
+    $stmt_cleanup->execute();
+    $stmt_cleanup->close();
+
+    // 5. VÉRIFICATION SI L'EMAIL EXISTE DÉJÀ
+    $stmt = $con->prepare("SELECT docid, status FROM doctor WHERE docemail = ?");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    if ($row = $res->fetch_assoc()) {
+        if ($row['status'] === 'pending') {
+            header("Location: register.php?error=pending_recent"); 
+            exit();
+        } else {
+            header("Location: register.php?error=emailexist");
+            exit();
+        }
+    }
+    $stmt->close();
+
+    // 6. PRÉPARATION DE L'INSERTION
+    $fullName = $prenom . " " . $nom;
+    $hashed_password = password_hash($password, PASSWORD_ARGON2ID);
+    $otp = rand(100000, 999999);
+
+    $sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status, dob) VALUES (?, ?, ?, ?, 'pending', ?)";
+    $insertStmt = $con->prepare($sql);
+    $insertStmt->bind_param("sssis", $email, $fullName, $hashed_password, $otp, $dob);
+    $insertStmt->execute();
+    $insertStmt->close();
+
+    // 7. ENVOI DU MAIL OTP
+    $mail = new PHPMailer(true);
+    
     $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
     $smtp_pass = getenv('SMTP_PASS') ?: ''; 
 
@@ -89,33 +106,48 @@ try {
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
 
-    $mail->setFrom($smtp_user, 'PsySpace AI');
+    $mail->setFrom($smtp_user, 'PsySpace Security');
     $mail->addAddress($email, $fullName);
-
     $mail->isHTML(true);
-    $mail->Subject = "Votre code de validation PsySpace";
-    $mail->Body    = "
-    <div style='font-family:sans-serif; text-align:center; padding:40px; background:#f8fafc;'>
-        <div style='max-width:500px; margin:0 auto; background:#ffffff; padding:30px; border-radius:20px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);'>
-            <h1 style='color:#2563eb; margin-bottom:10px;'>PsySpace</h1>
-            <p style='color:#475569; font-size:16px;'>Bonjour <b>$fullName</b>,</p>
-            <p style='color:#475569;'>Utilisez le code suivant pour activer votre compte professionnel. Ce code expire dans 5 minutes.</p>
-            <div style='font-size:32px; letter-spacing:5px; font-weight:800; color:#2563eb; background:#eff6ff; padding:20px; margin:25px 0; border-radius:12px; border:2px dashed #bfdbfe;'>
+    $mail->Subject = "🔑 Code d'activation de votre espace praticien";
+    
+    $mail->Body = "
+    <div style='font-family:sans-serif; max-width:500px; margin:0 auto; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;'>
+        <div style='background:#4f46e5; padding:20px; text-align:center;'>
+            <h2 style='color:#ffffff; margin:0;'>Bienvenue sur PsySpace</h2>
+        </div>
+        <div style='padding:30px; background:#ffffff; text-align:center;'>
+            <p style='color:#475569; font-size:16px;'>Bonjour <b>" . htmlspecialchars($fullName) . "</b>,</p>
+            <p style='color:#475569; line-height:1.5;'>Pour activer votre compte praticien, veuillez entrer ce code de sécurité. Il expirera dans 5 minutes.</p>
+            <div style='font-size:36px; font-weight:bold; color:#4f46e5; background:#f8fafc; padding:15px; border-radius:8px; border:2px dashed #cbd5e1; margin:20px 0; letter-spacing: 4px;'>
                 $otp
             </div>
-            <p style='color:#94a3b8; font-size:12px;'>Si vous n'avez pas demandé ce code, ignorez cet e-mail.</p>
+            <p style='color:#94a3b8; font-size:12px;'>Si vous n'avez pas créé ce compte, veuillez ignorer cet e-mail.</p>
         </div>
     </div>";
 
     $mail->send();
 
+    // 8. REDIRECTION (Sécurisée : pas besoin de passer l'email dans l'URL)
     $_SESSION['pending_email'] = $email;
-    header("Location: verify.php?email=" . urlencode($email));
+    header("Location: verify.php");
     exit();
 
 } catch (Exception $e) {
-    // Si l'envoi de mail crash, on supprime l'entrée pour pas bloquer l'user
-    $con->query("DELETE FROM doctor WHERE docemail = '" . mysqli_real_escape_string($con, $email) . "'");
+    // Erreur PHPMailer : Le mail n'est pas parti, on supprime le compte proprement
+    if (isset($email)) {
+        $del_stmt = $con->prepare("DELETE FROM doctor WHERE docemail = ? AND status = 'pending'");
+        $del_stmt->bind_param("s", $email);
+        $del_stmt->execute();
+        $del_stmt->close();
+    }
+    error_log("Erreur Mail Inscription : " . $e->getMessage());
     header("Location: register.php?error=mailfail");
+    exit();
+
+} catch (\mysqli_sql_exception $e) {
+    // Erreur de Base de données (On loggue mais on ne montre rien au visiteur)
+    error_log("Erreur DB Inscription : " . $e->getMessage());
+    header("Location: register.php?error=dberror");
     exit();
 }
