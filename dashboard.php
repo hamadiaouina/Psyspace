@@ -1,14 +1,12 @@
 <?php
-// --- 1. SÉCURITÉ DES SESSIONS & HEADERS (Le bouclier invisible) ---
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
 ini_set('session.cookie_httponly', '1'); 
 ini_set('session.use_only_cookies', '1');
 ini_set('session.cookie_samesite', 'Lax');
 
-// Détection HTTPS pour sécuriser le cookie
 if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
     ini_set('session.cookie_secure', '1');
 }
-
 session_start();
 
 if (!isset($_SESSION['id'])) { 
@@ -16,7 +14,7 @@ if (!isset($_SESSION['id'])) {
     exit(); 
 }
 
-// --- 2. ANTI VOL DE SESSION (Session Hijacking) ---
+// --- 2. ANTI VOL DE SESSION ---
 if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
     if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
         session_destroy();
@@ -25,14 +23,13 @@ if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
     }
 }
 
-// --- 3. GÉNÉRATION DU PARE-FEU CSP SPÉCIFIQUE AU DASHBOARD ---
+// --- 3. PARE-FEU CSP ---
 $nonce = base64_encode(random_bytes(16));
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
 header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' https://assets.mixkit.co; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
 
-// --- 4. CONNEXION DB ---
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
@@ -99,50 +96,54 @@ $last_consult = $stmt->get_result()->fetch_assoc()['date_consultation'] ?? null;
 $stmt->close();
 ?>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard | PsySpace</title>
     <link rel="icon" type="image/png" href="assets/images/logo.png">
     
-    <!-- Ajout du nonce pour la sécurité CSP -->
     <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <script nonce="<?= $nonce ?>">
         tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        serif: ['Merriweather', 'serif'],
-                    }
-                }
-            }
+            darkMode: 'class',
+            theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Merriweather', 'serif'] } } }
+        };
+        // Gestion locale du Dark Mode
+        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
         }
     </script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    <style nonce="<?= $nonce ?>">
+        body { font-family: 'Inter', sans-serif; }
         .sidebar-link { transition: all 0.2s ease; }
         .sidebar-link.active { background-color: #eef2ff; color: #4f46e5; font-weight: 600; }
+        .dark .sidebar-link.active { background-color: rgba(79,70,229,0.2); color: #818cf8; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-700">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 transition-colors duration-300">
 
-<div class="flex min-h-screen">
+<div class="flex min-h-screen relative">
+
+    <!-- SIDEBAR MOBILE OVERLAY -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity"></div>
 
     <!-- SIDEBAR -->
-    <aside class="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-50 print:hidden">
-        <div class="p-6 border-b border-slate-800">
+    <aside id="sidebar" class="w-64 bg-slate-900 dark:bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0 print:hidden">
+        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
             <a href="dashboard.php" class="flex items-center gap-3">
                 <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
                 <span class="text-lg font-bold text-white">PsySpace</span>
             </a>
+            <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
         </div>
 
         <nav class="flex-1 p-4 space-y-1">
-            <a href="dashboard.php" class="sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-white bg-slate-800/50">
+            <a href="dashboard.php" class="sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                 Dashboard
             </a>
@@ -160,7 +161,6 @@ $stmt->close();
             </a>
         </nav>
 
-        <!-- Profil Sidebar -->
         <div class="p-4 border-t border-slate-800">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold border-2 border-indigo-200 overflow-hidden">
@@ -183,62 +183,57 @@ $stmt->close();
     </aside>
 
     <!-- MAIN CONTENT -->
-    <main class="flex-1 ml-64 p-8">
+    <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full">
         
         <!-- HEADER -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
-                <p class="text-slate-500 text-sm mt-1">Voici le résumé de votre activité.</p>
+        <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div class="flex items-center gap-4">
+                <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Voici le résumé de votre activité.</p>
+                </div>
             </div>
             
             <div class="flex items-center gap-4">
+                <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all border border-transparent dark:border-slate-700">
+                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 011.414-1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
+                </button>
                 <div class="hidden sm:block text-right">
                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aujourd'hui</p>
-                    <p class="text-sm font-semibold text-slate-700"><?= date('d M, Y') ?></p>
+                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-300"><?= date('d M, Y') ?></p>
                 </div>
-
-                <a href="profile.php" class="flex items-center gap-3 bg-white border border-slate-200 rounded-full pl-4 pr-1.5 py-1.5 hover:border-indigo-400 hover:shadow-md transition-all group cursor-pointer">
-                    <div class="text-right hidden sm:block">
-                        <p class="text-xs text-slate-500">Connecté en tant que</p>
-                        <p class="text-sm font-bold text-slate-800 group-hover:text-indigo-600 leading-tight">Dr. <?= htmlspecialchars(ucwords(strtolower($nom_docteur))) ?></p>
-                    </div>
-                    <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm border-2 border-white shadow overflow-hidden">
-                        <?php if(!empty($doc_photo) && file_exists($doc_photo)): ?>
-                            <img src="<?= htmlspecialchars($doc_photo) ?>?v=<?= time() ?>" class="w-full h-full object-cover">
-                        <?php else: ?>
-                            <?= $doc_initial ?>
-                        <?php endif; ?>
-                    </div>
-                </a>
             </div>
         </div>
 
         <!-- COUNTDOWN PROCHAIN RDV -->
         <?php if($next_rdv): ?>
-        <div class="bg-white border border-slate-200 rounded-xl p-5 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
             <div class="flex items-center gap-4">
-                <div class="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 border border-indigo-100">
+                <div class="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
                 <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Prochain rendez-vous</p>
-                    <p class="text-lg font-bold text-slate-900"><?= htmlspecialchars($next_rdv['patient_name']) ?></p>
+                    <p class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prochain rendez-vous</p>
+                    <p class="text-lg font-bold text-slate-900 dark:text-white"><?= htmlspecialchars($next_rdv['patient_name']) ?></p>
                 </div>
             </div>
-            <div id="countdown-wrap" class="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
+            <div class="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-lg border border-slate-100 dark:border-slate-700">
                 <div class="text-center px-2">
-                    <span class="countdown-val text-lg font-bold text-slate-900" id="cd-h">--</span>
+                    <span class="countdown-val text-lg font-bold text-slate-900 dark:text-white" id="cd-h">--</span>
                     <span class="text-xs text-slate-400 block">H</span>
                 </div>
-                <span class="font-bold text-slate-300">:</span>
+                <span class="font-bold text-slate-300 dark:text-slate-600">:</span>
                 <div class="text-center px-2">
-                    <span class="countdown-val text-lg font-bold text-slate-900" id="cd-m">--</span>
+                    <span class="countdown-val text-lg font-bold text-slate-900 dark:text-white" id="cd-m">--</span>
                     <span class="text-xs text-slate-400 block">Min</span>
                 </div>
-                <span class="font-bold text-slate-300">:</span>
+                <span class="font-bold text-slate-300 dark:text-slate-600">:</span>
                 <div class="text-center px-2">
-                    <span class="countdown-val text-lg font-bold text-slate-900" id="cd-s">--</span>
+                    <span class="countdown-val text-lg font-bold text-slate-900 dark:text-white" id="cd-s">--</span>
                     <span class="text-xs text-slate-400 block">Sec</span>
                 </div>
             </div>
@@ -246,84 +241,81 @@ $stmt->close();
         <?php endif; ?>
 
         <!-- STATS GRID -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-            <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Patients actifs</p>
-                <p class="font-serif text-4xl font-bold text-indigo-600"><?= $total_patients ?></p>
-                <div class="mt-4 text-xs text-slate-500">Total unique</div>
+                <p class="font-serif text-4xl font-bold text-indigo-600 dark:text-indigo-400"><?= $total_patients ?></p>
             </div>
-            <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Séances du jour</p>
-                <p class="font-serif text-4xl font-bold text-slate-900"><?= $rdv_du_jour ?></p>
-                <div class="mt-4 w-full bg-slate-100 rounded-full h-1.5">
-                    <div class="bg-indigo-600 h-1.5 rounded-full" style="width: <?= $progression ?>%"></div>
+                <p class="font-serif text-4xl font-bold text-slate-900 dark:text-white"><?= $rdv_du_jour ?></p>
+                <div class="mt-4 w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5">
+                    <div class="bg-indigo-600 dark:bg-indigo-500 h-1.5 rounded-full" style="width: <?= $progression ?>%"></div>
                 </div>
             </div>
-            <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Terminées</p>
-                <p class="font-serif text-4xl font-bold text-slate-900"><?= $rdv_termines ?></p>
-                <div class="mt-4 text-xs text-emerald-600 font-medium"><?= $progression ?>% complété</div>
+                <p class="font-serif text-4xl font-bold text-slate-900 dark:text-white"><?= $rdv_termines ?></p>
+                <div class="mt-4 text-xs text-emerald-600 dark:text-emerald-400 font-medium"><?= $progression ?>% complété</div>
             </div>
-            <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Archives</p>
-                <p class="font-serif text-4xl font-bold text-slate-900"><?= $total_archives ?></p>
-                <a href="consultations.php" class="mt-4 text-xs text-indigo-600 font-medium hover:underline">Voir tout →</a>
+                <p class="font-serif text-4xl font-bold text-slate-900 dark:text-white"><?= $total_archives ?></p>
+                <a href="consultations.php" class="mt-4 text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline inline-block">Voir tout →</a>
             </div>
         </div>
 
         <!-- TABLEAUX & LISTES -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            <!-- Liste RDV -->
-            <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
-                    <h3 class="font-bold text-slate-900">Prochains rendez-vous</h3>
-                    <a href="agenda.php" class="text-xs text-indigo-600 font-medium hover:underline">Voir l'agenda</a>
+            <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-900 dark:text-white">Prochains rendez-vous</h3>
+                    <a href="agenda.php" class="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Voir l'agenda</a>
                 </div>
-                <table class="w-full text-left">
-                    <tbody class="divide-y divide-slate-100">
-                        <?php if ($patients_query->num_rows > 0):
-                            while ($row = $patients_query->fetch_assoc()):
-                                $ts       = strtotime($row['app_date']);
-                                $is_today = date('Y-m-d', $ts) === date('Y-m-d');
-                                $archived = (int)$row['archive_count'] > 0;
-                                $patient_enc = urlencode($row['patient_name']);
-                        ?>
-                        <tr class="hover:bg-slate-50 transition-colors">
-                            <td class="px-6 py-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-lg bg-slate-100 flex flex-col items-center justify-center text-slate-600">
-                                        <span class="text-[9px] font-bold uppercase"><?= date('M', $ts) ?></span>
-                                        <span class="text-sm font-bold leading-none"><?= date('d', $ts) ?></span>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                            <?php if ($patients_query->num_rows > 0):
+                                while ($row = $patients_query->fetch_assoc()):
+                                    $ts       = strtotime($row['app_date']);
+                                    $archived = (int)$row['archive_count'] > 0;
+                                    $patient_enc = urlencode($row['patient_name']);
+                            ?>
+                            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex flex-col items-center justify-center text-slate-600 dark:text-slate-300">
+                                            <span class="text-[9px] font-bold uppercase"><?= date('M', $ts) ?></span>
+                                            <span class="text-sm font-bold leading-none"><?= date('d', $ts) ?></span>
+                                        </div>
+                                        <div>
+                                            <p class="font-semibold text-slate-800 dark:text-slate-200 text-sm"><?= htmlspecialchars($row['patient_name']) ?></p>
+                                            <p class="text-xs text-slate-400 dark:text-slate-500"><?= date('H:i', $ts) ?> · <?= htmlspecialchars($row['app_type'] ?? 'Consultation') ?></p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p class="font-semibold text-slate-800 text-sm"><?= htmlspecialchars($row['patient_name']) ?></p>
-                                        <p class="text-xs text-slate-400"><?= date('H:i', $ts) ?> · <?= htmlspecialchars($row['app_type'] ?? 'Consultation') ?></p>
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="px-6 py-4 text-right">
-                                <?php if ($archived): ?>
-                                    <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">Archivé</span>
-                                <?php else: ?>
-                                    <a href="analyse_ia.php?patient_name=<?= $patient_enc ?>&id=<?= $row['id'] ?>"
-                                       class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">
-                                        Démarrer
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    </a>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                        <?php endwhile; else: ?>
-                        <tr><td class="p-10 text-center text-slate-400 text-sm">Aucun rendez-vous à venir.</td></tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <?php if ($archived): ?>
+                                        <span class="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded">Archivé</span>
+                                    <?php else: ?>
+                                        <a href="analyse_ia.php?patient_name=<?= $patient_enc ?>&id=<?= $row['id'] ?>"
+                                           class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">
+                                            Démarrer <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                        </a>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endwhile; else: ?>
+                            <tr><td class="p-10 text-center text-slate-400 text-sm">Aucun rendez-vous à venir.</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <!-- Sidebar Droite -->
             <div class="space-y-6">
-                <div class="bg-indigo-600 rounded-xl p-6 text-white">
+                <div class="bg-indigo-600 dark:bg-indigo-700 rounded-xl p-6 text-white shadow-md">
                     <h3 class="font-bold text-lg mb-2">Analyse IA</h3>
                     <p class="text-indigo-100 text-sm mb-4">Recherchez un dossier patient pour générer une analyse sémantique.</p>
                     <a href="patients_search.php" class="block w-full bg-white text-indigo-600 text-center font-bold py-2.5 rounded-lg text-sm hover:bg-indigo-50 transition-colors">
@@ -331,22 +323,20 @@ $stmt->close();
                     </a>
                 </div>
 
-                <div class="bg-white border border-slate-200 rounded-xl p-6">
-                    <h3 class="font-bold text-slate-900 mb-4 text-sm">Activité</h3>
+                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm">
+                    <h3 class="font-bold text-slate-900 dark:text-white mb-4 text-sm">Activité</h3>
                     <div class="space-y-3 text-sm">
                         <div class="flex justify-between items-center">
-                            <span class="text-slate-500">Dernière séance</span>
-                            <span class="font-medium text-slate-700">
+                            <span class="text-slate-500 dark:text-slate-400">Dernière séance</span>
+                            <span class="font-medium text-slate-700 dark:text-slate-300">
                                 <?= $last_consult ? date('d/m/y', strtotime($last_consult)) : '-' ?>
                             </span>
                         </div>
                         <div class="flex justify-between items-center">
-                            <span class="text-slate-500">Séances archivées</span>
-                            <span class="font-medium text-slate-700"><?= $total_archives ?></span>
-                        </div>
-                        <div class="flex justify-between items-center">
-                            <span class="text-slate-500">Sécurité</span>
-                            <span class="font-medium text-emerald-600">Active</span>
+                            <span class="text-slate-500 dark:text-slate-400">Sécurité</span>
+                            <span class="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg> Active
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -355,54 +345,76 @@ $stmt->close();
     </main>
 </div>
 
-<!-- Ajout du nonce pour la sécurité JS -->
 <script nonce="<?= $nonce ?>">
-// 1. Demander la permission dès le chargement
+// Gestion Sidebar Mobile
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('sidebar-overlay');
+const openBtn = document.getElementById('open-sidebar');
+const closeBtn = document.getElementById('close-sidebar');
+
+function toggleSidebar() {
+    sidebar.classList.toggle('-translate-x-full');
+    overlay.classList.toggle('hidden');
+}
+
+openBtn.addEventListener('click', toggleSidebar);
+closeBtn.addEventListener('click', toggleSidebar);
+overlay.addEventListener('click', toggleSidebar);
+
+// Gestion Dark Mode local
+const themeToggleBtn = document.getElementById('theme-toggle');
+const darkIcon = document.getElementById('theme-toggle-dark-icon');
+const lightIcon = document.getElementById('theme-toggle-light-icon');
+
+if (document.documentElement.classList.contains('dark')) {
+    lightIcon.classList.remove('hidden');
+} else {
+    darkIcon.classList.remove('hidden');
+}
+
+themeToggleBtn.addEventListener('click', function() {
+    darkIcon.classList.toggle('hidden');
+    lightIcon.classList.toggle('hidden');
+    if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('color-theme', 'light');
+    } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('color-theme', 'dark');
+    }
+});
+
+// Notifications
 if (Notification.permission !== "granted") {
     Notification.requestPermission();
 }
-
-// 2. Fonction pour jouer le son et afficher la notif
 function alertPro(patientName, time) {
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
-    audio.play().catch(e => console.log('Audio bloqué par le navigateur:', e));
-
+    audio.play().catch(e => console.log('Audio bloqué:', e));
     if (Notification.permission === "granted") {
-        new Notification("PsySpace : Consultation Imminente", {
-            body: "Rendez-vous avec " + patientName + " à " + time,
-            icon: "icon-192.png" 
-        });
+        new Notification("PsySpace : Consultation Imminente", { body: "RDV avec " + patientName + " à " + time });
     }
 }
-
-// 3. Système de "Check" automatique (Polling)
 setInterval(() => {
     fetch('api_check_now.php')
-    .then(response => response.json())
-    .then(data => {
-        if(data.alert === true) {
-            alertPro(data.patient, data.time);
-        }
-    }).catch(e => console.error('Erreur Polling:', e));
+    .then(r => r.json())
+    .then(data => { if(data.alert === true) alertPro(data.patient, data.time); })
+    .catch(e => console.error('Erreur Polling:', e));
 }, 60000); 
 
+// Compte à rebours
 <?php if($next_rdv): ?>
 var targetTs = <?= strtotime($next_rdv['app_date']) ?> * 1000;
 function updateCountdown() {
-  var now  = Date.now();
+  var now = Date.now();
   var diff = Math.floor((targetTs - now) / 1000);
   if (diff <= 0) {
-    document.getElementById('cd-h').textContent = '00';
-    document.getElementById('cd-m').textContent = '00';
-    document.getElementById('cd-s').textContent = '00';
+    ['cd-h', 'cd-m', 'cd-s'].forEach(id => document.getElementById(id).textContent = '00');
     return;
   }
-  var h = Math.floor(diff / 3600);
-  var m = Math.floor((diff % 3600) / 60);
-  var s = diff % 60;
-  document.getElementById('cd-h').textContent = String(h).padStart(2,'0');
-  document.getElementById('cd-m').textContent = String(m).padStart(2,'0');
-  document.getElementById('cd-s').textContent = String(s).padStart(2,'0');
+  document.getElementById('cd-h').textContent = String(Math.floor(diff / 3600)).padStart(2,'0');
+  document.getElementById('cd-m').textContent = String(Math.floor((diff % 3600) / 60)).padStart(2,'0');
+  document.getElementById('cd-s').textContent = String(diff % 60).padStart(2,'0');
 }
 updateCountdown();
 setInterval(updateCountdown, 1000);
