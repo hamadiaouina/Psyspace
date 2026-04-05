@@ -1,6 +1,36 @@
 <?php
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
 if (!isset($_SESSION['id'])) { header("Location: login.php"); exit(); }
+
+// --- 2. ANTI VOL DE SESSION ---
+if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
+    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+        session_destroy();
+        header("Location: login.php?error=hijack");
+        exit();
+    }
+}
+
+// --- 3. PARE-FEU CSP ET JETON CSRF ---
+$nonce = base64_encode(random_bytes(16));
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
@@ -9,50 +39,54 @@ $nom_docteur = mb_strtoupper($_SESSION['nom'] ?? 'Docteur', 'UTF-8');
 
 $msg = '';
 
-// Supprimer un rendez-vous
-if(isset($_POST['delete_appt'])) {
-    $appt_id = (int)$_POST['appt_id'];
-    $stmt = $conn->prepare("DELETE FROM appointments WHERE id = ? AND doctor_id = ?");
-    $stmt->bind_param("ii", $appt_id, $doc_id);
-    $stmt->execute(); $stmt->close();
-    header("Location: patients_search.php?search=".urlencode($_POST['back_search'])."&msg=deleted"); exit();
-}
-
-// Modifier un rendez-vous
-if(isset($_POST['edit_appt'])) {
-    $appt_id  = (int)$_POST['appt_id'];
-    $new_date = $_POST['new_date'];
-    $stmt = $conn->prepare("UPDATE appointments SET app_date = ? WHERE id = ? AND doctor_id = ?");
-    $stmt->bind_param("sii", $new_date, $appt_id, $doc_id);
-    $stmt->execute(); $stmt->close();
-    header("Location: patients_search.php?search=".urlencode($_POST['back_search'])."&msg=updated"); exit();
-}
-
-// Supprimer un patient (tous ses RDV + consultations)
-if(isset($_POST['delete_patient'])) {
-    $patient_name = $_POST['patient_name'];
-    
-    // Récupérer les IDs des RDV de ce patient
-    $stmt = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND patient_name = ?");
-    $stmt->bind_param("is", $doc_id, $patient_name);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $appt_ids = [];
-    while($r = $res->fetch_assoc()) $appt_ids[] = $r['id'];
-    $stmt->close();
-
-    // Supprimer les consultations liées
-    if(!empty($appt_ids)) {
-        $in = implode(',', array_map('intval', $appt_ids));
-        $conn->query("DELETE FROM consultations WHERE appointment_id IN ($in)");
+// VÉRIFICATION CSRF POUR TOUTES LES ACTIONS POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+        die("Erreur de sécurité : Jeton CSRF invalide.");
     }
 
-    // Supprimer tous les RDV du patient
-    $stmt = $conn->prepare("DELETE FROM appointments WHERE doctor_id = ? AND patient_name = ?");
-    $stmt->bind_param("is", $doc_id, $patient_name);
-    $stmt->execute(); $stmt->close();
+    // Supprimer un rendez-vous
+    if(isset($_POST['delete_appt'])) {
+        $appt_id = (int)$_POST['appt_id'];
+        $stmt = $conn->prepare("DELETE FROM appointments WHERE id = ? AND doctor_id = ?");
+        $stmt->bind_param("ii", $appt_id, $doc_id);
+        $stmt->execute(); $stmt->close();
+        header("Location: patients_search.php?search=".urlencode($_POST['back_search'] ?? '')."&msg=deleted"); exit();
+    }
 
-    header("Location: patients_search.php?msg=patient_deleted"); exit();
+    // Modifier un rendez-vous
+    if(isset($_POST['edit_appt'])) {
+        $appt_id  = (int)$_POST['appt_id'];
+        $new_date = $_POST['new_date'];
+        $stmt = $conn->prepare("UPDATE appointments SET app_date = ? WHERE id = ? AND doctor_id = ?");
+        $stmt->bind_param("sii", $new_date, $appt_id, $doc_id);
+        $stmt->execute(); $stmt->close();
+        header("Location: patients_search.php?search=".urlencode($_POST['back_search'] ?? '')."&msg=updated"); exit();
+    }
+
+    // Supprimer un patient (tous ses RDV + consultations)
+    if(isset($_POST['delete_patient'])) {
+        $patient_name = $_POST['patient_name'];
+        
+        $stmt = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND patient_name = ?");
+        $stmt->bind_param("is", $doc_id, $patient_name);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $appt_ids = [];
+        while($r = $res->fetch_assoc()) $appt_ids[] = $r['id'];
+        $stmt->close();
+
+        if(!empty($appt_ids)) {
+            $in = implode(',', array_map('intval', $appt_ids));
+            $conn->query("DELETE FROM consultations WHERE appointment_id IN ($in)");
+        }
+
+        $stmt = $conn->prepare("DELETE FROM appointments WHERE doctor_id = ? AND patient_name = ?");
+        $stmt->bind_param("is", $doc_id, $patient_name);
+        $stmt->execute(); $stmt->close();
+
+        header("Location: patients_search.php?msg=patient_deleted"); exit();
+    }
 }
 
 // Recherche
@@ -111,44 +145,56 @@ $msg = $_GET['msg'] ?? '';
 $total_patients = count($patients);
 ?>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="scroll-smooth">
 <head>
     <link rel="icon" type="image/png" href="assets/images/logo.png">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Patients | PsySpace</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'], serif: ['Merriweather','serif'] } } }
+    
+    <script nonce="<?= $nonce ?>">
+        tailwind.config = { darkMode: 'class', theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'], serif: ['Merriweather','serif'] } } } };
+        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
         }
     </script>
-    <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+    <style nonce="<?= $nonce ?>">
+        body { font-family: 'Inter', sans-serif; }
         .sidebar-link { transition: all 0.2s ease; }
+        .sidebar-link.active { background-color: #eef2ff; color: #4f46e5; font-weight: 600; }
+        .dark .sidebar-link.active { background-color: rgba(79,70,229,0.2); color: #818cf8; }
         .patient-details { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
         .patient-details.open { max-height: 1000px; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-700">
-<div class="flex min-h-screen">
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 transition-colors duration-300">
+
+<div class="flex min-h-screen relative">
+
+    <!-- SIDEBAR MOBILE OVERLAY -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity"></div>
 
     <!-- SIDEBAR -->
-    <aside class="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-50 print:hidden">
-        <div class="p-6 border-b border-slate-800">
+    <aside id="sidebar" class="w-64 bg-slate-900 dark:bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0 print:hidden">
+        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
             <a href="dashboard.php" class="flex items-center gap-3">
                 <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
                 <span class="text-lg font-bold text-white">PsySpace</span>
             </a>
+            <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
         </div>
         <nav class="flex-1 p-4 space-y-1">
             <a href="dashboard.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
                 Dashboard
             </a>
-            <a href="patients_search.php" class="sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-white bg-slate-800/50">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <a href="patients_search.php" class="sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
                 Patients
             </a>
             <a href="agenda.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
@@ -168,31 +214,45 @@ $total_patients = count($patients);
         </div>
     </aside>
 
-    <!-- MAIN -->
-    <main class="flex-1 ml-64 p-8">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Gestion des Patients</h1>
-                <p class="text-slate-500 text-sm mt-1">Recherchez et gérez les dossiers patients.</p>
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full">
+        
+        <!-- HEADER (Responsive + Dark Mode Toggle) -->
+        <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div class="flex items-center gap-4">
+                <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Gestion des Patients</h1>
+                    <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Recherchez et gérez les dossiers patients.</p>
+                </div>
             </div>
-            <div class="text-right hidden sm:block">
-                <p class="text-sm font-semibold text-slate-700"><?= date(' d M,Y') ?></p>
+            
+            <div class="flex items-center gap-4">
+                <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all border border-transparent dark:border-slate-700">
+                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 011.414-1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
+                </button>
+                <div class="text-right hidden sm:block">
+                    <p class="text-sm font-semibold text-slate-700 dark:text-slate-300"><?= date('d M, Y') ?></p>
+                </div>
             </div>
         </div>
 
         <!-- Flash messages -->
         <?php if($msg === 'deleted'): ?>
-        <div class="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-medium">
+        <div class="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-medium">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             Rendez-vous supprimé avec succès.
         </div>
         <?php elseif($msg === 'updated'): ?>
-        <div class="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-medium">
+        <div class="mb-6 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-medium">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
             Rendez-vous mis à jour.
         </div>
         <?php elseif($msg === 'patient_deleted'): ?>
-        <div class="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-medium">
+        <div class="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center gap-2 text-sm font-medium">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             Patient supprimé avec succès (rendez-vous et archives inclus).
         </div>
@@ -200,17 +260,17 @@ $total_patients = count($patients);
 
         <!-- Stats -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div class="bg-white border border-slate-200 rounded-lg p-5">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Patients</p>
-                <p class="font-serif text-3xl font-bold text-slate-900"><?= $total_patients ?></p>
+                <p class="font-serif text-3xl font-bold text-slate-900 dark:text-white"><?= $total_patients ?></p>
             </div>
-            <div class="bg-white border border-slate-200 rounded-lg p-5">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">RDV Totaux</p>
-                <p class="font-serif text-3xl font-bold text-slate-900"><?php $t=0; foreach($patients as $p) $t+=$p['total_rdv']; echo $t; ?></p>
+                <p class="font-serif text-3xl font-bold text-slate-900 dark:text-white"><?php $t=0; foreach($patients as $p) $t+=$p['total_rdv']; echo $t; ?></p>
             </div>
-            <div class="bg-white border border-slate-200 rounded-lg p-5">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-5">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">À venir</p>
-                <p class="font-serif text-3xl font-bold text-indigo-600"><?php $f=0; foreach($patients as $p) $f+=($p['total_rdv']-$p['rdv_passes']); echo $f; ?></p>
+                <p class="font-serif text-3xl font-bold text-indigo-600 dark:text-indigo-400"><?php $f=0; foreach($patients as $p) $f+=($p['total_rdv']-$p['rdv_passes']); echo $f; ?></p>
             </div>
         </div>
 
@@ -220,20 +280,20 @@ $total_patients = count($patients);
                 <div class="relative flex-1">
                     <input type="text" name="search" value="<?= htmlspecialchars($search_query) ?>"
                            placeholder="Nom du patient ou téléphone..."
-                           class="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition">
+                           class="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition dark:text-white">
                 </div>
-                <button type="submit" class="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition shadow-sm">Rechercher</button>
+                <button type="submit" class="bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition shadow-sm">Rechercher</button>
                 <?php if($search_query): ?>
-                <a href="patients_search.php" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2.5 rounded-lg text-sm font-medium transition border border-slate-200">Effacer</a>
+                <a href="patients_search.php" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 px-4 py-2.5 rounded-lg text-sm font-medium transition border border-slate-200 dark:border-slate-700 flex items-center">Effacer</a>
                 <?php endif; ?>
             </div>
         </form>
 
         <!-- Résultats -->
         <?php if(empty($patients)): ?>
-        <div class="text-center py-16 bg-white border border-slate-200 rounded-lg">
-            <svg class="w-12 h-12 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <p class="text-slate-500 font-medium text-sm">Aucun patient trouvé.</p>
+        <div class="text-center py-16 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg">
+            <svg class="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <p class="text-slate-500 dark:text-slate-400 font-medium text-sm">Aucun patient trouvé.</p>
         </div>
         <?php else: ?>
 
@@ -245,34 +305,31 @@ $total_patients = count($patients);
                 $appts = $appts_by_patient[$name] ?? [];
                 $pid   = 'p_'.md5($name);
             ?>
-            <div class="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden shadow-sm transition-colors">
                 <!-- Header -->
                 <div class="flex items-center justify-between px-5 py-4">
-                    <!-- Partie cliquable (nom/info) -->
                     <div class="flex items-center gap-4 flex-1 cursor-pointer hover:opacity-80 transition" onclick="togglePatient('<?= $pid ?>')">
-                        <div class="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-bold text-sm flex-shrink-0">
                             <?= $init ?>
                         </div>
                         <div>
-                            <p class="font-semibold text-slate-800 text-sm"><?= htmlspecialchars($name) ?></p>
-                            <p class="text-xs text-slate-400">📞 <?= htmlspecialchars($phone) ?></p>
+                            <p class="font-semibold text-slate-800 dark:text-slate-200 text-sm"><?= htmlspecialchars($name) ?></p>
+                            <p class="text-xs text-slate-400 dark:text-slate-500">📞 <?= htmlspecialchars($phone) ?></p>
                         </div>
                     </div>
 
                     <div class="flex items-center gap-3">
-                        <!-- Prochain RDV -->
                         <div class="hidden md:block text-right mr-2">
-                            <p class="text-xs text-slate-500">
+                            <p class="text-xs text-slate-500 dark:text-slate-400">
                                 Prochain RDV : 
-                                <span class="font-semibold <?= $p['prochain_rdv']?'text-indigo-600':'text-slate-400' ?>">
+                                <span class="font-semibold <?= $p['prochain_rdv']?'text-indigo-600 dark:text-indigo-400':'text-slate-400 dark:text-slate-500' ?>">
                                     <?= $p['prochain_rdv'] ? date('d M Y', strtotime($p['prochain_rdv'])) : 'Aucun' ?>
                                 </span>
                             </p>
                         </div>
 
-                        <!-- Bouton supprimer patient -->
-                        <button onclick="openDeletePatient('<?= htmlspecialchars(addslashes($name)) ?>', <?= count($appts) ?>)"
-                            class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                        <button onclick="openDeletePatient('<?= htmlspecialchars(addslashes($name), ENT_QUOTES) ?>', <?= count($appts) ?>)"
+                            class="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition"
                             title="Supprimer ce patient">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
@@ -280,7 +337,6 @@ $total_patients = count($patients);
                             </svg>
                         </button>
 
-                        <!-- Chevron -->
                         <div class="w-6 h-6 flex items-center justify-center text-slate-400 cursor-pointer" id="chev_<?= $pid ?>" onclick="togglePatient('<?= $pid ?>')">
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4l4 4 4-4"/></svg>
                         </div>
@@ -288,14 +344,14 @@ $total_patients = count($patients);
                 </div>
 
                 <!-- Détails dépliables -->
-                <div id="<?= $pid ?>" class="patient-details border-t border-slate-100">
-                    <div class="p-5 bg-slate-50">
+                <div id="<?= $pid ?>" class="patient-details border-t border-slate-100 dark:border-slate-800">
+                    <div class="p-5 bg-slate-50 dark:bg-slate-800/30">
                         <div class="flex justify-between items-center mb-3">
-                            <h4 class="text-xs font-bold uppercase text-slate-500 tracking-wider">Historique (<?= count($appts) ?>)</h4>
-                            <a href="consultations.php?patient_name=<?= urlencode($name) ?>" class="text-xs text-indigo-600 font-medium hover:underline">Voir les archives →</a>
+                            <h4 class="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Historique (<?= count($appts) ?>)</h4>
+                            <a href="consultations.php?patient_name=<?= urlencode($name) ?>" class="text-xs text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Voir les archives →</a>
                         </div>
 
-                        <div class="bg-white rounded-lg border border-slate-100 divide-y divide-slate-100">
+                        <div class="bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
                             <?php foreach($appts as $appt):
                                 $ts     = strtotime($appt['app_date']);
                                 $isPast = $ts < time();
@@ -303,17 +359,17 @@ $total_patients = count($patients);
                             ?>
                             <div class="flex items-center justify-between px-4 py-3">
                                 <div class="flex items-center gap-3">
-                                    <div class="text-center px-2 py-1 rounded bg-slate-100 text-xs">
-                                        <span class="block text-slate-500 text-[10px] uppercase font-bold"><?= date('M', $ts) ?></span>
-                                        <span class="block text-slate-800 font-bold leading-tight"><?= date('d', $ts) ?></span>
+                                    <div class="text-center px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 text-xs border border-transparent dark:border-slate-700">
+                                        <span class="block text-slate-500 dark:text-slate-400 text-[10px] uppercase font-bold"><?= date('M', $ts) ?></span>
+                                        <span class="block text-slate-800 dark:text-slate-200 font-bold leading-tight"><?= date('d', $ts) ?></span>
                                     </div>
                                     <div>
-                                        <p class="text-sm text-slate-700 font-medium">
+                                        <p class="text-sm text-slate-700 dark:text-slate-300 font-medium">
                                             <?= date('H:i', $ts) ?>
                                             <?php if($isArch): ?>
-                                                <span class="ml-2 text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded uppercase font-bold">Archivé</span>
+                                                <span class="ml-2 text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded uppercase font-bold">Archivé</span>
                                             <?php elseif(!$isPast): ?>
-                                                <span class="ml-2 text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded uppercase font-bold">À venir</span>
+                                                <span class="ml-2 text-[10px] bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 px-1.5 py-0.5 rounded uppercase font-bold">À venir</span>
                                             <?php endif; ?>
                                         </p>
                                     </div>
@@ -326,10 +382,10 @@ $total_patients = count($patients);
                                         </a>
                                     <?php endif; ?>
                                     <?php if(!$isArch): ?>
-                                        <button onclick="openEdit(<?= $appt['id'] ?>, '<?= date('Y-m-d\TH:i', $ts) ?>', '<?= htmlspecialchars(addslashes($name)) ?>')" class="p-1.5 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition" title="Modifier">
+                                        <button onclick="openEdit(<?= $appt['id'] ?>, '<?= date('Y-m-d\TH:i', $ts) ?>', '<?= htmlspecialchars(addslashes($name), ENT_QUOTES) ?>')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition" title="Modifier">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                         </button>
-                                        <button onclick="openConfirm(<?= $appt['id'] ?>, '<?= htmlspecialchars(addslashes($name)) ?>')" class="p-1.5 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition" title="Supprimer RDV">
+                                        <button onclick="openConfirm(<?= $appt['id'] ?>, '<?= htmlspecialchars(addslashes($name), ENT_QUOTES) ?>')" class="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition" title="Supprimer RDV">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                         </button>
                                     <?php endif; ?>
@@ -348,22 +404,23 @@ $total_patients = count($patients);
 
 <!-- MODAL EDIT RDV -->
 <div id="edit-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden" onclick="if(event.target===this)closeEdit()">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
-        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
-            <h3 class="font-bold text-slate-900">Modifier le rendez-vous</h3>
-            <button onclick="closeEdit()" class="text-slate-400 hover:text-slate-700 text-xl">&times;</button>
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-transparent dark:border-slate-700" onclick="event.stopPropagation()">
+        <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+            <h3 class="font-bold text-slate-900 dark:text-white">Modifier le rendez-vous</h3>
+            <button onclick="closeEdit()" class="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xl">&times;</button>
         </div>
         <form action="" method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="edit_appt" value="1">
             <input type="hidden" name="appt_id" id="edit-appt-id">
             <input type="hidden" name="back_search" value="<?= htmlspecialchars($search_query) ?>">
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Patient</label>
-                <p id="edit-patient-name" class="font-medium text-slate-800 text-sm"></p>
+                <p id="edit-patient-name" class="font-medium text-slate-800 dark:text-slate-200 text-sm"></p>
             </div>
             <div>
                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Nouvelle date</label>
-                <input type="datetime-local" name="new_date" id="edit-new-date" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                <input type="datetime-local" name="new_date" id="edit-new-date" class="w-full bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none dark:text-white">
             </div>
             <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg font-bold text-sm transition">Sauvegarder</button>
         </form>
@@ -372,18 +429,19 @@ $total_patients = count($patients);
 
 <!-- MODAL CONFIRM SUPPR RDV -->
 <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden" onclick="if(event.target===this)closeConfirm()">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onclick="event.stopPropagation()">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-transparent dark:border-slate-700" onclick="event.stopPropagation()">
         <div class="p-6 text-center">
-            <div class="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
+            <div class="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
             </div>
-            <h3 class="font-bold text-slate-900 text-lg mb-2">Supprimer ce rendez-vous ?</h3>
-            <p id="confirm-info" class="text-sm text-slate-500 mb-6"></p>
+            <h3 class="font-bold text-slate-900 dark:text-white text-lg mb-2">Supprimer ce rendez-vous ?</h3>
+            <p id="confirm-info" class="text-sm text-slate-500 dark:text-slate-400 mb-6"></p>
             <form action="" method="POST" class="flex gap-3">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
                 <input type="hidden" name="delete_appt" value="1">
                 <input type="hidden" name="appt_id" id="confirm-appt-id">
                 <input type="hidden" name="back_search" value="<?= htmlspecialchars($search_query) ?>">
-                <button type="button" onclick="closeConfirm()" class="flex-1 py-2 rounded-lg border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition text-sm">Annuler</button>
+                <button type="button" onclick="closeConfirm()" class="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition text-sm">Annuler</button>
                 <button type="submit" class="flex-1 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition text-sm">Supprimer</button>
             </form>
         </div>
@@ -392,28 +450,64 @@ $total_patients = count($patients);
 
 <!-- MODAL CONFIRM SUPPR PATIENT -->
 <div id="delete-patient-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden" onclick="if(event.target===this)closeDeletePatient()">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden" onclick="event.stopPropagation()">
+    <div class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-transparent dark:border-slate-700" onclick="event.stopPropagation()">
         <div class="p-6 text-center">
-            <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
+            <div class="w-14 h-14 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
                 </svg>
             </div>
-            <h3 class="font-bold text-slate-900 text-lg mb-1">Supprimer ce patient ?</h3>
-            <p class="text-sm font-semibold text-red-600 mb-1" id="delete-patient-name"></p>
-            <p class="text-xs text-slate-500 mb-1" id="delete-patient-info"></p>
+            <h3 class="font-bold text-slate-900 dark:text-white text-lg mb-1">Supprimer ce patient ?</h3>
+            <p class="text-sm font-semibold text-red-600 dark:text-red-400 mb-1" id="delete-patient-name"></p>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mb-1" id="delete-patient-info"></p>
             <p class="text-xs text-red-500 font-medium mb-6">⚠️ Cette action est irréversible. Tous les rendez-vous et archives seront supprimés.</p>
             <form action="" method="POST" class="flex gap-3">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
                 <input type="hidden" name="delete_patient" value="1">
                 <input type="hidden" name="patient_name" id="delete-patient-input">
-                <button type="button" onclick="closeDeletePatient()" class="flex-1 py-2.5 rounded-lg border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition text-sm">Annuler</button>
+                <button type="button" onclick="closeDeletePatient()" class="flex-1 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition text-sm">Annuler</button>
                 <button type="submit" class="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-bold hover:bg-red-700 transition text-sm">Supprimer</button>
             </form>
         </div>
     </div>
 </div>
 
-<script>
+<script nonce="<?= $nonce ?>">
+// Menu Mobile
+const sidebar = document.getElementById('sidebar');
+const overlay = document.getElementById('sidebar-overlay');
+const openBtn = document.getElementById('open-sidebar');
+const closeBtn = document.getElementById('close-sidebar');
+
+function toggleSidebar() {
+    sidebar.classList.toggle('-translate-x-full');
+    overlay.classList.toggle('hidden');
+}
+if(openBtn) openBtn.addEventListener('click', toggleSidebar);
+if(closeBtn) closeBtn.addEventListener('click', toggleSidebar);
+if(overlay) overlay.addEventListener('click', toggleSidebar);
+
+// Dark Mode Toggle
+const themeToggleBtn = document.getElementById('theme-toggle');
+const darkIcon = document.getElementById('theme-toggle-dark-icon');
+const lightIcon = document.getElementById('theme-toggle-light-icon');
+
+if (document.documentElement.classList.contains('dark')) { lightIcon.classList.remove('hidden'); } 
+else { darkIcon.classList.remove('hidden'); }
+
+themeToggleBtn.addEventListener('click', function() {
+    darkIcon.classList.toggle('hidden');
+    lightIcon.classList.toggle('hidden');
+    if (document.documentElement.classList.contains('dark')) {
+        document.documentElement.classList.remove('dark');
+        localStorage.setItem('color-theme', 'light');
+    } else {
+        document.documentElement.classList.add('dark');
+        localStorage.setItem('color-theme', 'dark');
+    }
+});
+
+// Modals
 function togglePatient(id) {
     const el = document.getElementById(id);
     const chev = document.getElementById('chev_' + id);
