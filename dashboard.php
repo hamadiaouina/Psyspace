@@ -295,16 +295,27 @@ $stmt->close();
                                         </div>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 text-right">
-                                    <?php if ($archived): ?>
-                                        <span class="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded">Archivé</span>
-                                    <?php else: ?>
-                                        <a href="analyse_ia.php?patient_name=<?= $patient_enc ?>&id=<?= $row['id'] ?>"
-                                           class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors">
-                                            Démarrer <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                        </a>
-                                    <?php endif; ?>
-                                </td>
+                                    <td class="px-6 py-4 text-right">
+    <div class="flex items-center justify-end gap-2">
+        <!-- NOUVEAU BOUTON CALENDRIER -->
+        <a href="download_ics.php?id=<?= $row['id'] ?>" 
+           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-bold transition-colors shadow-sm"
+           title="Ajouter au calendrier (Outlook, Apple, Google)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+            ICS
+        </a>
+
+        <!-- BOUTON DÉMARRER OU ARCHIVÉ -->
+        <?php if ($archived): ?>
+            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-md">Archivé</span>
+        <?php else: ?>
+            <a href="analyse_ia.php?patient_name=<?= $patient_enc ?>&id=<?= $row['id'] ?>"
+               class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors shadow-sm">
+                Démarrer <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+            </a>
+        <?php endif; ?>
+    </div>
+</td>
                             </tr>
                             <?php endwhile; else: ?>
                             <tr><td class="p-10 text-center text-slate-400 text-sm">Aucun rendez-vous à venir.</td></tr>
