@@ -1,4 +1,20 @@
-<?php include "header.php"; ?>
+<?php 
+// Sécurité des sessions
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// SÉCURITÉ : Si aucun email n'est en attente de vérification, on le renvoie à l'inscription
+if (!isset($_SESSION['pending_email'])) {
+    header("Location: register.php");
+    exit();
+}
+
+include "header.php"; 
+?>
 
 <style>
     /* Rappel du design global PsySpace */
@@ -59,7 +75,7 @@
             <h2 class="text-2xl font-bold text-slate-900 tracking-tight">Vérification</h2>
             <p class="text-slate-500 mt-3 text-sm font-medium leading-relaxed">
                 Un code a été envoyé à :<br>
-                <span class="text-blue-600 font-bold"><?php echo htmlspecialchars($_GET['email'] ?? ''); ?></span>
+                <span class="text-blue-600 font-bold"><?php echo htmlspecialchars($_SESSION['pending_email'], ENT_QUOTES, 'UTF-8'); ?></span>
             </p>
         </div>
 
@@ -73,8 +89,8 @@
             </div>
         <?php endif; ?>
 
+        <!-- Le formulaire envoie les données à verify_action.php -->
         <form action="verify_action.php" method="POST" class="space-y-8">
-            <input type="hidden" name="email" value="<?php echo htmlspecialchars($_GET['email'] ?? ''); ?>">
             
             <div class="space-y-4">
                 <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Saisir le code à 6 chiffres</label>
@@ -85,6 +101,8 @@
                        pattern="[0-9]*" 
                        autocomplete="one-time-code"
                        required
+                       autofocus
+                       oninput="this.value = this.value.replace(/[^0-9]/g, '');"
                        class="input-otp w-full text-center text-4xl tracking-[0.8rem] font-black py-5 rounded-2xl text-slate-900"
                        placeholder="000000">
             </div>
@@ -115,7 +133,7 @@
     </div>
 </main>
 
-<script>
+<script nonce="<?= $nonce ?? '' ?>">
     // Configuration du timer (300 secondes = 5 minutes)
     let timeLeft = 300; 
     const countdownDisplay = document.getElementById('countdown');
@@ -139,7 +157,7 @@
         // Fin du temps imparti
         if (timeLeft <= 0) {
             clearInterval(timerInterval);
-            // On peut mettre un message sympa avant la redirection
+            // Message avant redirection
             countdownDisplay.textContent = "EXPIRÉ";
             
             setTimeout(() => {
