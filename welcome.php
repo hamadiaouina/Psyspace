@@ -1,17 +1,36 @@
 <?php
-// 1. Sécurité et Session
-header("X-Frame-Options: DENY");
-header("X-Content-Type-Options: nosniff");
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; audio-src 'self';");
+// --- 1. SÉCURITÉ DES SESSIONS ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.cookie_secure', '1');   
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
 
 session_start();
 
+// Vérification de base : est-il connecté ?
 if (!isset($_SESSION['id'])) {
     header("Location: login.php");
     exit();
 }
 
-// 2. Préparation du nom (On protège contre les failles XSS avec htmlspecialchars)
+// --- 2. ANTI VOL DE SESSION (Session Hijacking) ---
+// On vérifie que la personne qui charge cette page a bien la même IP 
+// et le même navigateur que lors de sa connexion.
+if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
+    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+        session_destroy(); // Quelqu'un a volé le cookie, on détruit tout !
+        header("Location: login.php?error=hijack");
+        exit();
+    }
+}
+
+// --- 3. HEADERS DE SÉCURITÉ ---
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+// Correction : Remplacement de audio-src par media-src
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self';");
+
+// 4. Préparation du nom (Protection XSS)
 $nom_brut = $_SESSION['nom'] ?? 'Docteur';
 $nom_complet = htmlspecialchars($nom_brut, ENT_QUOTES, 'UTF-8');
 ?>
@@ -51,6 +70,7 @@ $nom_complet = htmlspecialchars($nom_brut, ENT_QUOTES, 'UTF-8');
          style="background-image: radial-gradient(#6366f1 1px, transparent 1px); background-size: 30px 30px;">
     </div>
 
+    <!-- Le son d'accueil -->
     <audio id="welcomeSound" preload="auto">
         <source src="assets/sounds/welcome.mp3" type="audio/mpeg">
     </audio>
@@ -89,10 +109,11 @@ $nom_complet = htmlspecialchars($nom_brut, ENT_QUOTES, 'UTF-8');
             const audio = document.getElementById("welcomeSound");
             if (audio) {
                 audio.volume = 0.4;
+                // Joue le son s'il n'est pas bloqué par les politiques anti-autoplay du navigateur
                 audio.play().catch(() => console.log("Audio en attente d'interaction"));
             }
 
-            // Redirection après l'animation
+            // Redirection vers le dashboard après l'animation (3 secondes)
             setTimeout(() => {
                 document.body.style.opacity = '0';
                 document.body.style.transition = 'opacity 0.5s ease';
