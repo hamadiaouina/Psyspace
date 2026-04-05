@@ -1,10 +1,14 @@
 <?php
+// --- 1. CONFIGURATION DE SÉCURITÉ ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+
 session_start();
 
-// 1. On vide le tableau de session côté serveur
+// --- 2. VIDER LES DONNÉES DE SESSION ---
 $_SESSION = array();
 
-// 2. SÉCURITÉ : On détruit le cookie de session côté client (Navigateur)
+// --- 3. DÉTRUIRE LE COOKIE DE SESSION (CRITIQUE) ---
 if (ini_get("session.use_cookies")) {
     $params = session_get_cookie_params();
     setcookie(session_name(), '', time() - 42000,
@@ -13,10 +17,11 @@ if (ini_get("session.use_cookies")) {
     );
 }
 
-// 3. On détruit définitivement la session serveur
+// --- 4. DÉTRUIRE LA SESSION CÔTÉ SERVEUR ---
 session_destroy();
 
-// 4. Redirection propre
-header("Location: goodbye.php"); // Ou index.php selon ce que tu préfères
+// --- 5. REDIRECTION PROPRE VERS LE LOGIN ---
+// Le paramètre ?logout=success permettra d'afficher un beau message sur la page de connexion
+header("Location: login.php?logout=success");
 exit();
 ?>
