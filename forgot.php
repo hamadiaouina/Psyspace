@@ -1,93 +1,115 @@
 <?php
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
+ini_set('session.cookie_httponly', '1');
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// SÉCURITÉ : Cacher les erreurs en production
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
-
-// Affichage des erreurs pour le débogage (à retirer avant le rendu final)
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 
 require 'vendor/PHPMailer/src/Exception.php';
 require 'vendor/PHPMailer/src/PHPMailer.php';
 require 'vendor/PHPMailer/src/SMTP.php';
 
 include "connection.php";
-
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
 $message = "";
 
-if(isset($_POST['reset-request'])){
-    $email = mysqli_real_escape_string($con, $_POST['email']);
+if (isset($_POST['reset-request'])) {
     
-    $stmt = $con->prepare("SELECT docname FROM doctor WHERE docemail = ?");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if($result->num_rows > 0){
-        $row = $result->fetch_assoc();
-        $fullName = trim($row['docname']); 
-        $nameParts = explode(' ', $fullName);
-        $lastName = end($nameParts); 
-        $drName = "Dr " . ucfirst(strtolower($lastName)); 
-
-        $token = bin2hex(random_bytes(32));
-        $expiry = date("Y-m-d H:i:s", strtotime('+1 hour'));
-        
-        $update = $con->prepare("UPDATE doctor SET reset_token=?, token_expiry=? WHERE docemail=?");
-        $update->bind_param("sss", $token, $expiry, $email);
-        $update->execute();
-        
-        $mail = new PHPMailer(true);
-
-        try {
-            $mail->isSMTP();
-            $mail->Host       = 'smtp.gmail.com';
-            $mail->SMTPAuth   = true;
-            $mail->Username   = 'psyspace.all@gmail.com';
-            $mail->Password   = 'lszg gkpz ylbg ypdt'; 
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = 587;
-
-            $mail->setFrom('psyspace.all@gmail.com', 'PsySpace');
-            $mail->addAddress($email);
-
-            $mail->isHTML(true);
-            $mail->CharSet = 'UTF-8';
-            $mail->Subject = "Réinitialisation de votre mot de passe - PsySpace";
-            
-            $url = "https://psyspace.me/reset_password.php?token=$token";
-
-            $mail->Body = "
-            <div style='background-color: #f8fafc; padding: 40px 0; font-family: sans-serif;'>
-                <div style='max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);'>
-                    <div style='background-color: #2563eb; padding: 30px; text-align: center;'>
-                        <h1 style='color: #ffffff; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -1px; font-style: italic; text-transform: uppercase;'>PSYSPACE</h1>
-                    </div>
-                    <div style='padding: 40px; text-align: center;'>
-                        <h2 style='color: #1e293b; margin-bottom: 20px;'>Récupération de compte</h2>
-                        <p style='color: #64748b; font-size: 16px;'>Bonjour <strong>$drName</strong>,</p>
-                        <p style='color: #64748b;'>Vous avez demandé à réinitialiser votre mot de passe. Veuillez cliquer sur le bouton ci-dessous :</p>
-                        <div style='margin: 35px 0;'>
-                            <a href='$url' style='background-color: #2563eb; color: #ffffff; padding: 18px 35px; border-radius: 12px; text-decoration: none; font-weight: bold; display: inline-block; text-transform: uppercase; letter-spacing: 1px;'>Changer mon mot de passe</a>
-                        </div>
-                        <p style='color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;'>Ce lien est valable pendant 1 heure.</p>
-                    </div>
-                </div>
-            </div>";
-
-            $mail->send();
-            $message = "<div class='p-4 mb-6 text-emerald-800 bg-emerald-50 rounded-2xl border border-emerald-100 font-bold'>✓ Email envoyé avec succès à $drName !</div>";
-        } catch (Exception $e) {
-            $message = "<div class='p-4 mb-6 text-red-800 bg-red-50 rounded-2xl border border-red-100'>Erreur d'envoi : {$mail->ErrorInfo}</div>";
-        }
+    // --- 2. ANTI-SPAM (Rate Limiting) ---
+    if (isset($_SESSION['last_reset_request']) && (time() - $_SESSION['last_reset_request']) < 60) {
+        $message = "<div class='p-4 mb-6 text-orange-800 bg-orange-50 rounded-2xl border border-orange-100 font-bold text-center'>Veuillez patienter 1 minute avant de refaire une demande.</div>";
     } else {
-        $message = "<div class='p-4 mb-6 text-rose-800 bg-rose-50 rounded-2xl border border-rose-100 text-center font-bold'>⚠ Adresse email inconnue.</div>";
+        $_SESSION['last_reset_request'] = time();
+        
+        $email = trim($_POST['email']);
+        
+        // --- 3. REQUÊTE PRÉPARÉE (Anti-Injection SQL) ---
+        $stmt = $con->prepare("SELECT docname FROM doctor WHERE docemail = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        
+        // --- 4. ANTI USER ENUMERATION ---
+        // On affiche TOUJOURS un message de succès, même si l'email n'existe pas.
+        // Ainsi, un hacker ne peut pas savoir qui est inscrit sur la plateforme.
+        $message = "<div class='p-4 mb-6 text-emerald-800 bg-emerald-50 rounded-2xl border border-emerald-100 font-bold text-center'>✓ Si cette adresse est associée à un compte praticien, un email contenant un lien de réinitialisation vient de vous être envoyé.</div>";
+        
+        if ($result->num_rows > 0) {
+            $row = $result->fetch_assoc();
+            $fullName = trim($row['docname']); 
+            $nameParts = explode(' ', $fullName);
+            $lastName = end($nameParts); 
+            $drName = "Dr " . ucfirst(strtolower($lastName)); 
+
+            // Génération d'un token ultra-sécurisé de 64 caractères
+            $token = bin2hex(random_bytes(32));
+            $expiry = date("Y-m-d H:i:s", strtotime('+1 hour'));
+            
+            $update = $con->prepare("UPDATE doctor SET reset_token=?, token_expiry=? WHERE docemail=?");
+            $update->bind_param("sss", $token, $expiry, $email);
+            $update->execute();
+            
+            // --- 5. ENVOI DE L'EMAIL ---
+            $mail = new PHPMailer(true);
+
+            try {
+                // Attention: Évite de laisser ton mot de passe Gmail en dur !
+                // Utilise getenv() si possible sur ton serveur de production.
+                $smtp_pass = getenv('SMTP_PASS') ?: 'lszg gkpz ylbg ypdt'; 
+
+                $mail->isSMTP();
+                $mail->Host       = 'smtp.gmail.com';
+                $mail->SMTPAuth   = true;
+                $mail->Username   = 'psyspace.all@gmail.com';
+                $mail->Password   = $smtp_pass; 
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port       = 587;
+
+                $mail->setFrom('psyspace.all@gmail.com', 'Sécurité PsySpace');
+                $mail->addAddress($email);
+
+                $mail->isHTML(true);
+                $mail->CharSet = 'UTF-8';
+                $mail->Subject = "🔑 Réinitialisation de votre mot de passe - PsySpace";
+                
+                $url = "https://psyspace.me/reset_password.php?token=$token";
+
+                $mail->Body = "
+                <div style='background-color: #f8fafc; padding: 40px 0; font-family: sans-serif;'>
+                    <div style='max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);'>
+                        <div style='background-color: #2563eb; padding: 30px; text-align: center;'>
+                            <h1 style='color: #ffffff; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -1px; font-style: italic; text-transform: uppercase;'>PSYSPACE</h1>
+                        </div>
+                        <div style='padding: 40px; text-align: center;'>
+                            <h2 style='color: #1e293b; margin-bottom: 20px;'>Récupération de compte</h2>
+                            <p style='color: #64748b; font-size: 16px;'>Bonjour <strong>$drName</strong>,</p>
+                            <p style='color: #64748b;'>Vous avez demandé à réinitialiser votre mot de passe. Veuillez cliquer sur le bouton ci-dessous :</p>
+                            <div style='margin: 35px 0;'>
+                                <a href='$url' style='background-color: #2563eb; color: #ffffff; padding: 18px 35px; border-radius: 12px; text-decoration: none; font-weight: bold; display: inline-block; text-transform: uppercase; letter-spacing: 1px;'>Changer mon mot de passe</a>
+                            </div>
+                            <p style='color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;'>Ce lien est strictement personnel et expire dans 1 heure.</p>
+                        </div>
+                    </div>
+                </div>";
+
+                $mail->send();
+            } catch (Exception $e) {
+                // On log l'erreur côté serveur, mais on ne montre rien à l'utilisateur
+                error_log("Erreur Mail Forgot Password: " . $mail->ErrorInfo);
+            }
+        }
     }
 }
 ?>
 
-<!DOCTYPE html>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
