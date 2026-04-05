@@ -1,28 +1,13 @@
 <?php
-// --- 1. SÉCURITÉ DES SESSIONS & ACCÈS ---
+// On démarre la session pour pouvoir compter le nombre de messages (Quota public)
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
-}
-
-// L'utilisateur doit être connecté pour parler à l'IA
-if (!isset($_SESSION['id'])) {
-    header("Location: login.php");
-    exit();
-}
-
-// --- 2. ANTI VOL DE SESSION (Hijacking) ---
-if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
-    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
-        session_destroy(); 
-        header("Location: login.php?error=hijack");
-        exit();
-    }
 }
 
 include "header.php"; 
 ?>
 
-<!-- Three.js local (On ajoute le nonce pour que la politique de sécurité l'autorise) -->
+<!-- Three.js local (On garde le nonce pour la sécurité CSP) -->
 <script src="/assets/js/three.min.js" nonce="<?= $nonce ?? '' ?>"></script>
 <script src="/assets/js/GLTFLoader.js" nonce="<?= $nonce ?? '' ?>"></script>
 
@@ -214,7 +199,7 @@ function setStatus(s,t){ statusPill.className='status-pill '+(s||''); statusText
 function addMessage(text,type){
     var d=document.createElement('div');
     d.className='message-bubble '+type;
-    d.textContent=text; // Protège contre les failles XSS
+    d.textContent=text; // Protection XSS native
     chatHistory.appendChild(d);
     chatHistory.scrollTop=chatHistory.scrollHeight;
 }
@@ -229,7 +214,7 @@ function hideTyping(){ var t=document.getElementById('typingBubble'); if(t)t.rem
 
 /* ═══════════════════════════════════════════════════════
    MORPH / LIP SYNC
-═══════════════════════════════════════════════════════ */
+══════════��════════════════════════════════════════════ */
 function setM(mesh,idx,val){
     if(!mesh||!mesh.morphTargetInfluences) return;
     if(idx>=0 && idx<mesh.morphTargetInfluences.length)
@@ -271,5 +256,226 @@ function startBlink(){
     blinkIv=setTimeout(doBlink,2000);
 }
 
-/* ══════════════════════════════════════════════════════
-
+/* ═══════════════════════════════════════════════════════
+   THREE.JS
+═══════════════════════════════════════════════════════ */
+function initThree(){
+    if(typeof THREE === 'undefined'){
+        loaderDiv.innerHTML='<span style="color:#f87171;">Three.js non chargé.</span>';
+        return;
+    }
+    if(typeof THREE.GLTFLoader === 'undefined'){
+        loaderDiv.innerHTML='<span style="color:#f87171;">GLTFLoader non chargé.</span>';
+        return;
+    }
+
+    var canvas=document.getElementById('avatar-canvas');
+    var W=canvas.clientWidth||400;
+    var H=canvas.clientHeight||500;
+
+    scene=new THREE.Scene();
+    scene.background=new THREE.Color(0x1e293b);
+
+    camera=new THREE.PerspectiveCamera(35,W/H,0.1,100);
+    camera.position.set(0,1.6,2.0);
+    camera.lookAt(0,1.55,0);
+
+    renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true});
+    renderer.setSize(W,H);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer.outputEncoding=THREE.sRGBEncoding;
+    renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure=1.2;
+
+    scene.add(new THREE.AmbientLight(0xffffff,0.8));
+    var key=new THREE.DirectionalLight(0xffffff,1.2); key.position.set(1.5,3,2); scene.add(key);
+    var fill=new THREE.DirectionalLight(0xffffff,0.6); fill.position.set(-2,1,1); scene.add(fill);
+    var rim=new THREE.DirectionalLight(0x06b6d4,0.3); rim.position.set(0,2,-3); scene.add(rim);
+
+    clock=new THREE.Clock();
+
+    var loader=new THREE.GLTFLoader();
+    loader.load('model.glb',
+        function(gltf){
+            avatarRoot=gltf.scene;
+            var box=new THREE.Box3().setFromObject(avatarRoot);
+            var size=box.getSize(new THREE.Vector3());
+            avatarRoot.position.sub(box.getCenter(new THREE.Vector3()));
+            avatarRoot.position.y+=size.y*0.5;
+            scene.add(avatarRoot);
+            avatarRoot.traverse(function(o){
+                if(o.isMesh && o.morphTargetInfluences){
+                    if(o.name==='Head_Mesh')   headMesh=o;
+                    if(o.name==='Teeth_Mesh')  teethMesh=o;
+                    if(o.name==='Tongue_Mesh') tongueMesh=o;
+                }
+            });
+            if(gltf.animations.length>0){
+                mixer=new THREE.AnimationMixer(avatarRoot);
+                mixer.clipAction(gltf.animations[0]).play();
+            }
+            loaderDiv.style.display='none';
+            setTimeout(function(){ if(headMesh) setM(headMesh,M.mouthSmile,0.12); },600);
+            startBlink();
+        },
+        function(xhr){
+            var pct=xhr.total?Math.round(xhr.loaded/xhr.total*100):0;
+            loaderDiv.innerHTML='<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,0.1);border-top-color:#6366f1;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>Chargement... '+pct+'%';
+        },
+        function(e){
+            console.error('Erreur modèle:',e);
+            loaderDiv.innerHTML='<span style="color:#f87171;">model.glb introuvable.</span>';
+        }
+    );
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    var d=clock?clock.getDelta():0.016;
+    if(mixer) mixer.update(d);
+    if(renderer&&scene&&camera) renderer.render(scene,camera);
+}
+
+/* ═══════════════════════════════════════════════════════
+   AUDIO
+═══════════════════════════════════════════════════════ */
+var audioCtx=null, audioUnlocked=false;
+
+function unlockAudio(){
+    if(audioUnlocked) return;
+    try{
+        audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+        var buf=audioCtx.createBuffer(1,1,22050);
+        var src=audioCtx.createBufferSource();
+        src.buffer=buf; src.connect(audioCtx.destination); src.start(0);
+        audioUnlocked=true;
+    }catch(e){}
+}
+
+function playAudio(b64){
+    if(currentAudio){ currentAudio.pause(); currentAudio=null; }
+    stopLipSync(); isSpeaking=false;
+    try{
+        var bin=atob(b64);
+        var buf=new Uint8Array(bin.length);
+        for(var i=0;i<bin.length;i++) buf[i]=bin.charCodeAt(i);
+        var url=URL.createObjectURL(new Blob([buf],{type:'audio/mpeg'}));
+        var audio=new Audio(url);
+        audio.volume=1.0;
+        currentAudio=audio;
+        audio.onerror=function(e){ console.error("Audio error:",e,audio.error); };
+        audio.onended=function(){
+            isSpeaking=false; stopLipSync();
+            setStatus('','En attente');
+            URL.revokeObjectURL(url);
+        };
+        function onPlay(){
+            isSpeaking=true;
+            setStatus('speaking','En train de répondre');
+            startLipSync();
+        }
+        function showPlayBtn(){
+            var old=document.getElementById('play-btn'); if(old)old.remove();
+            var btn=document.createElement('button');
+            btn.id='play-btn';
+            btn.textContent='▶ Écouter la réponse';
+            btn.style.cssText='display:block;margin-top:10px;padding:10px 20px;background:#6366f1;color:white;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;width:100%;';
+            btn.addEventListener('click', function(){
+                btn.remove(); unlockAudio();
+                audio.play().then(onPlay).catch(function(e){console.error(e);});
+            });
+            chatHistory.appendChild(btn);
+            chatHistory.scrollTop=chatHistory.scrollHeight;
+        }
+        if(audioCtx&&audioCtx.state==='suspended'){
+            audioCtx.resume().then(function(){
+                audio.play().then(onPlay).catch(function(e){ console.error(e); showPlayBtn(); });
+            });
+        } else {
+            audio.play().then(onPlay).catch(function(e){ console.error(e); showPlayBtn(); });
+        }
+    } catch(e){
+        console.error("Erreur décodage audio base64:",e);
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHAT
+═══════════════════════════════════════════════════════ */
+async function sendMessage(txt){
+    var msg=txt||chatInput.value.trim();
+    if(!msg||isThinking) return;
+    addMessage(msg,'user');
+    chatInput.value='';
+    isThinking=true;
+    setStatus('thinking','Analyse en cours');
+    showTyping();
+    try{
+        var res=await fetch('chat_handler.php',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({message:msg})
+        });
+        var data=await res.json();
+        hideTyping();
+        addMessage(data.text,'bot');
+        if(data.audio_base64 && data.audio_base64.length>50){
+            playAudio(data.audio_base64);
+        } else {
+            setStatus('','En attente');
+        }
+    }catch(e){
+        hideTyping();
+        addMessage('Erreur de connexion avec le serveur IA.','bot');
+        setStatus('','Erreur');
+    } finally { isThinking=false; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   MIC
+═══════════════════════════════════════════════════════ */
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function toggleMic(){
+    if(!SR){ alert('Reconnaissance vocale non supportée. Veuillez utiliser Google Chrome ou Safari.'); return; }
+    if(isListening){ recognition.stop(); return; }
+    recognition=new SR();
+    recognition.lang='fr-FR';
+    recognition.onstart=function(){ isListening=true; micBtn.classList.add('active'); setStatus('listening','Je vous écoute'); };
+    recognition.onresult=function(e){ sendMessage(e.results[0][0].transcript); };
+    recognition.onend=function(){ isListening=false; micBtn.classList.remove('active'); if(!isThinking&&!isSpeaking) setStatus('','En attente'); };
+    recognition.start();
+}
+
+/* ═════════════════════════════════���═════════════════════
+   INIT
+═══════════════════════════════════════════════════════ */
+window.addEventListener('load', function(){
+    initThree();
+    animate();
+
+    sendBtn.addEventListener('click', function(){ sendMessage(); });
+    chatInput.addEventListener('keydown', function(e){ if(e.key==='Enter') sendMessage(); });
+    micBtn.addEventListener('click', function(){ toggleMic(); });
+
+    document.querySelectorAll('.suggestion-chip').forEach(function(chip){
+        chip.addEventListener('click', function(){
+            sendMessage(chip.getAttribute('data-ask'));
+        });
+    });
+
+    document.addEventListener('click',    unlockAudio, {once:true});
+    document.addEventListener('keydown',  unlockAudio, {once:true});
+    document.addEventListener('touchend', unlockAudio, {once:true});
+
+    var canvas=document.getElementById('avatar-canvas');
+    var drag=false, prevX=0;
+    canvas.addEventListener('mousedown',  function(e){ drag=true; prevX=e.clientX; });
+    window.addEventListener('mouseup',    function(){ drag=false; });
+    window.addEventListener('mousemove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.clientX-prevX)*0.01; } prevX=e.clientX; });
+    canvas.addEventListener('touchstart', function(e){ drag=true; prevX=e.touches[0].clientX; },{passive:true});
+    window.addEventListener('touchend',   function(){ drag=false; });
+    window.addEventListener('touchmove',  function(e){ if(drag&&avatarRoot){ avatarRoot.rotation.y+=(e.touches[0].clientX-prevX)*0.01; } prevX=e.touches[0].clientX; },{passive:true});
+});
+</script>
+
+<?php include "footer.php"; ?>
