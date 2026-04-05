@@ -1,6 +1,32 @@
 <?php
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
 if (!isset($_SESSION['id'])) { header("Location: login.php"); exit(); }
+
+// --- 2. ANTI VOL DE SESSION (Session Hijacking) ---
+if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
+    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+        session_destroy();
+        header("Location: login.php?error=hijack");
+        exit();
+    }
+}
+
+// --- 3. GÉNÉRATION DU PARE-FEU CSP ---
+$nonce = base64_encode(random_bytes(16));
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
@@ -20,6 +46,7 @@ $active_tab = 'infos';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
+    // --- MISE À JOUR DES INFOS ---
     if ($action === 'update_profile') {
         $docname  = trim($_POST['docname']  ?? '');
         $docemail = trim($_POST['docemail'] ?? '');
@@ -38,11 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($st->execute()) { $success_msg = "Profil mis à jour avec succès."; $_SESSION['nom'] = $docname; }
             else { $error_msg = "Erreur lors de la mise à jour."; }
             $st->close();
+            
             $s2 = $conn->prepare("SELECT * FROM doctor WHERE docid=? LIMIT 1");
             $s2->bind_param("i", $doctor_id); $s2->execute(); $doc = $s2->get_result()->fetch_assoc(); $s2->close();
         }
     }
 
+    // --- CHANGEMENT DE MOT DE PASSE SÉCURISÉ ---
     if ($action === 'change_password') {
         $active_tab = 'security';
         $old  = $_POST['old_password']     ?? '';
@@ -54,10 +83,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (empty($old) || empty($new) || empty($conf))  { $error_msg = "Tous les champs sont requis."; }
         elseif ($new !== $conf)                           { $error_msg = "Les mots de passe ne correspondent pas."; }
-        elseif (strlen($new) < 8)                         { $error_msg = "Minimum 8 caractères requis."; }
+        elseif (strlen($new) < 8)                         { $error_msg = "Le nouveau mot de passe doit faire 8 caractères minimum."; }
         elseif (!password_verify($old, $hr['docpassword'])){ $error_msg = "Mot de passe actuel incorrect."; }
         else {
-            $h  = password_hash($new, PASSWORD_BCRYPT);
+            // Utilisation du standard militaire ARGON2ID
+            $h  = password_hash($new, PASSWORD_ARGON2ID);
             $st = $conn->prepare("UPDATE doctor SET docpassword=? WHERE docid=?");
             $st->bind_param("si", $h, $doctor_id);
             if ($st->execute()) { $success_msg = "Mot de passe modifié avec succès."; }
@@ -66,34 +96,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // --- UPLOAD SÉCURISÉ DE PHOTO (ANTI-SHELL) ---
     if ($action === 'upload_photo' && isset($_FILES['photo']) && $_FILES['photo']['error'] === 0) {
-        $file    = $_FILES['photo'];
-        $allowed = ['image/jpeg','image/png','image/webp'];
-        if (!in_array($file['type'], $allowed))        { $error_msg = "Format non supporté (JPG, PNG, WebP)."; }
-        elseif ($file['size'] > 3*1024*1024)           { $error_msg = "Image trop lourde (max 3 Mo)."; }
-        else {
-            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-            $fn  = 'doc_'.$doctor_id.'_'.time().'.'.$ext;
-            $dir = 'uploads/avatars/';
-            if (!is_dir($dir)) mkdir($dir, 0755, true);
-            if (move_uploaded_file($file['tmp_name'], $dir.$fn)) {
-                if (!empty($doc['photo']) && file_exists($doc['photo'])) @unlink($doc['photo']);
-                $p  = $dir.$fn;
-                $st = $conn->prepare("UPDATE doctor SET photo=? WHERE docid=?");
-                $st->bind_param("si", $p, $doctor_id); $st->execute(); $st->close();
-                $success_msg   = "Photo mise à jour.";
-                $doc['photo']  = $p;
-            } else { $error_msg = "Erreur lors de l'upload."; }
+        $file = $_FILES['photo'];
+
+        if ($file['size'] > 3 * 1024 * 1024) {
+            $error_msg = "Image trop lourde (max 3 Mo).";
+        } else {
+            // Lecture des vraies signatures du fichier (Magic Bytes)
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $real_mime = finfo_file($finfo, $file['tmp_name']);
+            finfo_close($finfo);
+
+            $allowed_mimes = [
+                'image/jpeg' => 'jpg',
+                'image/png'  => 'png',
+                'image/webp' => 'webp'
+            ];
+
+            if (!array_key_exists($real_mime, $allowed_mimes)) {
+                $error_msg = "Format non supporté ou fichier falsifié. Seuls les vrais JPG, PNG et WebP sont acceptés.";
+            } else {
+                // On force l'extension en fonction du VRAI type (ignorer l'extension envoyée)
+                $ext = $allowed_mimes[$real_mime];
+                // Génération d'un nom de fichier aléatoire et impossible à deviner
+                $fn  = 'doc_' . $doctor_id . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+                $dir = 'uploads/avatars/';
+                
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                
+                if (move_uploaded_file($file['tmp_name'], $dir.$fn)) {
+                    // Suppression de l'ancienne photo si elle existe
+                    if (!empty($doc['photo']) && file_exists($doc['photo'])) {
+                        @unlink($doc['photo']);
+                    }
+                    $p  = $dir.$fn;
+                    $st = $conn->prepare("UPDATE doctor SET photo=? WHERE docid=?");
+                    $st->bind_param("si", $p, $doctor_id); 
+                    $st->execute(); 
+                    $st->close();
+                    $success_msg   = "Photo de profil mise à jour avec succès.";
+                    $doc['photo']  = $p;
+                } else { 
+                    $error_msg = "Erreur lors de l'enregistrement sur le serveur."; 
+                }
+            }
         }
     }
 }
 
-$doc_name      = htmlspecialchars($doc['docname']   ?? '');
-$doc_email     = htmlspecialchars($doc['docemail']  ?? '');
-$doc_phone     = htmlspecialchars($doc['docphone']  ?? '');
-$doc_specialty = htmlspecialchars($doc['specialty'] ?? '');
-$doc_order     = htmlspecialchars($doc['order_num'] ?? '');
-$doc_bio       = htmlspecialchars($doc['bio']       ?? '');
+$doc_name      = htmlspecialchars($doc['docname']   ?? '', ENT_QUOTES, 'UTF-8');
+$doc_email     = htmlspecialchars($doc['docemail']  ?? '', ENT_QUOTES, 'UTF-8');
+$doc_phone     = htmlspecialchars($doc['docphone']  ?? '', ENT_QUOTES, 'UTF-8');
+$doc_specialty = htmlspecialchars($doc['specialty'] ?? '', ENT_QUOTES, 'UTF-8');
+$doc_order     = htmlspecialchars($doc['order_num'] ?? '', ENT_QUOTES, 'UTF-8');
+$doc_bio       = htmlspecialchars($doc['bio']       ?? '', ENT_QUOTES, 'UTF-8');
 $doc_photo     = $doc['photo']  ?? '';
 $doc_status    = $doc['status'] ?? 'pending';
 $doc_initial   = strtoupper(mb_substr($doc['docname'] ?? 'D', 0, 1, 'UTF-8'));
@@ -105,11 +162,10 @@ $doc_initial   = strtoupper(mb_substr($doc['docname'] ?? 'D', 0, 1, 'UTF-8'));
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mon Profil | PsySpace</title>
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script>tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'] } } } }</script>
-    <style>
+    <script nonce="<?= $nonce ?>">tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter','sans-serif'] } } } }</script>
+    <style nonce="<?= $nonce ?>">
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         .sidebar-link { transition: all 0.2s ease; }
     </style>
@@ -121,8 +177,7 @@ $doc_initial   = strtoupper(mb_substr($doc['docname'] ?? 'D', 0, 1, 'UTF-8'));
     <aside class="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-50">
         <div class="p-6 border-b border-slate-800">
             <a href="dashboard.php" class="flex items-center gap-2">
-                        <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
-
+                <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
                 <span class="text-lg font-bold text-white">PsySpace</span>
             </a>
         </div>
@@ -299,11 +354,11 @@ $doc_initial   = strtoupper(mb_substr($doc['docname'] ?? 'D', 0, 1, 'UTF-8'));
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nouveau mot de passe</label>
-                                <input type="password" name="new_password" required class="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition">
+                                <input type="password" name="new_password" minlength="8" required class="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Confirmer le mot de passe</label>
-                                <input type="password" name="confirm_password" required class="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition">
+                                <input type="password" name="confirm_password" minlength="8" required class="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none transition">
                             </div>
                         </div>
                         <div class="flex justify-end border-t border-slate-100 pt-4 mt-6">
@@ -317,31 +372,25 @@ $doc_initial   = strtoupper(mb_substr($doc['docname'] ?? 'D', 0, 1, 'UTF-8'));
     </main>
 </div>
 
-<script>
+<script nonce="<?= $nonce ?>">
 function showTab(id) {
-    // Cacher tous les contenus
     document.getElementById('tab-infos').style.display    = 'none';
     document.getElementById('tab-security').style.display = 'none';
 
-    // Réinitialiser tous les boutons
     document.querySelectorAll('.tab-btn').forEach(function(btn) {
         btn.style.borderBottomColor = 'transparent';
         btn.style.color = '#64748b';
     });
 
-    // Afficher le bon contenu
     document.getElementById('tab-' + id).style.display = 'block';
 
-    // Activer le bon bouton
     var activeBtn = document.getElementById('btn-' + id);
     if (activeBtn) {
         activeBtn.style.borderBottomColor = '#4f46e5';
         activeBtn.style.color = '#4f46e5';
     }
 }
-
-// Au chargement, afficher le bon onglet
-showTab('<?= $active_tab ?>');
+showTab('<?= htmlspecialchars($active_tab, ENT_QUOTES, 'UTF-8') ?>');
 </script>
 </body>
 </html>
