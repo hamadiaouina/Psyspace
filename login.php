@@ -76,7 +76,11 @@
                                 case "wrongpw": echo "Identifiants incorrects."; break;
                                 case "noaccount": echo "Aucun compte trouvé."; break;
                                 case "notactive": echo "Compte en attente d'activation."; break;
-                                case "captcha": echo "Vérification de sécurité échouée."; break;
+                                case "captcha": echo "Vérification de sécurité ��chouée."; break;
+                                case "bruteforce": echo "Trop de tentatives. Veuillez patienter 5 minutes."; break;
+                                case "suspended": echo "Ce compte a été suspendu par l'administration."; break;
+                                case "pending": echo "Votre compte est en attente d'activation."; break;
+                                case "hijack": echo "Session expirée par mesure de sécurité."; break;
                                 default: echo "Une erreur est survenue.";
                             }
                         ?>
@@ -90,7 +94,7 @@
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email</label>
                     <input type="email" id="loginEmail" name="email" required
                            placeholder="votre@cabinet.fr"
-                           value="<?php echo isset($_GET['email']) ? htmlspecialchars($_GET['email'], ENT_QUOTES, 'UTF-8') : ''; ?>"
+                           value="<?php echo isset($_SESSION['login_email_attempt']) ? htmlspecialchars($_SESSION['login_email_attempt'], ENT_QUOTES, 'UTF-8') : ''; ?>"
                            class="input-field">
                     <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide.</p>
                 </div>
@@ -137,7 +141,7 @@
     </div>
 </main>
 
-<script nonce="<?= $nonce ?>">
+<script nonce="<?= $nonce ?? '' ?>">
 document.addEventListener('DOMContentLoaded', () => {
     const emailInput = document.getElementById('loginEmail');
     const passInput  = document.getElementById('loginPassword');
