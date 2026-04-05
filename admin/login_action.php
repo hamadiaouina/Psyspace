@@ -1,4 +1,13 @@
 <?php
+// --- 1. CONFIGURATION DE SÉCURITÉ ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
 require_once __DIR__ . "/../connection.php";
 
@@ -8,7 +17,7 @@ require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
 
-// --- 1. SÉCURITÉ : VÉRIFICATION DU BADGE ---
+// --- 2. SÉCURITÉ : VÉRIFICATION DU BADGE ---
 $admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: "";
 if (!isset($_COOKIE['psyspace_boss_key']) || $_COOKIE['psyspace_boss_key'] !== $admin_secret_key) {
     header("Location: ../index.php?error=unauthorized_action");
@@ -21,7 +30,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
-// --- 2. SÉCURITÉ : COMPTEUR DE TENTATIVES ANTI BRUTE-FORCE ---
+// --- 3. SÉCURITÉ : VÉRIFICATION DU JETON CSRF ---
+$post_csrf = $_POST['csrf_token'] ?? '';
+$sess_csrf = $_SESSION['csrf_token'] ?? '';
+if (empty($post_csrf) || empty($sess_csrf) || !hash_equals($sess_csrf, $post_csrf)) {
+    header("Location: login.php?error=csrf");
+    exit();
+}
+
+// --- 4. SÉCURITÉ : COMPTEUR DE TENTATIVES ANTI BRUTE-FORCE ---
 if (!isset($_SESSION['admin_attempts'])) {
     $_SESSION['admin_attempts'] = 0;
 }
@@ -39,13 +56,13 @@ $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'IP Inconnu
 $date_heure = date('d/m/Y à H:i:s');
 $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Inconnu';
 
-// --- 3. REQUÊTE PRÉPARÉE ---
+// --- 5. REQUÊTE PRÉPARÉE ---
 $stmt = $con->prepare("SELECT * FROM admin WHERE admemail = ? LIMIT 1");
 $stmt->bind_param("s", $email_attempt);
 $stmt->execute();
 $result = $stmt->get_result();
 
-// --- 4. PRÉPARATION DE L'EMAIL ---
+// --- 6. PRÉPARATION DE L'EMAIL ---
 $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
 $smtp_pass = getenv('SMTP_PASS') ?: '';
 
@@ -70,6 +87,10 @@ try {
             // ==========================================
             // SCÉNARIO 1 : SUCCÈS (Bon email, bon MDP)
             // ==========================================
+            
+            // ANTI FIXATION DE SESSION (Sécurité Critique)
+            session_regenerate_id(true);
+
             $_SESSION['admin_attempts'] = 0; // Reset des tentatives
             $otp = rand(100000, 999999);
             
@@ -90,6 +111,10 @@ try {
             $mail->send();
             
             $_SESSION['temp_admin_id'] = $admin['admid'];
+            
+            // Renouvellement du CSRF pour la page suivante
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
             header("Location: verify_otp.php");
             exit();
 
