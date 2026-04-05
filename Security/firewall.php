@@ -1,67 +1,81 @@
 <?php
 /**
  * PsySpace Web Application Firewall (WAF)
- * Version optimisée pour PFE - Protection multicouche
+ * Protège contre les attaques SQLi, XSS, RCE, Path Traversal
  */
 
+// 1. PROTECTION ACCÈS DIRECT
+if (basename($_SERVER['PHP_SELF']) === basename(__FILE__)) {
+    header("HTTP/1.1 403 Forbidden");
+    exit("🛡️ Accès direct refusé.");
+}
+
 function psySpaceFirewall() {
-    $ip = $_SERVER['REMOTE_ADDR'];
+    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'Inconnue';
     $uri = $_SERVER['REQUEST_URI'];
     
-    // 1. Liste étendue des signatures d'attaques (Regex)
+    // 2. Signatures d'attaques affinées (Moins de faux positifs)
     $forbidden_patterns = [
-        '/(union\s+select|insert\s+into|drop\s+table|delete\s+from|update\s+.*set)/i', // SQL Injection
-        '/(<script|script>|alert\(|onerror|onclick|onload)/i',                         // XSS (Cross-Site Scripting)
-        '/(\.\.\/|\.\.\\\\)/',                                                         // Path Traversal
-        '/(eval\(|base64_decode|shell_exec|system\()|phpinfo/i',                       // RCE (Exécution de code)
-        '/(ORD\s*\(|HEX\s*\(|SLEEP\s*\()/i',                                           // Blind SQLi / Time-based
-        '/javascript:/i'                                                               // Protocoles suspects
+        '/(?:union\s+select|drop\s+table|--\s*$|#\s*$)/i', // SQL Injection (Grave)
+        '/(?:<script.*?>|<\/script>|javascript:|onerror=)/i', // XSS (Vol de session)
+        '/(?:\.\.\/|\.\.\\\\|\/etc\/passwd|\/windows\/win.ini)/i', // Path Traversal (Lecture de fichiers serveur)
+        '/(?:base64_decode\s*\(|shell_exec\s*\(|system\s*\(|phpinfo\s*\()/i' // RCE (Exécution de code)
     ];
 
-    // 2. Récupération de toutes les entrées utilisateur
-    $query_string = $_SERVER['QUERY_STRING'] ?? '';
-    $post_data = file_get_contents('php://input'); // Capture POST brut (JSON, Form-data, etc.)
-    $cookies = json_encode($_COOKIE);
-    
-    // On fusionne tout pour un scan complet
-    $payload = $query_string . $post_data . $cookies;
+    // 3. Fonction récursive pour scanner tous les tableaux (GET, POST, COOKIE) proprement
+    $scan_data = function($data) use (&$scan_data, $forbidden_patterns, $ip, $uri) {
+        if (is_array($data)) {
+            foreach ($data as $value) {
+                $scan_data($value);
+            }
+        } elseif (is_string($data)) {
+            foreach ($forbidden_patterns as $pattern) {
+                if (preg_match($pattern, $data)) {
+                    
+                    // 4. LOG SÉCURISÉ (Nom caché avec .ht pour empêcher la lecture web)
+                    $log_file = __DIR__ . '/.ht_waf_alerts.log';
+                    $log_entry = "[" . date('Y-m-d H:i:s') . "] IP: $ip | URI: $uri | Payload suspect détecté.\n";
+                    @file_put_contents($log_file, $log_entry, FILE_APPEND);
 
-    // 3. Analyse
-    foreach ($forbidden_patterns as $pattern) {
-        if (preg_match($pattern, $payload)) {
-            
-            // Log de l'incident (Assure-toi que le dossier a les droits d'écriture)
-            $log_entry = "[" . date('Y-m-d H:i:s') . "] IP: $ip | Motif: $pattern | URI: $uri\n";
-            file_put_contents(__DIR__ . '/waf_alerts.log', $log_entry, FILE_APPEND);
-
-            // 4. Blocage avec une interface propre
-            http_response_code(403);
-            exit("
-            <!DOCTYPE html>
-            <html lang='fr'>
-            <head>
-                <meta charset='UTF-8'>
-                <title>Accès Refusé - PsySpace Firewall</title>
-                <style>
-                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8fafc; color: #1e293b; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-                    .container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); text-align: center; max-width: 500px; border: 1px solid #e2e8f0; }
-                    h1 { color: #e11d48; margin-bottom: 16px; font-size: 24px; }
-                    p { color: #64748b; line-height: 1.6; }
-                    .ip { font-family: monospace; background: #f1f5f9; padding: 4px 8px; border-radius: 4px; color: #0f172a; }
-                    .footer { margin-top: 24px; font-size: 12px; color: #94a3b8; border-top: 1px solid #f1f5f9; pt: 16px; }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <h1>🛡️ Blocage de Sécurité</h1>
-                    <p>Une activité suspecte a été détectée. Par mesure de sécurité pour nos patients et praticiens, votre requête a été interrompue.</p>
-                    <p>Votre adresse IP : <span class='ip'>$ip</span></p>
-                    <div class='footer'>PsySpace AI Security System v1.0</div>
-                </div>
-            </body>
-            </html>");
+                    // 5. BLOCAGE VISUEL
+                    http_response_code(403);
+                    echo "<!DOCTYPE html>
+                    <html lang='fr'>
+                    <head>
+                        <meta charset='UTF-8'>
+                        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                        <title>Accès Refusé - PsySpace Security</title>
+                        <style>
+                            body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                            .container { background: #1e293b; padding: 40px; border-radius: 16px; text-align: center; max-width: 500px; border: 1px solid #334155; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+                            h1 { color: #ef4444; margin-bottom: 16px; font-size: 24px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+                            p { color: #94a3b8; line-height: 1.6; margin-bottom: 20px; }
+                            .ip-box { background: #0f172a; padding: 10px; border-radius: 8px; border: 1px dashed #ef4444; font-family: monospace; color: #f87171; letter-spacing: 1px; }
+                            .footer { margin-top: 24px; font-size: 12px; color: #475569; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class='container'>
+                            <h1>
+                                <svg width='28' height='28' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'></path></svg>
+                                Blocage de Sécurité
+                            </h1>
+                            <p>Notre système de protection AI a détecté une requête anormale. Par mesure de précaution, votre accès a été temporairement suspendu.</p>
+                            <div class='ip-box'>IP Enregistrée : $ip</div>
+                            <div class='footer'>PsySpace Web Application Firewall v2.0</div>
+                        </div>
+                    </body>
+                    </html>";
+                    exit();
+                }
+            }
         }
-    }
+    };
+
+    // On scanne les 3 portes d'entrée principales du site
+    if (!empty($_GET)) $scan_data($_GET);
+    if (!empty($_POST)) $scan_data($_POST);
+    if (!empty($_COOKIE)) $scan_data($_COOKIE);
 }
 
 // Lancement de la protection
