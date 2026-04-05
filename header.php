@@ -253,13 +253,14 @@ ob_start(function($buffer) {
                     </button>
                     <a href="login.php" class="hidden sm:block px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-indigo-600 transition-colors">Connexion</a>
                     <a href="register.php" class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-500 transition-all shadow-md">Inscription</a>
-                    <button id="menu-btn" class="md:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg">
+                                        <button id="menu-btn" class="md:hidden p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                     </button>
                 </div>
             </div>
         </div>
 
+        <!-- MENU MOBILE CORRIGÉ -->
         <div id="mobile-menu" class="hidden md:hidden border-t border-slate-100 bg-white dark:border-white/5 dark:bg-slate-900">
             <div class="px-4 py-4 space-y-2">
                 <a href="guide.php" class="block py-2 text-slate-600 dark:text-slate-300">Guide Pratique</a>
@@ -268,6 +269,11 @@ ob_start(function($buffer) {
                 <a href="mobile.php" class="block py-2 font-bold text-indigo-600">Installer l'App</a>
                 <hr class="border-slate-100 dark:border-white/5">
                 <a href="login.php" class="block py-2 text-slate-600 dark:text-slate-300">Connexion</a>
+                
+                <?php if ($is_admin_device): ?>
+                    <hr class="border-slate-100 dark:border-white/5">
+                    <a href="admin/login.php" class="block py-2 font-bold text-red-600 dark:text-red-400">🚨 Admin Panel</a>
+                <?php endif; ?>
             </div>
         </div>
     </header>
