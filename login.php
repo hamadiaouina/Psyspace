@@ -1,8 +1,15 @@
-<?php include "header.php"; ?>
+<?php 
+include "header.php"; 
+
+// --- SÉCURITÉ : GÉNÉRATION DU TOKEN CSRF ---
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+?>
 
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
-<style>
+<style nonce="<?= $nonce ?? '' ?>">
     @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;1,400&family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', sans-serif; }
     .font-serif { font-family: 'Merriweather', serif; }
@@ -34,6 +41,7 @@
 <main class="min-h-screen bg-slate-50 flex items-center justify-center py-16 px-6">
     <div class="w-full max-w-5xl flex rounded-2xl shadow-xl overflow-hidden border border-slate-200 fade-in">
 
+        <!-- PARTIE GAUCHE (DESIGN) -->
         <div class="hidden md:flex w-5/12 bg-blue-950 flex-col justify-between p-12 text-white">
             <div>
                 <a href="index.php" class="flex items-center gap-3 mb-16">
@@ -60,6 +68,7 @@
             </div>
         </div>
 
+        <!-- PARTIE DROITE (FORMULAIRE) -->
         <div class="w-full md:w-7/12 bg-white p-10 md:p-14">
 
             <div class="mb-10">
@@ -76,11 +85,12 @@
                                 case "wrongpw": echo "Identifiants incorrects."; break;
                                 case "noaccount": echo "Aucun compte trouvé."; break;
                                 case "notactive": echo "Compte en attente d'activation."; break;
-                                case "captcha": echo "Vérification de sécurité ��chouée."; break;
+                                case "captcha": echo "Vérification de sécurité échouée."; break;
                                 case "bruteforce": echo "Trop de tentatives. Veuillez patienter 5 minutes."; break;
                                 case "suspended": echo "Ce compte a été suspendu par l'administration."; break;
                                 case "pending": echo "Votre compte est en attente d'activation."; break;
                                 case "hijack": echo "Session expirée par mesure de sécurité."; break;
+                                case "csrf": echo "Jeton de sécurité invalide. Veuillez réessayer."; break;
                                 default: echo "Une erreur est survenue.";
                             }
                         ?>
@@ -89,10 +99,19 @@
             <?php endif; ?>
 
             <form id="loginForm" action="login_action.php" method="POST" class="space-y-5" novalidate>
+                
+                <!-- SÉCURITÉ : Jeton CSRF -->
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+
+                <!-- SÉCURITÉ : Honeypot (Piège à robots, invisible pour les humains) -->
+                <div style="display:none;" aria-hidden="true">
+                    <label for="hp_website">Ne pas remplir ce champ</label>
+                    <input type="text" name="hp_website" id="hp_website" tabindex="-1" autocomplete="off">
+                </div>
 
                 <div class="space-y-1.5">
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email</label>
-                    <input type="email" id="loginEmail" name="email" required
+                    <input type="email" id="loginEmail" name="email" required autocomplete="email"
                            placeholder="votre@cabinet.fr"
                            value="<?php echo isset($_SESSION['login_email_attempt']) ? htmlspecialchars($_SESSION['login_email_attempt'], ENT_QUOTES, 'UTF-8') : ''; ?>"
                            class="input-field">
@@ -104,7 +123,7 @@
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Mot de passe</label>
                         <a href="forgot.php" class="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">Mot de passe oublié ?</a>
                     </div>
-                    <input type="password" id="loginPassword" name="password" required
+                    <input type="password" id="loginPassword" name="password" required autocomplete="current-password"
                            placeholder="••••••••"
                            class="input-field">
                     <p id="pwError" class="text-xs text-red-500 hidden">Le mot de passe doit faire 8 caractères minimum.</p>
