@@ -1,9 +1,13 @@
 <?php
 // --- 1. CONFIGURATION SÉCURISÉE DES SESSIONS ---
 ini_set('session.cookie_httponly', '1'); 
-ini_set('session.cookie_secure', '1');   
 ini_set('session.use_only_cookies', '1');
 ini_set('session.cookie_samesite', 'Lax');
+
+// Détection HTTPS pour éviter de casser le login en local (localhost)
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
 
 session_start();
 
@@ -12,6 +16,25 @@ require_once 'config/db.php';
 // Sécurité : Uniquement du POST
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: login.php");
+    exit();
+}
+
+// ==========================================
+// 🛡️ NOUVEAU : VÉRIFICATION DU POT DE MIEL (HONEYPOT)
+// Si un robot a rempli ce champ invisible, on bloque.
+// ==========================================
+if (!empty($_POST['hp_website'])) {
+    // On fait croire au robot que ça a marché pour qu'il s'en aille
+    header("Location: login.php");
+    exit();
+}
+
+// ==========================================
+// 🛡️ NOUVEAU : VÉRIFICATION DU JETON CSRF
+// Empêche les attaques de falsification de requêtes
+// ==========================================
+if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+    header("Location: login.php?error=csrf");
     exit();
 }
 
@@ -70,7 +93,6 @@ if (!$email || empty($password)) {
 }
 
 // On sauvegarde l'email en session pour pré-remplir le formulaire en cas d'erreur
-// C'est beaucoup plus sécurisé que de le passer dans l'URL (?email=...)
 $_SESSION['login_email_attempt'] = $email;
 
 try {
@@ -100,6 +122,9 @@ try {
         $_SESSION['login_attempts'] = 0; // Reset du Brute-Force
         unset($_SESSION['login_email_attempt']); // On nettoie l'email mémorisé
         
+        // On renouvelle le jeton CSRF pour les futures actions (Post-Login)
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        
         // Change l'ID de session (Anti Session-Fixation)
         session_regenerate_id(true);
         
@@ -109,7 +134,6 @@ try {
         $_SESSION['last_login'] = time(); 
         
         // EMPREINTE DIGITALE (Anti Session-Hijacking)
-        // On lie la session à l'adresse IP et au navigateur
         $_SESSION['user_ip'] = $_SERVER['REMOTE_ADDR'];
         $_SESSION['user_agent'] = $_SERVER['HTTP_USER_AGENT'];
         
@@ -123,7 +147,6 @@ try {
         $_SESSION['login_attempts']++;
         $_SESSION['last_attempt_time'] = time();
 
-        // On renvoie juste 'wrongpw' sans l'email dans l'URL
         header("Location: login.php?error=wrongpw");
         exit();
     }
