@@ -1,22 +1,54 @@
 <?php
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
 if (!isset($_SESSION['id'])) { header("Location: login.php"); exit(); }
+
+// --- 2. ANTI VOL DE SESSION ---
+if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
+    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+        session_destroy();
+        header("Location: login.php?error=hijack");
+        exit();
+    }
+}
+
+// --- 3. GÉNÉRATION DU PARE-FEU CSP ---
+$nonce = base64_encode(random_bytes(16));
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
+// --- 4. VÉRIFICATIONS ANTI-IDOR & VALIDATION ---
 $patient_raw = $_GET['patient_name'] ?? '';
 if (!preg_match('/^[\p{L}\s\'\-\.]{1,100}$/u', $patient_raw)) { header("Location: dashboard.php"); exit(); }
 $patient_selected = trim($patient_raw);
 $doctor_id = (int)$_SESSION['id'];
 $nom_docteur = $_SESSION['nom'] ?? 'Docteur';
 $appointment_id = (int)($_GET['id'] ?? 0);
+
 if (!$appointment_id) { header("Location: dashboard.php"); exit(); }
 
+// Vérification stricte : Ce rendez-vous appartient-il bien à ce docteur ?
 $stmt = $conn->prepare("SELECT patient_id FROM appointments WHERE id=? AND doctor_id=? LIMIT 1");
-$stmt->bind_param("ii", $appointment_id, $doctor_id); $stmt->execute();
+$stmt->bind_param("ii", $appointment_id, $doctor_id); 
+$stmt->execute();
 $r = $stmt->get_result();
-if ($r->num_rows === 0) { header("Location: dashboard.php"); exit(); }
-$patient_id = (int)$r->fetch_assoc()['patient_id']; $stmt->close();
+
+if ($r->num_rows === 0) { header("Location: dashboard.php?error=unauthorized"); exit(); }
+$patient_id = (int)$r->fetch_assoc()['patient_id']; 
+$stmt->close();
 if (!$patient_id) { header("Location: dashboard.php"); exit(); }
 
 $prev_consults = [];
@@ -53,14 +85,21 @@ foreach (array_slice($prev_consults, 0, 3) as $pc) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Séance · <?= htmlspecialchars($patient_selected) ?> | PsySpace</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<title>Séance · <?= htmlspecialchars($patient_selected, ENT_QUOTES, 'UTF-8') ?> | PsySpace</title>
+
+<!-- Scripts sécurisés avec le Nonce -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" nonce="<?= $nonce ?>"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" nonce="<?= $nonce ?>"></script>
+
+<!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
+
+<!-- CSS sécurisé avec le Nonce -->
+<style nonce="<?= $nonce ?>">
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
   --bg:#0a0e1a;--s1:#111827;--s2:rgba(17,24,39,.75);
+/* ... LA SUITE DE TON CSS ICI ... */
   --b:rgba(255,255,255,.06);--b2:rgba(255,255,255,.04);
   --ac:#6366f1;--ok:#10b981;--wa:#f59e0b;--er:#ef4444;--in:#38bdf8;
   --tx:#f1f5f9;--su:#4b5563;
