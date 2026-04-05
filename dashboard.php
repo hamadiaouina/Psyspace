@@ -1,70 +1,102 @@
 <?php
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS (Le bouclier invisible) ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+// Détection HTTPS pour sécuriser le cookie
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
-if (!isset($_SESSION['id'])) { header("Location: login.php"); exit(); }
+
+if (!isset($_SESSION['id'])) { 
+    header("Location: login.php"); 
+    exit(); 
+}
+
+// --- 2. ANTI VOL DE SESSION (Session Hijacking) ---
+if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
+    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+        session_destroy();
+        header("Location: login.php?error=hijack");
+        exit();
+    }
+}
+
+// --- 3. GÉNÉRATION DU PARE-FEU CSP SPÉCIFIQUE AU DASHBOARD ---
+$nonce = base64_encode(random_bytes(16));
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; media-src 'self' https://assets.mixkit.co; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+
+// --- 4. CONNEXION DB ---
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
- $nom_docteur = mb_strtoupper($_SESSION['nom'] ?? 'Docteur', 'UTF-8');
- $doc_id      = (int)$_SESSION['id'];
+$nom_docteur = mb_strtoupper($_SESSION['nom'] ?? 'Docteur', 'UTF-8');
+$doc_id      = (int)$_SESSION['id'];
 
 // ── Données du médecin ───────────────────────────────────────────
- $stmt = $conn->prepare("SELECT * FROM doctor WHERE docid=? LIMIT 1");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $doc = $stmt->get_result()->fetch_assoc();
- $stmt->close();
- $doc_photo     = $doc['photo'] ?? '';
- $doc_specialty = htmlspecialchars($doc['specialty'] ?? '');
- $doc_initial   = mb_substr($nom_docteur, 0, 1, 'UTF-8');
+$stmt = $conn->prepare("SELECT * FROM doctor WHERE docid=? LIMIT 1");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$doc = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+$doc_photo     = $doc['photo'] ?? '';
+$doc_specialty = htmlspecialchars($doc['specialty'] ?? '');
+$doc_initial   = mb_substr($nom_docteur, 0, 1, 'UTF-8');
 
 // ── Stats ────────────────────────────────────────────────────────
- $stmt = $conn->prepare("SELECT COUNT(DISTINCT patient_name) as total FROM appointments WHERE doctor_id = ?");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $total_patients = (int)$stmt->get_result()->fetch_assoc()['total'];
- $stmt->close();
+$stmt = $conn->prepare("SELECT COUNT(DISTINCT patient_name) as total FROM appointments WHERE doctor_id = ?");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$total_patients = (int)$stmt->get_result()->fetch_assoc()['total'];
+$stmt->close();
 
- $stmt = $conn->prepare("SELECT COUNT(*) as total FROM appointments WHERE doctor_id = ? AND DATE(app_date) = CURDATE()");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $rdv_du_jour = (int)$stmt->get_result()->fetch_assoc()['total'];
- $stmt->close();
+$stmt = $conn->prepare("SELECT COUNT(*) as total FROM appointments WHERE doctor_id = ? AND DATE(app_date) = CURDATE()");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$rdv_du_jour = (int)$stmt->get_result()->fetch_assoc()['total'];
+$stmt->close();
 
- $stmt = $conn->prepare("SELECT COUNT(*) as total FROM consultations WHERE doctor_id = ? AND DATE(date_consultation) = CURDATE()");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $rdv_termines = (int)$stmt->get_result()->fetch_assoc()['total'];
- $stmt->close();
+$stmt = $conn->prepare("SELECT COUNT(*) as total FROM consultations WHERE doctor_id = ? AND DATE(date_consultation) = CURDATE()");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$rdv_termines = (int)$stmt->get_result()->fetch_assoc()['total'];
+$stmt->close();
 
- $stmt = $conn->prepare("SELECT COUNT(*) as total FROM consultations WHERE doctor_id = ?");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $total_archives = (int)$stmt->get_result()->fetch_assoc()['total'];
- $stmt->close();
+$stmt = $conn->prepare("SELECT COUNT(*) as total FROM consultations WHERE doctor_id = ?");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$total_archives = (int)$stmt->get_result()->fetch_assoc()['total'];
+$stmt->close();
 
- $progression = ($rdv_du_jour > 0) ? round(($rdv_termines / $rdv_du_jour) * 100) : 0;
+$progression = ($rdv_du_jour > 0) ? round(($rdv_termines / $rdv_du_jour) * 100) : 0;
 
 // ── Prochains RDV ─────────────────────────────────────────────────
- $stmt = $conn->prepare(
-    "SELECT a.*,
-            (SELECT COUNT(*) FROM consultations c WHERE c.patient_id = a.patient_id AND c.doctor_id = a.doctor_id) AS archive_count
-     FROM appointments a
-     WHERE a.doctor_id = ?
-       AND a.app_date >= NOW()
-     ORDER BY a.app_date ASC
-     LIMIT 6"
+$stmt = $conn->prepare(
+   "SELECT a.*,
+           (SELECT COUNT(*) FROM consultations c WHERE c.patient_id = a.patient_id AND c.doctor_id = a.doctor_id) AS archive_count
+    FROM appointments a
+    WHERE a.doctor_id = ?
+      AND a.app_date >= NOW()
+    ORDER BY a.app_date ASC
+    LIMIT 6"
 );
- $stmt->bind_param("i", $doc_id);
- $stmt->execute();
- $patients_query = $stmt->get_result();
- $stmt->close();
+$stmt->bind_param("i", $doc_id);
+$stmt->execute();
+$patients_query = $stmt->get_result();
+$stmt->close();
 
 // ── Prochain RDV (countdown) ──────────────────────────────────────
- $stmt = $conn->prepare("SELECT app_date, patient_name FROM appointments WHERE doctor_id=? AND app_date >= NOW() ORDER BY app_date ASC LIMIT 1");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $next_rdv = $stmt->get_result()->fetch_assoc();
- $stmt->close();
+$stmt = $conn->prepare("SELECT app_date, patient_name FROM appointments WHERE doctor_id=? AND app_date >= NOW() ORDER BY app_date ASC LIMIT 1");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$next_rdv = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
 // ── Dernière consultation ─────────────────────────────────────────
- $stmt = $conn->prepare("SELECT date_consultation FROM consultations WHERE doctor_id = ? ORDER BY date_consultation DESC LIMIT 1");
- $stmt->bind_param("i", $doc_id); $stmt->execute();
- $last_consult = $stmt->get_result()->fetch_assoc()['date_consultation'] ?? null;
- $stmt->close();
+$stmt = $conn->prepare("SELECT date_consultation FROM consultations WHERE doctor_id = ? ORDER BY date_consultation DESC LIMIT 1");
+$stmt->bind_param("i", $doc_id); $stmt->execute();
+$last_consult = $stmt->get_result()->fetch_assoc()['date_consultation'] ?? null;
+$stmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -73,10 +105,12 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard | PsySpace</title>
     <link rel="icon" type="image/png" href="assets/images/logo.png">
-    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Ajout du nonce pour la sécurité CSP -->
+    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <script>
+    <script nonce="<?= $nonce ?>">
         tailwind.config = {
             theme: {
                 extend: {
@@ -100,14 +134,12 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
 
     <!-- SIDEBAR -->
     <aside class="w-64 bg-slate-900 text-white flex flex-col fixed h-full z-50 print:hidden">
-        <!-- SIDEBAR LOGO MODIFIE -->
-<div class="p-6 border-b border-slate-800">
-    <a href="dashboard.php" class="flex items-center gap-3">
-        <!-- Votre logo remplace le "P" -->
-        <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
-        <span class="text-lg font-bold text-white">PsySpace</span>
-    </a>
-</div>
+        <div class="p-6 border-b border-slate-800">
+            <a href="dashboard.php" class="flex items-center gap-3">
+                <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
+                <span class="text-lg font-bold text-white">PsySpace</span>
+            </a>
+        </div>
 
         <nav class="flex-1 p-4 space-y-1">
             <a href="dashboard.php" class="sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-white bg-slate-800/50">
@@ -128,7 +160,7 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
             </a>
         </nav>
 
-        <!-- Profil Sidebar (Lien ajouté sur le nom) -->
+        <!-- Profil Sidebar -->
         <div class="p-4 border-t border-slate-800">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold border-2 border-indigo-200 overflow-hidden">
@@ -153,7 +185,7 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
     <!-- MAIN CONTENT -->
     <main class="flex-1 ml-64 p-8">
         
-        <!-- HEADER AMÉLIORÉ AVEC BOUTON PROFIL -->
+        <!-- HEADER -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-slate-900 tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
@@ -161,17 +193,15 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
             </div>
             
             <div class="flex items-center gap-4">
-                <!-- Date -->
                 <div class="hidden sm:block text-right">
                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aujourd'hui</p>
                     <p class="text-sm font-semibold text-slate-700"><?= date('d M, Y') ?></p>
                 </div>
 
-                <!-- BOUTON PROFIL CLAIR -->
                 <a href="profile.php" class="flex items-center gap-3 bg-white border border-slate-200 rounded-full pl-4 pr-1.5 py-1.5 hover:border-indigo-400 hover:shadow-md transition-all group cursor-pointer">
                     <div class="text-right hidden sm:block">
                         <p class="text-xs text-slate-500">Connecté en tant que</p>
-                        <p class="text-sm font-bold text-slate-800 group-hover:text-indigo-600 leading-tight">Dr. <?= htmlspecialchars($nom_docteur) ?></p>
+                        <p class="text-sm font-bold text-slate-800 group-hover:text-indigo-600 leading-tight">Dr. <?= htmlspecialchars(ucwords(strtolower($nom_docteur))) ?></p>
                     </div>
                     <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm border-2 border-white shadow overflow-hidden">
                         <?php if(!empty($doc_photo) && file_exists($doc_photo)): ?>
@@ -325,29 +355,27 @@ if (!isset($conn) && isset($con)) { $conn = $con; }
     </main>
 </div>
 
-<script>
-    // 1. Demander la permission dès le chargement
+<!-- Ajout du nonce pour la sécurité JS -->
+<script nonce="<?= $nonce ?>">
+// 1. Demander la permission dès le chargement
 if (Notification.permission !== "granted") {
     Notification.requestPermission();
 }
 
 // 2. Fonction pour jouer le son et afficher la notif
 function alertPro(patientName, time) {
-    // Son professionnel (un petit "ding" épuré)
     const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3');
-    audio.play();
+    audio.play().catch(e => console.log('Audio bloqué par le navigateur:', e));
 
-    // La notification système (apparaît en bas à droite sous Windows/macOS)
     if (Notification.permission === "granted") {
         new Notification("PsySpace : Consultation Imminente", {
             body: "Rendez-vous avec " + patientName + " à " + time,
-            icon: "icon-192.png" // Ton icône PWA
+            icon: "icon-192.png" 
         });
     }
 }
 
 // 3. Système de "Check" automatique (Polling)
-// On demande au serveur toutes les minutes s'il y a un RDV proche
 setInterval(() => {
     fetch('api_check_now.php')
     .then(response => response.json())
@@ -355,8 +383,9 @@ setInterval(() => {
         if(data.alert === true) {
             alertPro(data.patient, data.time);
         }
-    });
-}, 60000); // 60000ms = 1 minute
+    }).catch(e => console.error('Erreur Polling:', e));
+}, 60000); 
+
 <?php if($next_rdv): ?>
 var targetTs = <?= strtotime($next_rdv['app_date']) ?> * 1000;
 function updateCountdown() {
