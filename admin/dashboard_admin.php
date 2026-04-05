@@ -1,13 +1,37 @@
 <?php
 declare(strict_types=1);
 ob_start();
+
+// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
+header("X-Frame-Options: DENY");
+header("X-Content-Type-Options: nosniff");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+
 session_start();
 
 include "../connection.php";
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
+// --- 2. SÉCURITÉ : VÉRIFICATION DU BADGE INVISIBLE (God Mode) ---
+$admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: "";
+if (empty($admin_secret_key) || !isset($_COOKIE['psyspace_boss_key']) || $_COOKIE['psyspace_boss_key'] !== $admin_secret_key) {
+    session_destroy();
+    header("Location: ../index.php");
+    exit();
+}
+
+// --- 3. VÉRIFICATION DE LA SESSION ADMIN ---
 if (!isset($_SESSION['admin_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php"); exit();
+    header("Location: login.php"); 
+    exit();
 }
 
 // ── CSRF ─────────────────────────────────────────────────────────────────────
