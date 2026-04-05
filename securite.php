@@ -1,6 +1,6 @@
 <?php include "header.php"; ?>
 
-<style>
+<style nonce="<?= $nonce ?? '' ?>">
     @import url('https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap');
     
     body { font-family: 'Inter', sans-serif; scroll-behavior: smooth; }
@@ -17,7 +17,7 @@
     }
 </style>
 
-<main class="text-slate-700 bg-white">
+<main class="text-slate-700 bg-white dark:bg-slate-950 dark:text-slate-300">
 
     <section class="bg-slate-900 pt-24 pb-20 md:pt-32 md:pb-28 relative overflow-hidden">
         <div class="absolute inset-0 opacity-5" style="background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 24px 24px;"></div>
@@ -60,55 +60,55 @@
         </div>
     </section>
 
-    <section class="py-20 md:py-28 bg-white">
+    <section class="py-20 md:py-28 bg-white dark:bg-slate-900">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
                 
                 <div class="fade-up space-y-8">
                     <div>
-                        <h2 class="font-serif text-3xl font-bold text-slate-900 mb-6">Protection du site et du code</h2>
-                        <p class="text-slate-500 leading-relaxed mb-6">
+                        <h2 class="font-serif text-3xl font-bold text-slate-900 dark:text-white mb-6">Protection du site et du code</h2>
+                        <p class="text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
                             Le développement de PsySpace suit les directives de l'<strong>OWASP</strong> pour prévenir les vulnérabilités web courantes.
                         </p>
                     </div>
 
                     <div class="space-y-4">
                         <div class="flex gap-4">
-                            <div class="mt-1 shrink-0 w-5 h-5 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                            <div class="mt-1 shrink-0 w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
                             <div>
-                                <h4 class="font-bold text-slate-900">Prévention des Injections SQL</h4>
-                                <p class="text-sm text-slate-500">Utilisation systématique de requêtes préparées (PDO) pour isoler les données des commandes système.</p>
+                                <h4 class="font-bold text-slate-900 dark:text-white">Prévention des Injections SQL</h4>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">Utilisation systématique de requêtes préparées (PDO) pour isoler les données des commandes système.</p>
                             </div>
                         </div>
                         <div class="flex gap-4">
-                            <div class="mt-1 shrink-0 w-5 h-5 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                            <div class="mt-1 shrink-0 w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
                             <div>
-                                <h4 class="font-bold text-slate-900">Hachage de mots de passe</h4>
-                                <p class="text-sm text-slate-500">Algorithme BCRYPT avec sel dynamique pour garantir que même nous ne connaissons pas vos accès.</p>
+                                <h4 class="font-bold text-slate-900 dark:text-white">Hachage de mots de passe</h4>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">Algorithme de pointe <strong>Argon2id</strong> avec sel dynamique pour garantir que même nous ne connaissons pas vos accès.</p>
                             </div>
                         </div>
                         <div class="flex gap-4">
-                            <div class="mt-1 shrink-0 w-5 h-5 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                            <div class="mt-1 shrink-0 w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
                             </div>
                             <div>
-                                <h4 class="font-bold text-slate-900">Protection XSS & CSRF</h4>
-                                <p class="text-sm text-slate-500">Filtrage rigoureux des entrées utilisateurs et jetons de sécurité sur chaque formulaire.</p>
+                                <h4 class="font-bold text-slate-900 dark:text-white">Protection XSS & CSRF</h4>
+                                <p class="text-sm text-slate-500 dark:text-slate-400">Filtrage rigoureux des entrées utilisateurs, Content Security Policy (CSP) stricte et jetons de sécurité sur chaque formulaire.</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div class="fade-up relative">
-                    <div class="aspect-square bg-slate-50 rounded-3xl flex items-center justify-center border border-slate-100 overflow-hidden">
+                    <div class="aspect-square bg-slate-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center border border-slate-100 dark:border-slate-700 overflow-hidden">
                          <div class="text-center p-10">
                             <span class="text-6xl mb-4 block">🔒</span>
-                            <div class="text-4xl font-black text-slate-900 mb-2">100%</div>
-                            <p class="text-slate-400 font-semibold uppercase tracking-widest text-xs">Temps de disponibilité Azure</p>
+                            <div class="text-4xl font-black text-slate-900 dark:text-white mb-2">100%</div>
+                            <p class="text-slate-400 font-semibold uppercase tracking-widest text-xs">Conformité RGPD & HDS</p>
                          </div>
                     </div>
                 </div>
@@ -116,21 +116,21 @@
         </div>
     </section>
 
-    <section class="bg-slate-50 py-20 border-y border-slate-100">
+    <section class="bg-slate-50 dark:bg-slate-950 py-20 border-y border-slate-100 dark:border-slate-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
             <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-12">Stack technologique de confiance</h3>
-            <div class="flex flex-wrap justify-center gap-12 grayscale opacity-60">
-                <span class="text-xl font-bold text-slate-800">Microsoft Azure</span>
-                <span class="text-xl font-bold text-slate-800">PHP 8.2</span>
-                <span class="text-xl font-bold text-slate-800">MySQL</span>
-                <span class="text-xl font-bold text-slate-800">Cloudflare</span>
+            <div class="flex flex-wrap justify-center gap-12 grayscale opacity-60 dark:opacity-40">
+                <span class="text-xl font-bold text-slate-800 dark:text-slate-200">Microsoft Azure</span>
+                <span class="text-xl font-bold text-slate-800 dark:text-slate-200">PHP 8.2</span>
+                <span class="text-xl font-bold text-slate-800 dark:text-slate-200">MySQL</span>
+                <span class="text-xl font-bold text-slate-800 dark:text-slate-200">Cloudflare</span>
             </div>
         </div>
     </section>
 
 </main>
 
-<script>
+<script nonce="<?= $nonce ?? '' ?>">
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
     }, { threshold: 0.1 });
