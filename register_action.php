@@ -1,7 +1,16 @@
 <?php
+// --- 1. CONFIGURATION SÉCURISÉE DES SESSIONS ---
+ini_set('session.cookie_httponly', '1'); 
+ini_set('session.use_only_cookies', '1');
+ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
 
-// 1. SÉCURITÉ : Cacher les erreurs en production (Évite les fuites de structure DB)
+// Cacher les erreurs en production (Évite les fuites de structure DB)
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
@@ -19,17 +28,60 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     exit();
 }
 
-// --- 2. ANTI-SPAM (Rate Limiting) ---
-// Empêche un robot de créer plusieurs comptes à la suite
+// ==========================================
+// 🛡️ SÉCURITÉ 1 : VÉRIFICATION DU POT DE MIEL (HONEYPOT)
+// ==========================================
+if (!empty($_POST['hp_registration'])) {
+    // Un robot a rempli le champ invisible : on le renvoie à l'accueil silencieusement
+    header("Location: index.php");
+    exit();
+}
+
+// ==========================================
+// 🛡️ SÉCURITÉ 2 : VÉRIFICATION DU JETON CSRF
+// ==========================================
+if (!isset($_POST['csrf_token']) || !isset($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $_POST['csrf_token'])) {
+    header("Location: register.php?error=csrf");
+    exit();
+}
+
+// ==========================================
+// 🛡️ SÉCURITÉ 3 : VALIDATION CLOUDFLARE TURNSTILE (CAPTCHA)
+// ==========================================
+$turnstileSecret = getenv('TURNSTILE_SECRET') ?: 'TA_CLE_SECRETE_DE_TEST';
+$turnstileToken  = $_POST['cf-turnstile-response'] ?? '';
+
+if (empty($turnstileToken)) {
+    header("Location: register.php?error=captcha");
+    exit();
+}
+
+$ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
+    'secret'   => $turnstileSecret,
+    'response' => $turnstileToken,
+    'remoteip' => $_SERVER['REMOTE_ADDR']
+]));
+$response = curl_exec($ch);
+curl_close($ch);
+
+$data = json_decode($response ?: '', true);
+if (!($data['success'] ?? false)) {
+    header("Location: register.php?error=captcha");
+    exit();
+}
+
+// --- 4. ANTI-SPAM (Rate Limiting) ---
 if (isset($_SESSION['last_register_attempt']) && (time() - $_SESSION['last_register_attempt']) < 30) {
-    // Bloque pendant 30 secondes
     header("Location: register.php?error=spam_protection");
     exit();
 }
 $_SESSION['last_register_attempt'] = time();
 
 
-// 3. RÉCUPÉRATION ET NETTOYAGE DES DONNÉES
+// --- 5. RÉCUPÉRATION ET NETTOYAGE DES DONNÉES ---
 $nom      = trim($_POST['nom']      ?? '');
 $prenom   = trim($_POST['prenom']   ?? '');
 $email    = trim($_POST['email']    ?? '');
@@ -41,7 +93,6 @@ if (empty($nom) || empty($prenom) || empty($email) || empty($password)) {
     exit();
 }
 
-// Vérification stricte du format de l'email
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     header("Location: register.php?error=invalid_email");
     exit();
@@ -56,14 +107,14 @@ if (strlen($password) < 8) {
 if (!isset($con)) { $con = $conn ?? null; }
 
 try {
-    // --- 4. NETTOYAGE DES INSCRIPTIONS EXPIRÉES (5 MIN) ---
+    // --- 6. NETTOYAGE DES INSCRIPTIONS EXPIRÉES (5 MIN) ---
     $cleanup_query = "DELETE FROM doctor WHERE docemail = ? AND status = 'pending' AND created_at < NOW() - INTERVAL 5 MINUTE";
     $stmt_cleanup = $con->prepare($cleanup_query);
     $stmt_cleanup->bind_param("s", $email);
     $stmt_cleanup->execute();
     $stmt_cleanup->close();
 
-    // 5. VÉRIFICATION SI L'EMAIL EXISTE DÉJÀ
+    // --- 7. VÉRIFICATION SI L'EMAIL EXISTE DÉJÀ ---
     $stmt = $con->prepare("SELECT docid, status FROM doctor WHERE docemail = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
@@ -80,7 +131,7 @@ try {
     }
     $stmt->close();
 
-    // 6. PRÉPARATION DE L'INSERTION
+    // --- 8. PRÉPARATION DE L'INSERTION ---
     $fullName = $prenom . " " . $nom;
     $hashed_password = password_hash($password, PASSWORD_ARGON2ID);
     $otp = rand(100000, 999999);
@@ -91,7 +142,7 @@ try {
     $insertStmt->execute();
     $insertStmt->close();
 
-    // 7. ENVOI DU MAIL OTP
+    // --- 9. ENVOI DU MAIL OTP ---
     $mail = new PHPMailer(true);
     
     $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
@@ -128,13 +179,15 @@ try {
 
     $mail->send();
 
-    // 8. REDIRECTION (Sécurisée : pas besoin de passer l'email dans l'URL)
+    // Renouvellement du jeton CSRF après inscription réussie
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+    // --- 10. REDIRECTION ---
     $_SESSION['pending_email'] = $email;
     header("Location: verify.php");
     exit();
 
 } catch (Exception $e) {
-    // Erreur PHPMailer : Le mail n'est pas parti, on supprime le compte proprement
     if (isset($email)) {
         $del_stmt = $con->prepare("DELETE FROM doctor WHERE docemail = ? AND status = 'pending'");
         $del_stmt->bind_param("s", $email);
@@ -146,7 +199,6 @@ try {
     exit();
 
 } catch (\mysqli_sql_exception $e) {
-    // Erreur de Base de données (On loggue mais on ne montre rien au visiteur)
     error_log("Erreur DB Inscription : " . $e->getMessage());
     header("Location: register.php?error=dberror");
     exit();
