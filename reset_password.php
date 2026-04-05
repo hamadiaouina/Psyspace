@@ -1,54 +1,63 @@
 <?php
-include "connection.php"; // Vérifie bien que ce fichier est à jour avec les infos du serveur
+// --- 1. SÉCURITÉ ---
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
+include "connection.php"; 
+if (!isset($con) && isset($conn)) { $con = $conn; }
+
 $message = "";
 $show_form = false;
 
-// 1. On récupère le token (soit de l'URL, soit du formulaire envoyé)
-$token = isset($_GET['token']) ? $_GET['token'] : (isset($_POST['token']) ? $_POST['token'] : '');
+// 1. On récupère proprement le token
+$token = $_GET['token'] ?? $_POST['token'] ?? '';
 
-if(!empty($token)){
-    $safe_token = mysqli_real_escape_string($con, $token);
+if (!empty($token)) {
+    // --- 2. VÉRIFICATION DU TOKEN (Requête préparée anti-injection) ---
+    $stmt = $con->prepare("SELECT docid FROM doctor WHERE reset_token = ? AND token_expiry > NOW()");
+    $stmt->bind_param("s", $token);
+    $stmt->execute();
+    $res = $stmt->get_result();
     
-    // On vérifie si le token existe et n'a pas expiré sur le serveur
-    $query = "SELECT * FROM doctor WHERE reset_token='$safe_token' AND token_expiry > NOW()";
-    $res = mysqli_query($con, $query);
-    
-    if(mysqli_num_rows($res) > 0) {
+    if ($res->num_rows > 0) {
         $show_form = true;
     } else {
         $message = "<div class='p-5 text-rose-800 bg-rose-50 rounded-2xl border-2 border-rose-100 font-bold text-center'>Lien invalide ou expiré.</div>";
     }
+    $stmt->close();
+} else {
+    $message = "<div class='p-5 text-rose-800 bg-rose-50 rounded-2xl border-2 border-rose-100 font-bold text-center'>Aucun jeton de sécurité fourni.</div>";
 }
 
-// 2. Traitement du changement
-if(isset($_POST['update-password'])){
-    $pass1 = $_POST['pass1'];
-    $pass2 = $_POST['pass2'];
+// --- 3. TRAITEMENT DU CHANGEMENT ---
+if (isset($_POST['update-password']) && $show_form) {
+    $pass1 = $_POST['pass1'] ?? '';
+    $pass2 = $_POST['pass2'] ?? '';
 
-    if($pass1 !== $pass2){
+    // Vérification de la robustesse
+    if (strlen($pass1) < 8) {
+        $message = "<div class='p-4 mb-4 text-rose-800 bg-rose-50 rounded-2xl font-bold text-xs text-center'>Le mot de passe doit contenir au moins 8 caractères.</div>";
+    } elseif ($pass1 !== $pass2) {
         $message = "<div class='p-4 mb-4 text-rose-800 bg-rose-50 rounded-2xl font-bold text-xs text-center'>Les mots de passe ne correspondent pas.</div>";
-        $show_form = true;
     } else {
-        $new_hashed_password = password_hash($pass1, PASSWORD_DEFAULT);
+        // Hachage ultra-sécurisé (le même que pour l'inscription)
+        $new_hashed_password = password_hash($pass1, PASSWORD_ARGON2ID);
         
-        $update_query = "UPDATE doctor SET 
-                         docpassword = '$new_hashed_password', 
-                         reset_token = NULL, 
-                         token_expiry = NULL 
-                         WHERE reset_token = '$safe_token'";
+        // Mise à jour via requête préparée
+        $update_stmt = $con->prepare("UPDATE doctor SET docpassword = ?, reset_token = NULL, token_expiry = NULL WHERE reset_token = ?");
+        $update_stmt->bind_param("ss", $new_hashed_password, $token);
 
-        if(mysqli_query($con, $update_query)){
-            $message = "<div class='p-6 text-emerald-800 bg-emerald-50 rounded-3xl border border-emerald-100 font-black text-center italic'>✓ MOT DE PASSE MIS À JOUR !</div>";
+        if ($update_stmt->execute()) {
+            $message = "<div class='p-6 text-emerald-800 bg-emerald-50 rounded-3xl border border-emerald-100 font-black text-center italic'>✓ MOT DE PASSE MIS À JOUR !<br><span class='text-sm font-normal'>Redirection vers la connexion...</span></div>";
             header("Refresh: 3; url=login.php");
-            $show_form = false;
+            $show_form = false; // On cache le formulaire après la réussite
         } else {
             $message = "<div class='p-4 mb-4 text-red-800 bg-red-50 rounded-2xl font-bold text-center'>Erreur serveur.</div>";
         }
+        $update_stmt->close();
     }
 }
 ?>
-<input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -102,7 +111,8 @@ if(isset($_POST['update-password'])){
 
             <?php if($show_form): ?>
             <form method="POST" class="space-y-5 mt-6">
-                <input type="hidden" name="token" value="<?php echo htmlspecialchars($_GET['token']); ?>">
+                <!-- Le token est maintenant proprement inclus DANS le formulaire -->
+                <input type="hidden" name="token" value="<?php echo htmlspecialchars($token, ENT_QUOTES, 'UTF-8'); ?>">
 
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">
@@ -112,6 +122,7 @@ if(isset($_POST['update-password'])){
                         type="password" 
                         name="pass1" 
                         required
+                        minlength="8"
                         placeholder="••••••••"
                         class="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 outline-none focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all"
                     >
@@ -125,6 +136,7 @@ if(isset($_POST['update-password'])){
                         type="password" 
                         name="pass2" 
                         required
+                        minlength="8"
                         placeholder="••••••••"
                         class="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50 text-slate-900 outline-none focus:border-blue-600 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all"
                     >
