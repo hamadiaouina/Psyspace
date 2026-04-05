@@ -1,6 +1,16 @@
-<?php include "header.php"; ?>
+<?php 
+include "header.php"; 
 
-<style>
+// --- SÉCURITÉ : GÉNÉRATION DU TOKEN CSRF ---
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+?>
+
+<!-- SÉCURITÉ : Nonce ajouté pour autoriser Cloudflare Turnstile -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" nonce="<?= $nonce ?? '' ?>" async defer></script>
+
+<style nonce="<?= $nonce ?? '' ?>">
     body { font-family: 'Inter', sans-serif; }
     .fade-in { animation: fadeIn 0.5s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
@@ -86,43 +96,58 @@
                 <div class="mb-6 p-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl flex items-center gap-3">
                     <svg class="shrink-0" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <?php
-                        if($_GET['error'] == "emailexist") echo "Cette adresse email est déjà utilisée.";
-                        if($_GET['error'] == "empty") echo "Tous les champs sont obligatoires.";
+                        switch($_GET['error']) {
+                            case "emailexist": echo "Cette adresse email est déjà utilisée."; break;
+                            case "empty": echo "Tous les champs sont obligatoires."; break;
+                            case "csrf": echo "Session invalide, veuillez réessayer."; break;
+                            case "captcha": echo "Échec de la vérification anti-robot."; break;
+                            case "weakpass": echo "Le mot de passe ne respecte pas les critères de sécurité."; break;
+                            default: echo "Une erreur est survenue.";
+                        }
                     ?>
                 </div>
             <?php endif; ?>
 
-            <!-- Pas de oninput/onchange dans le HTML — tout est dans le JS -->
             <form id="registerForm" action="register_action.php" method="POST" class="space-y-5" novalidate>
+                
+                <!-- SÉCURITÉ : Jeton CSRF -->
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+
+                <!-- SÉCURITÉ : Honeypot (Piège à robots, invisible pour les humains) -->
+                <div style="display:none;" aria-hidden="true">
+                    <label for="hp_registration">Ne pas remplir ce champ</label>
+                    <input type="text" name="hp_registration" id="hp_registration" tabindex="-1" autocomplete="off">
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Nom</label>
-                        <input type="text" id="nom" name="nom" required class="input-field" placeholder="Ex. Aouina">
+                        <input type="text" id="nom" name="nom" required autocomplete="family-name" class="input-field" placeholder="Ex. Aouina">
                         <p id="nomError" class="text-xs text-red-500 hidden">Veuillez renseigner un nom valide.</p>
                     </div>
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Prénom</label>
-                        <input type="text" id="prenom" name="prenom" required class="input-field" placeholder="Ex. Hamadi">
+                        <input type="text" id="prenom" name="prenom" required autocomplete="given-name" class="input-field" placeholder="Ex. Hamadi">
                         <p id="prenomError" class="text-xs text-red-500 hidden">Veuillez renseigner un prénom valide.</p>
                     </div>
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Date de naissance</label>
-                    <input type="date" id="dob" name="dob" required class="input-field">
+                    <input type="date" id="dob" name="dob" required autocomplete="bday" class="input-field">
                     <p id="dobError" class="text-xs text-red-500 hidden">Vous devez avoir au moins 18 ans.</p>
                 </div>
 
                 <div class="space-y-1.5">
                     <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Adresse email professionnelle</label>
-                    <input type="email" id="email" name="email" required class="input-field" placeholder="votre@cabinet.fr">
+                    <input type="email" id="email" name="email" required autocomplete="email" class="input-field" placeholder="votre@cabinet.fr">
                     <p id="emailError" class="text-xs text-red-500 hidden">Adresse email invalide.</p>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Mot de passe</label>
-                        <input type="password" id="password" name="password" required class="input-field" placeholder="••••••••">
+                        <input type="password" id="password" name="password" required autocomplete="new-password" class="input-field" placeholder="••••••••">
                         <div class="password-strength">
                             <div class="strength-meter" id="strengthMeter"></div>
                         </div>
@@ -130,9 +155,14 @@
                     </div>
                     <div class="space-y-1.5">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Confirmer le mot de passe</label>
-                        <input type="password" id="confirm_password" required class="input-field" placeholder="••••••••">
+                        <input type="password" id="confirm_password" required autocomplete="new-password" class="input-field" placeholder="••••••••">
                         <p id="confirmHelp" class="text-xs text-red-500 hidden">Les mots de passe ne correspondent pas.</p>
                     </div>
+                </div>
+
+                <!-- SÉCURITÉ : Widget Turnstile ajouté ici -->
+                <div class="pt-2 flex justify-center">
+                    <div class="cf-turnstile" data-sitekey="0x4AAAAAACwwGfr14_N69NoP"></div> 
                 </div>
 
                 <div class="pt-2">
@@ -153,7 +183,7 @@
     </div>
 </main>
 
-<script>
+<script nonce="<?= $nonce ?? '' ?>">
 /* ═══════════════════════════════════════════════════
    RÈGLES UNIFIÉES — une seule source de vérité
    strength >= 3 sur 4 critères pour activer le bouton
@@ -263,15 +293,10 @@ function validateForm() {
 
     var emailOk    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
     var passScore  = getPasswordStrength(pass1);
-    /* Bouton actif si : tous les champs remplis + email valide
-       + mot de passe score >= 3 + mots de passe identiques          */
     var ok = nom && prenom && dob && emailOk && passScore >= 3 && pass1 === pass2 && pass1.length > 0;
     btn.disabled = !ok;
 }
 
-/* ═══════════════════════════════════════════════════
-   INIT — addEventListener uniquement, zéro oninput/onchange
-═══════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('nom').addEventListener('input',    function(){ validateField('nom'); });
     document.getElementById('prenom').addEventListener('input', function(){ validateField('prenom'); });
