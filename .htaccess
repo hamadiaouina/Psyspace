@@ -21,4 +21,11 @@ RewriteEngine On
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-ErrorDocument 404 Psyspace/404.php
+RewriteEngine On
+
+# Si le fichier demandé n'existe pas...
+RewriteCond %{REQUEST_FILENAME} !-f
+# Et si le dossier demandé n'existe pas...
+RewriteCond %{REQUEST_FILENAME} !-d
+# ALORS on affiche la page 404.php
+RewriteRule ^ /404.php [L,QSA]
