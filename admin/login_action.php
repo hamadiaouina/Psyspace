@@ -45,7 +45,7 @@ $stmt->bind_param("s", $email_attempt);
 $stmt->execute();
 $result = $stmt->get_result();
 
-// --- 4. PRÉPARATION DE L'EMAIL (AVEC TES VARIABLES .ENV) ---
+// --- 4. PRÉPARATION DE L'EMAIL ---
 $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
 $smtp_pass = getenv('SMTP_PASS') ?: '';
 
@@ -142,6 +142,7 @@ try {
         exit();
     }
 } catch (Exception $e) {
+    // Si l'envoi de mail plante, on redirige quand même vers l'erreur de connexion sans planter la page
     header("Location: login.php?error=mailfail");
     exit();
 }
