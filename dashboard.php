@@ -122,6 +122,8 @@ $stmt->close();
         .sidebar-link.active { background-color: #eef2ff; color: #4f46e5; font-weight: 600; }
         .dark .sidebar-link.active { background-color: rgba(79,70,229,0.2); color: #818cf8; }
     </style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
 </head>
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 transition-colors duration-300">
 
@@ -198,6 +200,9 @@ $stmt->close();
             </div>
             
             <div class="flex items-center gap-4">
+                <button id="btn-demo" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
+                    Visite Guidée
+                </button>
                 <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all border border-transparent dark:border-slate-700">
                     <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
                     <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 011.414-1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
@@ -431,6 +436,63 @@ updateCountdown();
 setInterval(updateCountdown, 1000);
 <?php endif; ?>
 </script>
-
+<script>
+// On attend que la page soit bien chargée avant de faire quoi que ce soit
+document.addEventListener('DOMContentLoaded', function() {
+    
+    // On cherche le bouton que tu viens d'ajouter à l'étape 2
+    const btnDemo = document.getElementById('btn-demo');
+    
+    if (btnDemo) {
+        // Quand on clique sur le bouton...
+        btnDemo.addEventListener('click', function() {
+            
+            // On initialise le moteur Driver.js
+            const driver = window.driver.js.driver;
+            
+            const tour = driver({
+                showProgress: true,       // Affiche "1 sur 3"
+                nextBtnText: 'Suivant →', // Traduction des boutons en français
+                prevBtnText: '← Retour',
+                doneBtnText: 'Terminer',
+                
+                // Voici les étapes de ta visite guidée :
+                steps: [
+                    { 
+                        // Étape 1 : Pop-up central (pas lié à un élément précis)
+                        popover: { 
+                            title: 'Bienvenue sur PsySpace ! 👋', 
+                            description: 'Faisons un petit tour rapide de votre espace médecin pour vous familiariser avec les outils.' 
+                        } 
+                    },
+                    { 
+                        // Étape 2 : On éclaire la barre de navigation à gauche
+                        element: '#sidebar', 
+                        popover: { 
+                            title: 'Votre Menu Principal', 
+                            description: 'C\'est ici que vous gérez vos patients, vos rendez-vous et vos paramètres.', 
+                            side: "right", 
+                            align: 'start' 
+                        } 
+                    },
+                    { 
+                        // Étape 3 : On éclaire le bouton Dark Mode
+                        element: '#theme-toggle', 
+                        popover: { 
+                            title: 'Travailler de nuit ? 🌙', 
+                            description: 'Un simple clic ici permet de basculer l\'interface en mode sombre pour reposer vos yeux.', 
+                            side: "bottom", 
+                            align: 'end' 
+                        } 
+                    }
+                ]
+            });
+            
+            // On démarre l'animation !
+            tour.drive();
+        });
+    }
+});
+</script>
 </body>
 </html>
