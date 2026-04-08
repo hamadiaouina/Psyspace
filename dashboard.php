@@ -138,6 +138,27 @@ $stmt->close();
             <a href="dashboard.php" class="flex items-center gap-3">
                 <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
                 <span class="text-lg font-bold text-white">PsySpace</span>
+            <?php
+// On génère le code à 10 caractères grâce à l'ID de session du docteur
+$cabinet_code = strtoupper(substr(md5($_SESSION['id'] . "PsySpaceCabinet2026"), 0, 10));
+?>
+
+<!-- ENCART CODE SECRÉTARIAT -->
+<div class="bg-gradient-to-r from-pink-50 to-pink-100 p-6 rounded-2xl border border-pink-200 mt-6 shadow-sm mb-8 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+        <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-2xl shadow-sm">🏢</div>
+        <div>
+            <h3 class="font-bold text-lg text-pink-900">Code d'accès Secrétariat</h3>
+            <p class="text-sm text-pink-700 mt-1">Transmettez ce code confidentiel à votre assistante pour la gestion de votre agenda.</p>
+        </div>
+    </div>
+    
+    <div class="bg-white border-2 border-pink-200 px-6 py-3 rounded-xl text-center shadow-inner cursor-pointer" onclick="navigator.clipboard.writeText('<?php echo $cabinet_code; ?>'); alert('Code copié !');" title="Cliquez pour copier">
+        <span class="text-2xl font-bold text-pink-600 tracking-[0.2em] font-mono"><?php echo $cabinet_code; ?></span>
+        <p class="text-[10px] text-pink-400 font-semibold uppercase mt-1">Cliquez pour copier</p>
+    </div>
+</div>
+            
             </a>
             <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-white">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
