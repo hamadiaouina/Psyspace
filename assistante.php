@@ -11,35 +11,61 @@ function getCabinetCode($docid) {
     return strtoupper(substr(md5($docid . "PsySpaceCabinet2026"), 0, 10));
 }
 
-// --- 2. REQUÊTE AJAX POUR LA SYNCHRONISATION EN TEMPS RÉEL ---
+// --- 2. REQUÊTE AJAX POUR L'AGENDA (Avec boutons Modifier/Annuler) ---
 if (isset($_GET['action']) && $_GET['action'] === 'fetch_agenda' && isset($_SESSION['sec_doc_id'])) {
     $doc_id = $_SESSION['sec_doc_id'];
-    $stmt_apps = $conn->prepare("SELECT app_date, patient_name, patient_phone FROM appointments WHERE doctor_id = ? AND app_date >= CURDATE() ORDER BY app_date ASC LIMIT 10");
+    $csrf = $_SESSION['csrf_sec_token']; // Jeton pour les boutons de suppression
+    
+    // On récupère aussi l'ID du rendez-vous
+    $stmt_apps = $conn->prepare("SELECT id, app_date, patient_name, patient_phone FROM appointments WHERE doctor_id = ? AND app_date >= CURDATE() ORDER BY app_date ASC LIMIT 10");
     $stmt_apps->bind_param("i", $doc_id);
     $stmt_apps->execute();
     $res_apps = $stmt_apps->get_result();
     
     if ($res_apps->num_rows === 0) {
-        echo '<tr><td colspan="3" class="p-8 text-center text-slate-400 italic font-medium">Aucun rendez-vous à venir.</td></tr>';
+        echo '<tr><td colspan="4" class="p-8 text-center text-slate-400 italic font-medium">Aucun rendez-vous à venir.</td></tr>';
     } else {
         while ($app = $res_apps->fetch_assoc()) {
-            $date = date('d/m/Y', strtotime($app['app_date']));
-            $heure = date('H:i', strtotime($app['app_date']));
-            $patient = htmlspecialchars($app['patient_name']);
-            $phone = htmlspecialchars($app['patient_phone']);
+            $id = $app['id'];
+            $date_fr = date('d/m/Y', strtotime($app['app_date']));
+            $heure_fr = date('H:i', strtotime($app['app_date']));
+            
+            // Format brut pour le formulaire de modification (YYYY-MM-DD et HH:MM)
+            $raw_date = explode(' ', $app['app_date'])[0];
+            $raw_time = substr(explode(' ', $app['app_date'])[1], 0, 5);
+            
+            $patient = htmlspecialchars($app['patient_name'], ENT_QUOTES);
+            $phone = htmlspecialchars($app['patient_phone'], ENT_QUOTES);
             
             echo "<tr class='hover:bg-slate-50 transition border-b border-slate-100 last:border-0'>
                     <td class='p-4'>
-                        <div class='font-bold text-slate-800'>{$date}</div>
-                        <div class='text-indigo-600 font-bold mt-1 bg-indigo-50 inline-block px-2 py-0.5 rounded text-xs'>{$heure}</div>
+                        <div class='font-bold text-slate-800'>{$date_fr}</div>
+                        <div class='text-indigo-600 font-bold mt-1 bg-indigo-50 inline-block px-2 py-0.5 rounded text-xs'>{$heure_fr}</div>
                     </td>
                     <td class='p-4 font-bold text-slate-700'>{$patient}</td>
                     <td class='p-4 text-slate-500 font-medium'>📞 {$phone}</td>
+                    <td class='p-4 text-right'>
+                        <div class='flex justify-end gap-2'>
+                            <!-- Bouton Modifier -->
+                            <button onclick='editApp({$id}, \"{$patient}\", \"{$phone}\", \"{$raw_date}\", \"{$raw_time}\")' class='p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition shadow-sm' title='Modifier'>
+                                ✏️
+                            </button>
+                            <!-- Bouton Annuler -->
+                            <form method='POST' style='display:inline;' onsubmit='return confirm(\"Êtes-vous sûr de vouloir annuler ce rendez-vous ?\");'>
+                                <input type='hidden' name='csrf_token' value='{$csrf}'>
+                                <input type='hidden' name='delete_app' value='1'>
+                                <input type='hidden' name='app_id' value='{$id}'>
+                                <button type='submit' class='p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition shadow-sm' title='Annuler le RDV'>
+                                    🗑️
+                                </button>
+                            </form>
+                        </div>
+                    </td>
                   </tr>";
         }
     }
     $stmt_apps->close();
-    exit(); // On arrête le script ici pour la requête AJAX
+    exit();
 }
 
 // --- 3. DÉCONNEXION ---
@@ -52,7 +78,7 @@ if (isset($_GET['logout'])) {
 $alert_msg = "";
 $alert_type = "";
 
-// --- 4. ANTI BRUTE-FORCE & CONNEXION ---
+// --- 4. CONNEXION DE L'ASSISTANTE ---
 if (!isset($_SESSION['sec_login_attempts'])) { $_SESSION['sec_login_attempts'] = 0; }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
@@ -65,10 +91,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
         
         while ($doc = $res_docs->fetch_assoc()) {
             if (getCabinetCode($doc['docid']) === $input_code) {
-                session_regenerate_id(true); // Sécurité : on change l'ID de session
+                session_regenerate_id(true); 
                 $_SESSION['sec_doc_id'] = $doc['docid'];
                 $_SESSION['sec_doc_name'] = $doc['docname'];
-                $_SESSION['csrf_sec_token'] = bin2hex(random_bytes(32)); // Jeton anti-spam
+                $_SESSION['csrf_sec_token'] = bin2hex(random_bytes(32)); 
                 $_SESSION['sec_login_attempts'] = 0;
                 $found = true;
                 break;
@@ -76,19 +102,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
         }
         if (!$found) {
             $_SESSION['sec_login_attempts']++;
-            $login_error = "Code d'accès invalide. (" . (5 - $_SESSION['sec_login_attempts']) . " essais restants)";
+            $login_error = "Code d'accès invalide.";
         }
     }
 }
 
-// --- 5. ÉCRAN DE CONNEXION (VERROUILLÉ) ---
+// --- ÉCRAN DE CONNEXION ---
 if (!isset($_SESSION['sec_doc_id'])) {
     ?>
     <!DOCTYPE html>
     <html lang="fr">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Accès Secrétariat | PsySpace</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -112,10 +137,6 @@ if (!isset($_SESSION['sec_doc_id'])) {
                     Déverrouiller l'Agenda
                 </button>
             </form>
-            <div class="mt-8 flex justify-center gap-4 text-xs text-slate-400 font-medium">
-                <span>🔒 Connexion chiffrée</span>
-                <span>⚡ Temps réel</span>
-            </div>
         </div>
     </body>
     </html>
@@ -123,60 +144,78 @@ if (!isset($_SESSION['sec_doc_id'])) {
     exit();
 }
 
-// --- 6. TRAITEMENT DE L'AJOUT D'UN RDV (SÉCURISÉ) ---
 $doc_id = $_SESSION['sec_doc_id'];
 $doc_name = $_SESSION['sec_doc_name'];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_app'])) {
-    
-    // Vérification du POT DE MIEL (Anti-Robot)
-    if (!empty($_POST['hp_field'])) { die("Spam détecté."); }
-    
-    // Vérification CSRF
+// --- 5. TRAITEMENT : ANNULER UN RDV ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_app'])) {
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_sec_token']) {
-        $alert_msg = "Erreur de sécurité. Veuillez réessayer.";
-        $alert_type = "error";
-    } else {
-        $pname = trim(strip_tags($_POST['pname']));
-        $pphone = trim(strip_tags($_POST['pphone']));
-        $date = $_POST['date'];
-        $time = $_POST['time'];
-        $app_datetime = $date . ' ' . $time . ':00';
+        die("Erreur CSRF");
+    }
+    $app_id = (int)$_POST['app_id'];
+    
+    // SÉCURITÉ : On vérifie que le RDV appartient bien à ce médecin !
+    $stmt_del = $conn->prepare("DELETE FROM appointments WHERE id = ? AND doctor_id = ?");
+    $stmt_del->bind_param("ii", $app_id, $doc_id);
+    if ($stmt_del->execute()) {
+        $alert_msg = "Rendez-vous annulé avec succès.";
+        $alert_type = "success";
+    }
+    $stmt_del->close();
+}
 
-        // Éviter les doublons exacts (même patient, même heure)
+// --- 6. TRAITEMENT : AJOUTER OU MODIFIER UN RDV ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_app'])) {
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_sec_token']) {
+        die("Erreur CSRF");
+    }
+    
+    $edit_id = !empty($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0;
+    $pname = trim(strip_tags($_POST['pname']));
+    $pphone = trim(strip_tags($_POST['pphone']));
+    $date = $_POST['date'];
+    $time = $_POST['time'];
+    $app_datetime = $date . ' ' . $time . ':00';
+
+    // Gestion du Patient (Créer s'il n'existe pas)
+    $stmt = $conn->prepare("SELECT id FROM patients WHERE pphone = ? LIMIT 1");
+    $stmt->bind_param("s", $pphone);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($res->num_rows > 0) { 
+        $patient_id = $res->fetch_assoc()['id']; 
+    } else {
+        $stmt2 = $conn->prepare("INSERT INTO patients (pname, pphone) VALUES (?, ?)");
+        $stmt2->bind_param("ss", $pname, $pphone);
+        $stmt2->execute();
+        $patient_id = $stmt2->insert_id;
+        $stmt2->close();
+    }
+    $stmt->close();
+
+    if ($edit_id > 0) {
+        // MODE MODIFICATION
+        $stmt_up = $conn->prepare("UPDATE appointments SET patient_id = ?, patient_name = ?, patient_phone = ?, app_date = ? WHERE id = ? AND doctor_id = ?");
+        $stmt_up->bind_param("isssii", $patient_id, $pname, $pphone, $app_datetime, $edit_id, $doc_id);
+        if ($stmt_up->execute()) {
+            $alert_msg = "Rendez-vous modifié !";
+            $alert_type = "success";
+        }
+        $stmt_up->close();
+    } else {
+        // MODE AJOUT
         $check = $conn->prepare("SELECT id FROM appointments WHERE doctor_id = ? AND app_date = ?");
         $check->bind_param("is", $doc_id, $app_datetime);
         $check->execute();
-        
         if ($check->get_result()->num_rows > 0) {
             $alert_msg = "Ce créneau est déjà pris !";
             $alert_type = "error";
         } else {
-            // Patient existant ?
-            $stmt = $conn->prepare("SELECT id FROM patients WHERE pphone = ? LIMIT 1");
-            $stmt->bind_param("s", $pphone);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            if ($res->num_rows > 0) { 
-                $patient_id = $res->fetch_assoc()['id']; 
-            } else {
-                $stmt2 = $conn->prepare("INSERT INTO patients (pname, pphone) VALUES (?, ?)");
-                $stmt2->bind_param("ss", $pname, $pphone);
-                $stmt2->execute();
-                $patient_id = $stmt2->insert_id;
-                $stmt2->close();
-            }
-            $stmt->close();
-
-            // Insertion
             $stmt3 = $conn->prepare("INSERT INTO appointments (doctor_id, patient_id, patient_name, patient_phone, app_date, app_type) VALUES (?, ?, ?, ?, ?, 'Consultation')");
             $stmt3->bind_param("iisss", $doc_id, $patient_id, $pname, $pphone, $app_datetime);
             if ($stmt3->execute()) { 
-                $alert_msg = "Rendez-vous ajouté avec succès !"; 
+                $alert_msg = "Nouveau rendez-vous ajouté !"; 
                 $alert_type = "success";
-            } else { 
-                $alert_msg = "Erreur base de données."; 
-                $alert_type = "error";
             }
             $stmt3->close();
         }
@@ -192,7 +231,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_app'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agenda Secrétariat | PsySpace</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Librairie pour des alertes professionnelles -->
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -220,54 +258,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_app'])) {
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             
-            <!-- FORMULAIRE (GAUCHE) -->
-            <div class="lg:col-span-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 h-fit sticky top-8">
-                <h2 class="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2 border-b border-slate-100 pb-4">
-                    <span class="bg-blue-50 text-blue-600 p-2 rounded-lg">📞</span> Ajouter un RDV
-                </h2>
+            <!-- FORMULAIRE D'AJOUT / MODIFICATION -->
+            <div class="lg:col-span-1 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 h-fit sticky top-8" id="form-container">
+                <div class="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                    <h2 id="form-title" class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span class="bg-blue-50 text-blue-600 p-2 rounded-lg">📞</span> Ajouter un RDV
+                    </h2>
+                    <button type="button" id="btn-cancel-edit" onclick="cancelEdit()" class="hidden text-xs text-red-500 hover:underline font-bold">Annuler la modif.</button>
+                </div>
                 
                 <form method="POST" action="assistante.php" class="space-y-4">
-                    <input type="hidden" name="add_app" value="1">
+                    <input type="hidden" name="save_app" value="1">
                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_sec_token'] ?>">
-                    
-                    <!-- HONEYPOT (Invisible pour l'humain, piège à robot) -->
-                    <div style="display:none;"><input type="text" name="hp_field" value=""></div>
+                    <input type="hidden" name="edit_id" id="edit-id" value="0"> <!-- ID caché pour la modification -->
                     
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Nom et Prénom</label>
-                        <input type="text" name="pname" required placeholder="Ex: Jean Dupont" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition">
+                        <input type="text" id="input-name" name="pname" required placeholder="Ex: Jean Dupont" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 transition">
                     </div>
                     
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Numéro de Téléphone</label>
-                        <input type="tel" name="pphone" required placeholder="Ex: 54 859 582" pattern="[0-9\s\-\+]+" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition">
+                        <input type="tel" id="input-phone" name="pphone" required placeholder="Ex: 54 859 582" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 transition">
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Date</label>
-                            <input type="date" name="date" required min="<?= date('Y-m-d') ?>" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition cursor-pointer">
+                            <input type="date" id="input-date" name="date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 transition">
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Heure</label>
-                            <input type="time" name="time" required step="900" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 transition cursor-pointer">
+                            <input type="time" id="input-time" name="time" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3.5 outline-none focus:bg-white focus:border-indigo-500 transition">
                         </div>
                     </div>
                     
-                    <button type="submit" class="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl transition-all shadow-md mt-4 flex justify-center items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                        Enregistrer
+                    <button type="submit" id="btn-submit" class="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl transition-all shadow-md mt-4 flex justify-center items-center gap-2">
+                        + Enregistrer
                     </button>
                 </form>
             </div>
 
-            <!-- AGENDA SYNCHRONISÉ (DROITE) -->
+            <!-- AGENDA DROITE -->
             <div class="lg:col-span-2 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
                 <div class="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">
                     <h2 class="text-lg font-bold text-slate-800">Rendez-vous à venir</h2>
                     <span class="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-md text-xs font-bold flex items-center gap-1">
                         <svg class="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                        Synchronisé
+                        Temps réel
                     </span>
                 </div>
                 
@@ -278,11 +316,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_app'])) {
                                 <th class="p-4 font-bold">Date & Heure</th>
                                 <th class="p-4 font-bold">Patient</th>
                                 <th class="p-4 font-bold">Contact</th>
+                                <th class="p-4 font-bold text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="agenda-tbody" class="bg-white">
-                            <!-- Les données sont chargées en AJAX ici par le JS en bas de page -->
-                            <tr><td colspan="3" class="p-8 text-center text-slate-400 italic">Chargement de l'agenda...</td></tr>
+                            <tr><td colspan="4" class="p-8 text-center text-slate-400 italic">Chargement...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -290,39 +328,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_app'])) {
         </div>
     </div>
 
-    <!-- SCRIPTS MAGIQUES (Alertes + Synchro) -->
+    <!-- SCRIPTS JS -->
     <script>
-        // 1. Affichage des notifications Toastify (Design Pro)
+        // Alertes Toastify
         <?php if ($alert_msg !== ""): ?>
             Toastify({
-                text: "<?= $alert_msg ?>",
-                duration: 4000,
-                gravity: "top", 
-                position: "right",
-                style: {
-                    background: "<?= $alert_type === 'success' ? '#10b981' : '#ef4444' ?>",
-                    borderRadius: "10px",
-                    fontWeight: "bold",
-                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
-                }
+                text: "<?= $alert_msg ?>", duration: 4000, gravity: "top", position: "right",
+                style: { background: "<?= $alert_type === 'success' ? '#10b981' : '#ef4444' ?>", borderRadius: "10px", fontWeight: "bold" }
             }).showToast();
         <?php endif; ?>
 
-        // 2. Synchronisation de l'agenda en temps réel (Toutes les 15 secondes)
+        // Fonction pour remplir le formulaire quand on clique sur "Modifier"
+        function editApp(id, name, phone, date, time) {
+            document.getElementById('edit-id').value = id;
+            document.getElementById('input-name').value = name;
+            document.getElementById('input-phone').value = phone;
+            document.getElementById('input-date').value = date;
+            document.getElementById('input-time').value = time;
+            
+            // Changer le design du formulaire
+            document.getElementById('form-title').innerHTML = '<span class="bg-indigo-100 text-indigo-600 p-2 rounded-lg">✏️</span> Modifier le RDV';
+            document.getElementById('btn-submit').innerHTML = '💾 Mettre à jour';
+            document.getElementById('btn-submit').className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-md mt-4';
+            document.getElementById('btn-cancel-edit').classList.remove('hidden');
+            
+            // Scroller vers le formulaire
+            document.getElementById('form-container').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Annuler la modification
+        function cancelEdit() {
+            document.getElementById('edit-id').value = '0';
+            document.getElementById('input-name').value = '';
+            document.getElementById('input-phone').value = '';
+            document.getElementById('input-date').value = '';
+            document.getElementById('input-time').value = '';
+            
+            document.getElementById('form-title').innerHTML = '<span class="bg-blue-50 text-blue-600 p-2 rounded-lg">📞</span> Ajouter un RDV';
+            document.getElementById('btn-submit').innerHTML = '+ Enregistrer';
+            document.getElementById('btn-submit').className = 'w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl transition-all shadow-md mt-4';
+            document.getElementById('btn-cancel-edit').classList.add('hidden');
+        }
+
+        // Synchro AJAX
         function fetchAgenda() {
             fetch('assistante.php?action=fetch_agenda')
                 .then(response => response.text())
-                .then(html => {
-                    document.getElementById('agenda-tbody').innerHTML = html;
-                })
-                .catch(error => console.error('Erreur de synchro:', error));
+                .then(html => { document.getElementById('agenda-tbody').innerHTML = html; })
+                .catch(error => console.error('Erreur:', error));
         }
 
-        // Charger tout de suite au démarrage
         fetchAgenda();
-        
-        // Puis recharger toutes les 15 secondes silencieusement
-        setInterval(fetchAgenda, 15000);
+        setInterval(fetchAgenda, 15000); // Recharge toutes les 15s
     </script>
 </body>
 </html>
