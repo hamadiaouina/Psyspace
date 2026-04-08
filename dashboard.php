@@ -508,5 +508,116 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<!-- ========================================================================= -->
+<!-- 💬 TIROIR DE TCHAT & FLUX D'ACTIVITÉ (À coller juste avant </body>) -->
+<!-- ========================================================================= -->
+<div id="chat-button" class="fixed bottom-6 right-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-4 shadow-xl cursor-pointer transition-transform hover:scale-105 z-50 flex items-center justify-center">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+</div>
+
+<div id="chat-drawer" class="fixed top-0 right-0 h-full w-80 md:w-96 bg-white dark:bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-800">
+    <!-- Header du Tchat -->
+    <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
+        <div class="flex items-center gap-2">
+            <span class="text-xl">💬</span>
+            <h3 class="font-bold">Liaison Cabinet</h3>
+        </div>
+        <button id="close-chat" class="text-indigo-200 hover:text-white text-2xl leading-none">&times;</button>
+    </div>
+
+    <!-- Zone des messages -->
+    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 custom-scroll">
+        <!-- Les messages apparaîtront ici -->
+    </div>
+
+    <!-- Zone de saisie -->
+    <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <form id="chat-form" class="flex gap-2">
+            <input type="text" id="chat-input" placeholder="Votre message..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-sm transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const chatBtn = document.getElementById('chat-button');
+    const chatDrawer = document.getElementById('chat-drawer');
+    const closeChat = document.getElementById('close-chat');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    
+    // Déterminer qui je suis pour l'affichage (Docteur ou Assistant)
+    // On regarde l'URL pour savoir si on est sur la page assistante ou non
+    const amI_Assistant = window.location.pathname.includes('assistante.php');
+
+    // Ouvrir / Fermer le tiroir
+    chatBtn.addEventListener('click', () => chatDrawer.classList.remove('translate-x-full'));
+    closeChat.addEventListener('click', () => chatDrawer.classList.add('translate-x-full'));
+
+    // Charger les messages
+    function loadMessages() {
+        fetch('api_chat.php?action=fetch')
+            .then(res => res.json())
+            .then(data => {
+                chatMessages.innerHTML = '';
+                data.forEach(msg => {
+                    let html = '';
+                    
+                    // 🤖 Message Système (Gris au centre)
+                    if (msg.sender_type === 'system') {
+                        html = `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase px-3 py-1 rounded-full">🤖 Système : ${msg.message} (${msg.time})</span></div>`;
+                    } 
+                    // 👤 Message de moi-même (À droite, en couleur principale)
+                    else if ((msg.sender_type === 'assistant' && amI_Assistant) || (msg.sender_type === 'doctor' && !amI_Assistant)) {
+                        html = `
+                        <div class="self-end max-w-[80%] flex flex-col items-end">
+                            <div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div>
+                            <span class="text-[10px] text-slate-400 mt-1">${msg.time}</span>
+                        </div>`;
+                    } 
+                    // 👥 Message de l'autre (À gauche, en gris)
+                    else {
+                        const senderName = msg.sender_type === 'doctor' ? '👨‍⚕️ Docteur' : '👩‍💼 Secrétariat';
+                        html = `
+                        <div class="self-start max-w-[80%] flex flex-col items-start">
+                            <span class="text-[10px] font-bold text-slate-500 mb-1">${senderName}</span>
+                            <div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div>
+                            <span class="text-[10px] text-slate-400 mt-1">${msg.time}</span>
+                        </div>`;
+                    }
+                    chatMessages.innerHTML += html;
+                });
+                // Scroller tout en bas
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+    }
+
+    // Envoyer un message
+    chatForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const text = chatInput.value.trim();
+        if (!text) return;
+
+        const formData = new FormData();
+        formData.append('message', text);
+
+        fetch('api_chat.php?action=send', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    chatInput.value = '';
+                    loadMessages(); // Recharger immédiatement
+                }
+            });
+    });
+
+    // Charger les messages au démarrage et toutes les 5 secondes
+    loadMessages();
+    setInterval(loadMessages, 5000);
+</script>
+<!-- ========================================================================= -->
 </body>
 </html>
