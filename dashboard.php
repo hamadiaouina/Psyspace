@@ -138,26 +138,6 @@ $stmt->close();
             <a href="dashboard.php" class="flex items-center gap-3">
                 <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
                 <span class="text-lg font-bold text-white">PsySpace</span>
-            <?php
-// On génère le code à 10 caractères grâce à l'ID de session du docteur
-$cabinet_code = strtoupper(substr(md5($_SESSION['id'] . "PsySpaceCabinet2026"), 0, 10));
-?>
-
-<!-- ENCART CODE SECRÉTARIAT -->
-<div class="bg-gradient-to-r from-pink-50 to-pink-100 p-6 rounded-2xl border border-pink-200 mt-6 shadow-sm mb-8 flex items-center justify-between">
-    <div class="flex items-center gap-4">
-        <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-2xl shadow-sm">🏢</div>
-        <div>
-            <h3 class="font-bold text-lg text-pink-900">Code d'accès Secrétariat</h3>
-            <p class="text-sm text-pink-700 mt-1">Transmettez ce code confidentiel à votre assistante pour la gestion de votre agenda.</p>
-        </div>
-    </div>
-    
-    <div class="bg-white border-2 border-pink-200 px-6 py-3 rounded-xl text-center shadow-inner cursor-pointer" onclick="navigator.clipboard.writeText('<?php echo $cabinet_code; ?>'); alert('Code copié !');" title="Cliquez pour copier">
-        <span class="text-2xl font-bold text-pink-600 tracking-[0.2em] font-mono"><?php echo $cabinet_code; ?></span>
-        <p class="text-[10px] text-pink-400 font-semibold uppercase mt-1">Cliquez pour copier</p>
-    </div>
-</div>
             
             </a>
             <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-white">
@@ -208,17 +188,30 @@ $cabinet_code = strtoupper(substr(md5($_SESSION['id'] . "PsySpaceCabinet2026"), 
     <!-- MAIN CONTENT -->
     <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full">
         
-        <!-- HEADER -->
-        <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
-            <div class="flex items-center gap-4">
-                <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                </button>
-                <div>
-                    <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
-                    <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Voici le résumé de votre activité.</p>
-                </div>
+<!-- HEADER -->
+<div class="flex flex-wrap justify-between items-center mb-8 gap-4">
+    <div class="flex items-center gap-4">
+        <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div>
+            <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
+            
+            <div class="flex items-center gap-3 mt-1.5 flex-wrap">
+                <p class="text-slate-500 dark:text-slate-400 text-sm">Voici le résumé de votre activité.</p>
+                
+                <!-- BADGE CODE SECRÉTARIAT (Subtil et Pro) -->
+                <?php $cabinet_code = strtoupper(substr(md5($_SESSION['id'] . "PsySpaceCabinet2026"), 0, 10)); ?>
+                <span class="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-mono font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" 
+                      onclick="navigator.clipboard.writeText('<?= $cabinet_code ?>'); alert('Code cabinet copié !');" 
+                      title="Copier le code pour l'assistante">
+                    <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    Code Cabinet : <?= $cabinet_code ?>
+                </span>
             </div>
+
+        </div>
+    </div>
             
             <div class="flex items-center gap-4">
                 <button id="btn-demo" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
