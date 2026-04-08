@@ -140,9 +140,16 @@ if (empty($_SESSION['csrf_token'])) {
                 </div>
 
                 <div class="pt-2">
+                    <!-- NOUVEAU BOUTON AVEC SPINNER INTÉGRÉ -->
                     <button type="submit" id="loginBtn"
-                            class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
-                        Se connecter
+                            class="w-full flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
+                        <span id="btnText">Se connecter</span>
+                        
+                        <!-- Le Spinner caché par défaut -->
+                        <svg id="btnSpinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
                     </button>
                 </div>
             </form>
@@ -167,6 +174,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const loginBtn   = document.getElementById('loginBtn');
     const emailError = document.getElementById('emailError');
     const pwError    = document.getElementById('pwError');
+    
+    // Nouveaux éléments pour l'animation
+    const loginForm  = document.getElementById('loginForm');
+    const btnText    = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
 
     function validate() {
         const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value);
@@ -191,10 +203,23 @@ document.addEventListener('DOMContentLoaded', () => {
         loginBtn.disabled = !(emailOk && passOk);
     }
 
+    // --- ANIMATION DU BOUTON AU CLIC ---
+    loginForm.addEventListener('submit', function() {
+        // On modifie le texte
+        btnText.textContent = "Connexion...";
+        
+        // On affiche le spinner qui tourne
+        btnSpinner.classList.remove('hidden');
+        
+        // On enlève l'effet de survol pour faire "bloqué"
+        loginBtn.classList.remove('hover:-translate-y-0.5');
+        loginBtn.classList.add('cursor-wait', 'opacity-80');
+    });
+
     emailInput.addEventListener('input', validate);
     passInput.addEventListener('input', validate);
     validate();
 });
 </script>
 
-<?php include "footer.php"; ?>
+<?php include "footer.php"; ?> 
