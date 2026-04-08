@@ -62,6 +62,7 @@ if (!isset($_SESSION['sec_doc_id'])) {
     <!DOCTYPE html>
     <html lang="fr" class="dark:bg-slate-950">
     <head>
+        <link rel="icon" type="image/png" href="assets/images/logo.png">
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Accès Secrétariat | PsySpace</title>
