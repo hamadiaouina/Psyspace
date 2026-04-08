@@ -541,7 +541,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
-<script>
+<script nonce="<?= $nonce ?>">
     const chatBtn = document.getElementById('chat-button');
     const chatDrawer = document.getElementById('chat-drawer');
     const closeChat = document.getElementById('close-chat');
@@ -617,6 +617,127 @@ document.addEventListener('DOMContentLoaded', function() {
     // Charger les messages au démarrage et toutes les 5 secondes
     loadMessages();
     setInterval(loadMessages, 5000);
+</script>
+<!-- ========================================================================= -->
+ <!-- ========================================================================= -->
+<!-- 💬 TIROIR DE TCHAT & FLUX D'ACTIVITÉ (VERSION DOCTEUR) -->
+<!-- ========================================================================= -->
+<div id="chat-button" class="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl cursor-pointer transition-transform hover:scale-105 z-50 flex items-center justify-center print:hidden">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+    <!-- Le badge rouge de notification -->
+    <span id="chat-badge" class="absolute -top-1 -right-1 bg-red-500 border-2 border-white dark:border-slate-900 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
+</div>
+
+<div id="chat-drawer" class="fixed top-0 right-0 h-full w-80 md:w-96 bg-white dark:bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-800 print:hidden">
+    <!-- Header -->
+    <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
+        <div class="flex items-center gap-2">
+            <span class="text-xl">💬</span>
+            <h3 class="font-bold">Liaison Secrétariat</h3>
+        </div>
+        <button id="close-chat" class="text-indigo-200 hover:text-white text-2xl leading-none">&times;</button>
+    </div>
+
+    <!-- Messages -->
+    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 custom-scroll"></div>
+
+    <!-- Input -->
+    <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <form id="chat-form" class="flex gap-2">
+            <input type="text" id="chat-input" placeholder="Message à l'assistante..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white transition-colors">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-sm transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const chatBtn = document.getElementById('chat-button');
+    const chatDrawer = document.getElementById('chat-drawer');
+    const closeChat = document.getElementById('close-chat');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const chatBadge = document.getElementById('chat-badge');
+
+    let lastMsgCount = 0; 
+    let isDrawerOpen = false;
+    const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+
+    // Ouvrir / Fermer
+    chatBtn.addEventListener('click', () => {
+        chatDrawer.classList.remove('translate-x-full');
+        isDrawerOpen = true;
+        chatBadge.classList.add('hidden'); 
+        chatBadge.textContent = '0';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+    
+    closeChat.addEventListener('click', () => {
+        chatDrawer.classList.add('translate-x-full');
+        isDrawerOpen = false;
+    });
+
+    // Charger les messages (Version Docteur)
+    function loadMessages() {
+        fetch('api_chat.php?action=fetch')
+            .then(res => res.json())
+            .then(data => {
+                let html = '';
+                data.forEach(msg => {
+                    // 🤖 Alertes Système
+                    if (msg.sender_type === 'system') {
+                        html += `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1 rounded-full">🤖 ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
+                    } 
+                    // 👨‍⚕️ C'est MOI (le Docteur)
+                    else if (msg.sender_type === 'doctor') {
+                        html += `<div class="self-end max-w-[80%] flex flex-col items-end"><div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
+                    } 
+                    // 👩‍💼 C'est l'autre (l'Assistante)
+                    else {
+                        html += `<div class="self-start max-w-[80%] flex flex-col items-start"><span class="text-[10px] font-bold text-slate-500 mb-1">👩‍💼 Assistante</span><div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
+                    }
+                });
+
+                chatMessages.innerHTML = html;
+
+                // NOTIFICATIONS 🔔
+                if (data.length > lastMsgCount) {
+                    if (lastMsgCount !== 0 && !isDrawerOpen) {
+                        let unread = parseInt(chatBadge.textContent) + (data.length - lastMsgCount);
+                        chatBadge.textContent = unread;
+                        chatBadge.classList.remove('hidden');
+                        notifSound.play().catch(e => console.log('Son bloqué')); 
+                    }
+                    if (isDrawerOpen) chatMessages.scrollTop = chatMessages.scrollHeight;
+                    lastMsgCount = data.length;
+                }
+            });
+    }
+
+    // Envoyer un message
+    chatForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const text = chatInput.value.trim();
+        if (!text) return;
+
+        const formData = new FormData(); 
+        formData.append('message', text);
+
+        fetch('api_chat.php?action=send', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                if(data.success) {
+                    chatInput.value = '';
+                    loadMessages();
+                }
+            });
+    });
+
+    // Chargement initial et rafraîchissement toutes les 3 secondes
+    loadMessages();
+    setInterval(loadMessages, 3000);
 </script>
 <!-- ========================================================================= -->
 </body>
