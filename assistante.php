@@ -1,5 +1,7 @@
 <?php
-// --- 1. SÉCURITÉ DES SESSIONS ---
+// ==========================================
+// 1. SÉCURITÉ ET CONFIGURATION INITIALE
+// ==========================================
 ini_set('session.cookie_httponly', '1'); 
 ini_set('session.use_only_cookies', '1');
 ini_set('session.cookie_samesite', 'Lax');
@@ -13,19 +15,21 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
-// --- 2. FONCTION CODE CABINET ---
+// Fonction magique pour générer le code du cabinet
 function getCabinetCode($docid) {
     return strtoupper(substr(md5($docid . "PsySpaceCabinet2026"), 0, 10));
 }
 
-// --- 3. DÉCONNEXION ---
+// Déconnexion
 if (isset($_GET['logout'])) {
     session_destroy();
     header("Location: assistante.php");
     exit();
 }
 
-// --- 4. TRAITEMENT LOGIN ASSISTANTE ---
+// ==========================================
+// 2. GESTION DU LOGIN ASSISTANTE
+// ==========================================
 if (!isset($_SESSION['sec_login_attempts'])) { $_SESSION['sec_login_attempts'] = 0; }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
@@ -55,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
 }
 
 // ==========================================
-// 🔒 ÉCRAN DE VERROUILLAGE 
+// 🔒 3. ÉCRAN DE VERROUILLAGE (SI NON CONNECTÉE)
 // ==========================================
 if (!isset($_SESSION['sec_doc_id'])) {
     ?>
@@ -96,20 +100,21 @@ if (!isset($_SESSION['sec_doc_id'])) {
 }
 
 // ==========================================
-// 📅 ESPACE ASSISTANTE CONNECTÉE
+// 📅 4. ESPACE ASSISTANTE (CONNECTÉE)
 // ==========================================
 $doc_id = (int)$_SESSION['sec_doc_id'];
 $doc_name = $_SESSION['sec_doc_name'];
 
-// --- CRUD : AJOUTER / MODIFIER ---
+// --- CRUD : AJOUTER / MODIFIER (Avec Notification Chat) ---
 if(isset($_POST['save_appointment'])) {
     $edit_id = !empty($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0;
     $p_name  = mysqli_real_escape_string($conn, trim($_POST['p_name']));
     $p_phone = mysqli_real_escape_string($conn, trim($_POST['p_phone']));
-    $p_date  = $_POST['p_date']; // Format YYYY-MM-DDTHH:MM
+    $p_date  = $_POST['p_date']; 
     $app_datetime = date('Y-m-d H:i:s', strtotime($p_date));
+    $date_format_chat = date('d/m à H:i', strtotime($p_date));
     
-    // Check ou création patient
+    // Gérer le patient
     $check_p = $conn->query("SELECT id FROM patients WHERE pphone = '$p_phone' LIMIT 1");
     if($check_p->num_rows > 0) { 
         $final_patient_id = $check_p->fetch_assoc()['id']; 
@@ -119,22 +124,40 @@ if(isset($_POST['save_appointment'])) {
     }
     
     if ($edit_id > 0) {
+        // Envoi au Tchat : RDV Modifié
+        $sys_msg = "✏️ RDV modifié : " . mysqli_real_escape_string($conn, $p_name) . " décalé au " . $date_format_chat;
+        $conn->query("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES ('$doc_id', 'system', '$sys_msg')");
+        
         $conn->query("UPDATE appointments SET patient_id='$final_patient_id', patient_name='$p_name', patient_phone='$p_phone', app_date='$app_datetime' WHERE id='$edit_id' AND doctor_id='$doc_id'");
         header("Location: assistante.php?success=edit"); exit();
     } else {
+        // Envoi au Tchat : RDV Ajouté
+        $sys_msg = "✅ Nouveau RDV : " . mysqli_real_escape_string($conn, $p_name) . " planifié le " . $date_format_chat;
+        $conn->query("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES ('$doc_id', 'system', '$sys_msg')");
+        
         $conn->query("INSERT INTO appointments (doctor_id, patient_id, patient_name, patient_phone, app_date, app_type) VALUES ('$doc_id','$final_patient_id','$p_name','$p_phone','$app_datetime', 'Consultation')");
         header("Location: assistante.php?success=add"); exit();
     }
 }
 
-// --- CRUD : SUPPRIMER ---
+// --- CRUD : SUPPRIMER (Avec Notification Chat) ---
 if (isset($_POST['delete_app'])) {
     $app_id = (int)$_POST['app_id'];
+    
+    // Récupérer le nom avant de supprimer
+    $res_name = $conn->query("SELECT patient_name FROM appointments WHERE id='$app_id'");
+    $del_name = ($res_name->num_rows > 0) ? $res_name->fetch_assoc()['patient_name'] : 'Inconnu';
+    
+    // Envoi au Tchat : RDV Annulé
+    $sys_msg = "❌ RDV annulé : " . mysqli_real_escape_string($conn, $del_name);
+    $conn->query("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES ('$doc_id', 'system', '$sys_msg')");
+    
+    // Suppression
     $conn->query("DELETE FROM appointments WHERE id='$app_id' AND doctor_id='$doc_id'");
     header("Location: assistante.php?success=delete"); exit();
 }
 
-// --- RÉCUPÉRATION AGENDA ---
+// --- RÉCUPÉRATION DE L'AGENDA POUR L'AFFICHAGE ---
 $sql = "SELECT * FROM appointments WHERE doctor_id = '$doc_id' AND app_date >= CURDATE() ORDER BY app_date ASC";
 $query = $conn->query($sql);
 $appointments = [];
@@ -207,7 +230,7 @@ $total = count($appointments);
     </aside>
 
     <!-- MAIN CONTENT -->
-    <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full">
+    <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full pb-24">
         
         <!-- HEADER -->
         <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
@@ -243,7 +266,7 @@ $total = count($appointments);
             </div>
         <?php endif; ?>
 
-        <!-- LAYOUT DE LA PAGE -->
+        <!-- LAYOUT AGENDA -->
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
             <!-- GAUCHE : Calendrier -->
@@ -272,7 +295,7 @@ $total = count($appointments);
                 </div>
             </div>
 
-            <!-- DROITE : Liste des RDV et Actions -->
+            <!-- DROITE : Liste des RDV -->
             <div class="lg:col-span-8">
                 <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
                     <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
@@ -304,7 +327,6 @@ $total = count($appointments);
                                 </div>
                             </div>
                             
-                            <!-- BOUTONS D'ACTION (MODIFIER / ANNULER) -->
                             <div class="flex items-center gap-2">
                                 <button onclick="openEditModal(<?= $id ?>, '<?= addslashes($pname) ?>', '<?= addslashes($pphone) ?>', '<?= $date_raw ?>', '<?= $time_raw ?>')" 
                                         class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg font-semibold text-xs hover:bg-blue-100 transition flex items-center gap-1 border border-blue-100">
@@ -334,16 +356,12 @@ $total = count($appointments);
 <!-- MODAL AJOUT / MODIFICATION RDV -->
 <div id="modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden" onclick="if(event.target===this)closeModal()">
     <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-transparent dark:border-slate-700 transition-colors" onclick="event.stopPropagation()">
-        
         <div class="flex justify-between items-center px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
-            <h3 id="modal-title-text" class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                📅 Planifier un rendez-vous
-            </h3>
+            <h3 id="modal-title-text" class="font-bold text-slate-900 dark:text-white flex items-center gap-2">📅 Planifier un rendez-vous</h3>
             <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700 text-xl leading-none">&times;</button>
         </div>
         
         <div class="grid grid-cols-1 md:grid-cols-2">
-            <!-- Formulaire -->
             <div class="p-6 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800">
                 <form action="assistante.php" method="POST" class="space-y-5">
                     <input type="hidden" name="save_appointment" value="1">
@@ -355,7 +373,7 @@ $total = count($appointments);
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase mb-1.5">Téléphone</label>
-                        <input type="tel" name="p_phone" id="input_pphone" required placeholder="Numéro (ex: 06 12 34 56 78)" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <input type="tel" name="p_phone" id="input_pphone" required placeholder="Numéro" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
                     
                     <div class="grid grid-cols-2 gap-4">
@@ -372,15 +390,13 @@ $total = count($appointments);
                     <input type="hidden" name="p_date" id="p_date_hidden">
                     
                     <div class="pt-4">
-                        <button type="submit" id="modal-submit" disabled
-                            class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold text-sm transition-all shadow-sm">
+                        <button type="submit" id="modal-submit" disabled class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white py-3 rounded-lg font-bold text-sm transition-all shadow-sm">
                             Confirmer
                         </button>
                     </div>
                 </form>
             </div>
             
-            <!-- Sélection Date/Heure pour le Modal -->
             <div class="p-6 bg-slate-50 space-y-6">
                 <div>
                     <div class="flex items-center justify-between mb-3">
@@ -397,7 +413,7 @@ $total = count($appointments);
                 </div>
                 
                 <div>
-                    <p class="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">Créneaux</p>
+                    <p class="text-xs font-bold text-slate-500 uppercase mb-3">Créneaux</p>
                     <div id="slots-grid" class="grid grid-cols-4 gap-2 max-h-32 overflow-y-auto custom-scroll pr-1">
                         <div class="col-span-4 text-center text-[10px] text-slate-400 py-6 italic border border-dashed border-slate-200 rounded-lg">Choisir une date au-dessus</div>
                     </div>
@@ -407,8 +423,40 @@ $total = count($appointments);
     </div>
 </div>
 
+<!-- ========================================================================= -->
+<!-- 💬 TIROIR DE TCHAT & FLUX D'ACTIVITÉ -->
+<!-- ========================================================================= -->
+<div id="chat-button" class="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-xl cursor-pointer transition-transform hover:scale-105 z-50 flex items-center justify-center">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+    <span id="chat-badge" class="absolute -top-1 -right-1 bg-red-500 border-2 border-white dark:border-slate-900 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
+</div>
+
+<div id="chat-drawer" class="fixed top-0 right-0 h-full w-80 md:w-96 bg-white dark:bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-800">
+    <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
+        <div class="flex items-center gap-2">
+            <span class="text-xl">💬</span>
+            <h3 class="font-bold">Liaison Cabinet</h3>
+        </div>
+        <button id="close-chat" class="text-indigo-200 hover:text-white text-2xl leading-none">&times;</button>
+    </div>
+
+    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 custom-scroll"></div>
+
+    <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <form id="chat-form" class="flex gap-2">
+            <input type="text" id="chat-input" placeholder="Votre message..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white">
+            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-sm transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- ========================================================================= -->
+<!-- JAVASCRIPT GLOBAL (Agenda + Tchat) -->
+<!-- ========================================================================= -->
 <script>
-// --- LOGIQUE JAVASCRIPT AGENDA ---
+// --- 1. LOGIQUE AGENDA ---
 const BOOKED = <?php echo json_encode($booked); ?>;
 const TODAY_STR = '<?php echo $today; ?>';
 const MFR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -424,7 +472,6 @@ function bookedFor(ds){return BOOKED[ds] || [];}
 function isPast(ds,t){return new Date(`${ds}T${t}:00`) < new Date();}
 function fmtDate(ds){const d=new Date(ds+'T12:00:00');return `${DFR[(d.getDay()+6)%7]} ${d.getDate()} ${MFR[d.getMonth()]}`;}
 
-// -- MINI CALENDRIER GAUCHE --
 function renderMainCal(){
     const {y,m} = mainM; document.getElementById('cal-title').textContent = `${MFR[m]} ${y}`;
     const g = document.getElementById('cal-grid'); g.innerHTML = '';
@@ -435,12 +482,10 @@ function renderMainCal(){
     for(let d=1;d<=dim;d++){
         const ds=ymd(y,m,d), bk=bookedFor(ds), past=ds<TODAY_STR, tod=ds===TODAY_STR, sel=ds===selDay;
         let cls=`w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer text-xs font-medium relative transition-all `;
-        
         if(past) cls+=' text-slate-300 ';
         else if(sel) cls+=' bg-indigo-600 text-white shadow-md scale-105 z-10';
         else if(tod) cls+=' bg-indigo-50 text-indigo-700 font-bold border border-indigo-200';
         else cls+=' hover:bg-slate-100 text-slate-700';
-        
         let dots = bk.length ? `<span class="absolute bottom-1 flex gap-0.5">${bk.slice(0,3).map(b=>`<span class="w-1 h-1 rounded-full bg-amber-500"></span>`).join('')}</span>` : '';
         g.innerHTML += `<div class="${cls}" onclick="clickDay('${ds}')">${d}${dots}</div>`;
     }
@@ -449,8 +494,7 @@ function clickDay(ds){ selDay=ds; renderMainCal(); renderDayPanel(ds); }
 function changeMonth(dir){ mainM.m+=dir; if(mainM.m<0){mainM.m=11;mainM.y--;} if(mainM.m>11){mainM.m=0;mainM.y++;} renderMainCal(); }
 
 function renderDayPanel(ds){
-    const bk = bookedFor(ds); 
-    document.getElementById('dpanel-title').textContent = fmtDate(ds);
+    const bk = bookedFor(ds); document.getElementById('dpanel-title').textContent = fmtDate(ds);
     if(bk.length === 0){
         document.getElementById('dpanel-body').innerHTML = `<div class="text-center py-6"><button onclick="openModal('${ds}')" class="text-indigo-600 font-bold hover:underline text-sm">+ Planifier</button></div>`;
         return;
@@ -465,59 +509,38 @@ function renderDayPanel(ds){
     document.getElementById('dpanel-body').innerHTML = html;
 }
 
-// -- FONCTIONS DU MODAL (AJOUT ET MODIF) --
 function openModal(prefill){
     currentEditId = 0; document.getElementById('edit_id_input').value = '0';
     document.getElementById('modal-title-text').innerHTML = '📅 Planifier un rendez-vous';
     document.getElementById('input_pname').value = ''; document.getElementById('input_pphone').value = '';
     document.getElementById('modal').classList.remove('hidden');
-    if(prefill){
-        selDate=prefill; 
-        const d=new Date(prefill+'T12:00:00'); modalM.y=d.getFullYear(); modalM.m=d.getMonth(); 
-        renderModalCal(); renderSlots(prefill); updateDisplay();
-    } else {
-        selDate=null; selTime=null; renderModalCal(); updateDisplay();
-    }
+    if(prefill){ selDate=prefill; const d=new Date(prefill+'T12:00:00'); modalM.y=d.getFullYear(); modalM.m=d.getMonth(); renderModalCal(); renderSlots(prefill); updateDisplay();}
+    else { selDate=null; selTime=null; renderModalCal(); updateDisplay(); }
 }
 
-// 💡 C'EST ICI LA FONCTION QUI FAISAIT DÉFAUT POUR LA MODIFICATION :
 function openEditModal(id, name, phone, date, time) {
-    currentEditId = id; 
-    document.getElementById('edit_id_input').value = id;
+    currentEditId = id; document.getElementById('edit_id_input').value = id;
     document.getElementById('modal-title-text').innerHTML = '✏️ Modifier le rendez-vous';
-    document.getElementById('input_pname').value = name; 
-    document.getElementById('input_pphone').value = phone;
+    document.getElementById('input_pname').value = name; document.getElementById('input_pphone').value = phone;
     document.getElementById('modal').classList.remove('hidden');
-    
-    selDate = date; 
-    selTime = time;
-    
-    const parts = date.split('-');
-    modalM.y = parseInt(parts[0], 10); 
-    modalM.m = parseInt(parts[1], 10) - 1;
-    
-    renderModalCal(); 
-    renderSlots(date); 
-    updateDisplay();
+    selDate = date; selTime = time;
+    const parts = date.split('-'); modalM.y = parseInt(parts[0], 10); modalM.m = parseInt(parts[1], 10) - 1;
+    renderModalCal(); renderSlots(date); updateDisplay();
 }
 
 function closeModal() { document.getElementById('modal').classList.add('hidden'); }
 
-// -- CALENDRIER DU MODAL --
 function renderModalCal(){
     const {y,m} = modalM; document.getElementById('modal-cal-title').textContent = `${MFR[m]} ${y}`;
     const g = document.getElementById('modal-cal-grid'); g.innerHTML = '';
     const fd = (new Date(y,m,1).getDay()+6)%7, dim = new Date(y,m+1,0).getDate();
-    
     for(let i=0;i<fd;i++) g.innerHTML += `<div></div>`;
-    
     for(let d=1;d<=dim;d++){
         const ds=ymd(y,m,d), past=ds<TODAY_STR, sel=ds===selDate;
         let cls=`w-full aspect-square rounded-md flex items-center justify-center cursor-pointer text-[11px] font-medium transition-colors `;
         if(past) cls+=' text-slate-300 ';
         else if(sel) cls+=' bg-indigo-600 text-white ';
         else cls+=' hover:bg-slate-200 text-slate-700 ';
-        
         if(!past) g.innerHTML+=`<div class="${cls}" onclick="selectModalDate('${ds}')">${d}</div>`;
         else g.innerHTML+=`<div class="${cls}">${d}</div>`;
     }
@@ -525,14 +548,10 @@ function renderModalCal(){
 function selectModalDate(ds){ selDate=ds; selTime=null; renderModalCal(); renderSlots(ds); updateDisplay(); }
 function changeModalMonth(dir){ modalM.m+=dir; if(modalM.m<0){modalM.m=11;modalM.y--;} if(modalM.m>11){modalM.m=0;modalM.y++;} renderModalCal(); }
 
-// -- CRÉNEAUX DU MODAL --
 function renderSlots(ds){
     const g=document.getElementById('slots-grid'), s=[];
     for(let h=8;h<19;h++)for(let mn of[0,30]){if(h===18&&mn===30)break;s.push(`${pz(h)}:${pz(mn)}`);}
-    
-    // On récupère les créneaux occupés, mais on IGNORE celui qu'on est en train de modifier
     const bk = bookedFor(ds).filter(b => b.id != currentEditId).map(b=>b.time); 
-    
     let html='';
     s.forEach(t=>{
         const isB=bk.includes(t), past=isPast(ds,t), sel=t===selTime;
@@ -541,7 +560,6 @@ function renderSlots(ds){
         else if(past&&ds===TODAY_STR) cls+='bg-slate-50 text-slate-300';
         else if(sel) cls+=' bg-indigo-600 text-white border-indigo-600';
         else cls+=' bg-white text-slate-700 border-slate-200 hover:border-indigo-400';
-        
         if(!isB && !(past&&ds===TODAY_STR)) html+=`<div class="${cls}" onclick="pickTime('${t}')">${t}</div>`;
         else html+=`<div class="${cls}">${t}</div>`;
     });
@@ -552,137 +570,82 @@ function pickTime(t){ selTime=t; renderSlots(selDate); updateDisplay(); }
 function updateDisplay(){
     const dEl=document.getElementById('sel-date-txt'), tEl=document.getElementById('sel-time-txt');
     const btn=document.getElementById('modal-submit'), hid=document.getElementById('p_date_hidden');
-    
-    if(selDate){ dEl.textContent=fmtDate(selDate); dEl.classList.add('text-slate-900','font-bold'); }
-    else { dEl.textContent='Sélectionner →'; dEl.classList.remove('text-slate-900','font-bold'); }
-    
-    if(selTime){ tEl.textContent=selTime; tEl.classList.add('text-slate-900','font-bold'); }
-    else { tEl.textContent='Sélectionner →'; tEl.classList.remove('text-slate-900','font-bold'); }
-    
-    if(selDate && selTime){ hid.value=`${selDate}T${selTime}`; btn.disabled=false; }
-    else { btn.disabled=true; }
+    if(selDate){ dEl.textContent=fmtDate(selDate); dEl.classList.add('text-slate-900','font-bold'); }else{ dEl.textContent='Sélectionner →'; dEl.classList.remove('text-slate-900','font-bold'); }
+    if(selTime){ tEl.textContent=selTime; tEl.classList.add('text-slate-900','font-bold'); }else{ tEl.textContent='Sélectionner →'; tEl.classList.remove('text-slate-900','font-bold'); }
+    if(selDate && selTime){ hid.value=`${selDate}T${selTime}`; btn.disabled=false; } else { btn.disabled=true; }
 }
 
-// Lancement
 renderMainCal();
 if(BOOKED[TODAY_STR]) clickDay(TODAY_STR);
-
-// Gestion Sidebar Mobile
 document.getElementById('open-sidebar').addEventListener('click', ()=>{document.getElementById('sidebar').classList.remove('-translate-x-full');});
-document.getElementById('close-sidebar').addEventListener('click', ()=>{document.getElementById('sidebar').classList.add('-translate-x-full');});
-</script>
 
-<!-- ========================================================================= -->
-<!-- 💬 TIROIR DE TCHAT & FLUX D'ACTIVITÉ (À coller juste avant </body>) -->
-<!-- ========================================================================= -->
-<div id="chat-button" class="fixed bottom-6 right-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full p-4 shadow-xl cursor-pointer transition-transform hover:scale-105 z-50 flex items-center justify-center">
-    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-</div>
+// --- 2. LOGIQUE TCHAT & NOTIFICATIONS ---
+const chatBtn = document.getElementById('chat-button');
+const chatDrawer = document.getElementById('chat-drawer');
+const closeChat = document.getElementById('close-chat');
+const chatMessages = document.getElementById('chat-messages');
+const chatForm = document.getElementById('chat-form');
+const chatInput = document.getElementById('chat-input');
+const chatBadge = document.getElementById('chat-badge');
 
-<div id="chat-drawer" class="fixed top-0 right-0 h-full w-80 md:w-96 bg-white dark:bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-800">
-    <!-- Header du Tchat -->
-    <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
-        <div class="flex items-center gap-2">
-            <span class="text-xl">💬</span>
-            <h3 class="font-bold">Liaison Cabinet</h3>
-        </div>
-        <button id="close-chat" class="text-indigo-200 hover:text-white text-2xl leading-none">&times;</button>
-    </div>
+const amI_Assistant = true; // On est sur assistante.php
+let lastMsgCount = 0; 
+let isDrawerOpen = false;
+const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
-    <!-- Zone des messages -->
-    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 custom-scroll">
-        <!-- Les messages apparaîtront ici -->
-    </div>
+chatBtn.addEventListener('click', () => {
+    chatDrawer.classList.remove('translate-x-full');
+    isDrawerOpen = true;
+    chatBadge.classList.add('hidden'); 
+    chatBadge.textContent = '0';
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+});
+closeChat.addEventListener('click', () => { chatDrawer.classList.add('translate-x-full'); isDrawerOpen = false; });
 
-    <!-- Zone de saisie -->
-    <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-        <form id="chat-form" class="flex gap-2">
-            <input type="text" id="chat-input" placeholder="Votre message..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white">
-            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-sm transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-            </button>
-        </form>
-    </div>
-</div>
-
-<script>
-    const chatBtn = document.getElementById('chat-button');
-    const chatDrawer = document.getElementById('chat-drawer');
-    const closeChat = document.getElementById('close-chat');
-    const chatMessages = document.getElementById('chat-messages');
-    const chatForm = document.getElementById('chat-form');
-    const chatInput = document.getElementById('chat-input');
-    
-    // Déterminer qui je suis pour l'affichage (Docteur ou Assistant)
-    // On regarde l'URL pour savoir si on est sur la page assistante ou non
-    const amI_Assistant = window.location.pathname.includes('assistante.php');
-
-    // Ouvrir / Fermer le tiroir
-    chatBtn.addEventListener('click', () => chatDrawer.classList.remove('translate-x-full'));
-    closeChat.addEventListener('click', () => chatDrawer.classList.add('translate-x-full'));
-
-    // Charger les messages
-    function loadMessages() {
-        fetch('api_chat.php?action=fetch')
-            .then(res => res.json())
-            .then(data => {
-                chatMessages.innerHTML = '';
-                data.forEach(msg => {
-                    let html = '';
-                    
-                    // 🤖 Message Système (Gris au centre)
-                    if (msg.sender_type === 'system') {
-                        html = `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold uppercase px-3 py-1 rounded-full">🤖 Système : ${msg.message} (${msg.time})</span></div>`;
-                    } 
-                    // 👤 Message de moi-même (À droite, en couleur principale)
-                    else if ((msg.sender_type === 'assistant' && amI_Assistant) || (msg.sender_type === 'doctor' && !amI_Assistant)) {
-                        html = `
-                        <div class="self-end max-w-[80%] flex flex-col items-end">
-                            <div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div>
-                            <span class="text-[10px] text-slate-400 mt-1">${msg.time}</span>
-                        </div>`;
-                    } 
-                    // 👥 Message de l'autre (À gauche, en gris)
-                    else {
-                        const senderName = msg.sender_type === 'doctor' ? '👨‍⚕️ Docteur' : '👩‍💼 Secrétariat';
-                        html = `
-                        <div class="self-start max-w-[80%] flex flex-col items-start">
-                            <span class="text-[10px] font-bold text-slate-500 mb-1">${senderName}</span>
-                            <div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div>
-                            <span class="text-[10px] text-slate-400 mt-1">${msg.time}</span>
-                        </div>`;
-                    }
-                    chatMessages.innerHTML += html;
-                });
-                // Scroller tout en bas
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            });
-    }
-
-    // Envoyer un message
-    chatForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const text = chatInput.value.trim();
-        if (!text) return;
-
-        const formData = new FormData();
-        formData.append('message', text);
-
-        fetch('api_chat.php?action=send', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if(data.success) {
-                    chatInput.value = '';
-                    loadMessages(); // Recharger immédiatement
+function loadMessages() {
+    fetch('api_chat.php?action=fetch')
+        .then(res => res.json())
+        .then(data => {
+            let html = '';
+            data.forEach(msg => {
+                if (msg.sender_type === 'system') {
+                    html += `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1 rounded-full">🤖 ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
+                } 
+                else if (msg.sender_type === 'assistant') { // C'est MOI (l'assistante)
+                    html += `<div class="self-end max-w-[80%] flex flex-col items-end"><div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
+                } 
+                else { // C'est l'autre (le Docteur)
+                    html += `<div class="self-start max-w-[80%] flex flex-col items-start"><span class="text-[10px] font-bold text-slate-500 mb-1">👨‍⚕️ Docteur</span><div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
                 }
             });
-    });
 
-    // Charger les messages au démarrage et toutes les 5 secondes
-    loadMessages();
-    setInterval(loadMessages, 5000);
+            chatMessages.innerHTML = html;
+
+            if (data.length > lastMsgCount) {
+                if (lastMsgCount !== 0 && !isDrawerOpen) {
+                    let unread = parseInt(chatBadge.textContent) + (data.length - lastMsgCount);
+                    chatBadge.textContent = unread;
+                    chatBadge.classList.remove('hidden');
+                    notifSound.play().catch(e => {}); 
+                }
+                if (isDrawerOpen) chatMessages.scrollTop = chatMessages.scrollHeight;
+                lastMsgCount = data.length;
+            }
+        });
+}
+
+chatForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    const formData = new FormData(); formData.append('message', text);
+    fetch('api_chat.php?action=send', { method: 'POST', body: formData })
+        .then(res => res.json())
+        .then(data => { if(data.success) { chatInput.value = ''; loadMessages(); } });
+});
+
+loadMessages();
+setInterval(loadMessages, 3000); // Check toutes les 3 secondes
 </script>
-<!-- ========================================================================= -->
-
 </body>
 </html>
