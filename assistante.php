@@ -243,8 +243,7 @@ $total = count($appointments);
     <!-- Navigation Latérale -->
     <aside id="sidebar" class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0">
         <div class="p-6 border-b border-slate-800 flex items-center gap-3">
-            <div class="w-8 h-8 bg-indigo-500 text-white rounded-lg flex items-center justify-center font-bold">PS</div>
-            <span class="text-lg font-bold text-white">PsySpace</span>
+<img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">            <span class="text-lg font-bold text-white">PsySpace</span>
         </div>
         <div class="p-6 border-b border-slate-800">
             <p class="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Secrétariat</p>

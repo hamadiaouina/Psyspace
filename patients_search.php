@@ -346,7 +346,7 @@ foreach($patients as $p) {
                             </div>
                             <div>
                                 <p class="font-semibold text-slate-800 dark:text-slate-200 text-sm"><?= htmlspecialchars($name) ?></p>
-                                <p class="text-xs text-slate-400 dark:text-slate-500">📞 <?= htmlspecialchars($phone) ?></p>
+                                <p class="text-xs text-slate-400 dark:text-slate-500"> <?= htmlspecialchars($phone) ?></p>
                             </div>
                         </div>
 
