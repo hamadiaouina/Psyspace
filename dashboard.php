@@ -200,14 +200,29 @@ $stmt->close();
             <div class="flex items-center gap-3 mt-1.5 flex-wrap">
                 <p class="text-slate-500 dark:text-slate-400 text-sm">Voici le résumé de votre activité.</p>
                 
-                <!-- BADGE CODE SECRÉTARIAT (Subtil et Pro) -->
-                <?php $cabinet_code = strtoupper(substr(md5($_SESSION['id'] . "PsySpaceCabinet2026"), 0, 10)); ?>
-                <span class="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-mono font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition" 
-                      onclick="navigator.clipboard.writeText('<?= $cabinet_code ?>'); alert('Code cabinet copié !');" 
-                      title="Copier le code pour l'assistante">
-                    <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
-                    Code Cabinet : <?= $cabinet_code ?>
-                </span>
+                                <!-- BADGE CODE SECRÉTARIAT (Moderne et Interactif) -->
+                <?php 
+                $cabinet_code = "Non généré";
+                $stmt_code = $conn->prepare("SELECT access_code FROM assistant_access WHERE doctor_id = ?");
+                $stmt_code->bind_param("i", $doc_id);
+                $stmt_code->execute();
+                $res_code = $stmt_code->get_result();
+                if ($row_code = $res_code->fetch_assoc()) {
+                    $cabinet_code = $row_code['access_code'];
+                }
+                $stmt_code->close();
+                ?>
+                <button type="button" 
+                        onclick="navigator.clipboard.writeText('<?= $cabinet_code ?>'); const txt = this.querySelector('.copy-txt'); const orig = txt.innerText; txt.innerText = 'Copié !'; this.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200'); setTimeout(() => { txt.innerText = orig; this.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200'); }, 2000);"
+                        class="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm text-xs font-medium text-slate-600 dark:text-slate-300 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-200" 
+                        title="Code d'accès pour votre assistante">
+                    <span class="flex items-center justify-center w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    </span>
+                    <span class="opacity-80">Secrétariat :</span>
+                    <span class="font-mono font-bold tracking-widest text-slate-800 dark:text-slate-100"><?= $cabinet_code ?></span>
+                    <span class="copy-txt ml-1 opacity-0 group-hover:opacity-100 text-indigo-500 font-semibold transition-opacity duration-200">Copier</span>
+                </button>
             </div>
 
         </div>
