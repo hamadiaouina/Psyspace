@@ -148,6 +148,17 @@ $today_c  = count(array_filter($appointments, fn($a)=>date('Y-m-d',strtotime($a[
                 Archives
             </a>
         </nav>
+            <!-- BOUTON CONTACT ASSISTANT AVEC PASTILLE -->
+<a href="chat_cabinet.php" class="sidebar-link flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
+    <div class="flex items-center gap-3">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+        Contact Assistant
+    </div>
+    <span id="chat-badge-sidebar" class="hidden bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm transition-all duration-300">0</span>
+</a>
+
+
+
         <div class="p-4 border-t border-slate-800">
              <a href="logout.php" class="flex items-center gap-2 text-slate-500 hover:text-red-400 text-sm font-medium transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
@@ -567,6 +578,30 @@ function closeModal(){document.getElementById('modal').classList.add('hidden');}
 // Init
 renderMainCal();
 if(BOOKED[TODAY_STR])clickDay(TODAY_STR);
+
+
+// --- POLLING POUR LA PASTILLE DU CHAT ---
+function checkUnreadMessages() {
+    fetch('api_chat_unread.php')
+    .then(r => r.json())
+    .then(data => {
+        const badge = document.getElementById('chat-badge-sidebar');
+        if (badge) { // Sécurité pour éviter les erreurs
+            if (data.unread > 0) {
+                badge.textContent = '+' + data.unread;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+    })
+    .catch(e => console.error('Erreur Badge Chat:', e));
+}
+// On lance la vérification tout de suite, puis toutes les 5 secondes
+checkUnreadMessages();
+setInterval(checkUnreadMessages, 5000);
+
+
 </script>
 </body>
 </html>
