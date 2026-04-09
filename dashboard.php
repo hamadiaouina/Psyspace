@@ -45,7 +45,7 @@ $doc_photo     = $doc['photo'] ?? '';
 $doc_specialty = htmlspecialchars($doc['specialty'] ?? '');
 $doc_initial   = mb_substr($nom_docteur, 0, 1, 'UTF-8');
 
-// ── Stats ────────────────────────────────────────────────────────
+// ── Stats ────────────────────────────────���───────────────────────
 $stmt = $conn->prepare("SELECT COUNT(DISTINCT patient_name) as total FROM appointments WHERE doctor_id = ?");
 $stmt->bind_param("i", $doc_id); $stmt->execute();
 $total_patients = (int)$stmt->get_result()->fetch_assoc()['total'];
@@ -158,6 +158,12 @@ $stmt->close();
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg>
                 Archives
             </a>
+
+            <!-- NOUVEAU BOUTON : CONTACT ASSISTANT -->
+            <a href="chat_cabinet.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                Contact Assistant
+            </a>
         </nav>
 
         <div class="p-4 border-t border-slate-800">
@@ -190,32 +196,8 @@ $stmt->close();
                 </button>
                 <div>
                     <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
-                    
                     <div class="flex items-center gap-3 mt-1.5 flex-wrap">
                         <p class="text-slate-500 dark:text-slate-400 text-sm">Voici le résumé de votre activité.</p>
-                        
-                        <?php 
-                        $cabinet_code = "Non généré";
-                        $stmt_code = $conn->prepare("SELECT access_code FROM assistant_access WHERE doctor_id = ?");
-                        $stmt_code->bind_param("i", $doc_id);
-                        $stmt_code->execute();
-                        $res_code = $stmt_code->get_result();
-                        if ($row_code = $res_code->fetch_assoc()) {
-                            $cabinet_code = $row_code['access_code'];
-                        }
-                        $stmt_code->close();
-                        ?>
-                        <button type="button" 
-                                onclick="copyCabinetCode(this, '<?= $cabinet_code ?>')"
-                                class="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm text-xs font-medium text-slate-600 dark:text-slate-300 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-200" 
-                                title="Code d'accès pour votre assistante">
-                            <span class="flex items-center justify-center w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                            </span>
-                            <span class="opacity-80">Secrétariat :</span>
-                            <span class="font-mono font-bold tracking-widest text-slate-800 dark:text-slate-100"><?= $cabinet_code ?></span>
-                            <span class="copy-txt ml-1 opacity-0 group-hover:opacity-100 text-indigo-500 font-semibold transition-opacity duration-200">Copier</span>
-                        </button>
                     </div>
                 </div>
             </div>
@@ -377,34 +359,6 @@ $stmt->close();
 </div>
 
 <script nonce="<?= $nonce ?>">
-// Fonction de copie ultra-robuste
-function copyCabinetCode(button, code) {
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(code);
-    } else {
-        let textArea = document.createElement("textarea");
-        textArea.value = code;
-        textArea.style.position = "fixed";
-        textArea.style.left = "-999999px";
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try { document.execCommand('copy'); } catch (err) {}
-        textArea.remove();
-    }
-
-    const txtSpan = button.querySelector('.copy-txt');
-    const originalText = txtSpan.innerText;
-    
-    txtSpan.innerText = 'Copié !';
-    button.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
-    
-    setTimeout(() => {
-        txtSpan.innerText = originalText;
-        button.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
-    }, 2000);
-}
-
 // Gestion Sidebar Mobile
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('sidebar-overlay');
@@ -501,105 +455,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<div id="chat-button" class="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl cursor-pointer transition-transform hover:scale-105 z-50 flex items-center justify-center print:hidden">
-    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-    <span id="chat-badge" class="absolute -top-1 -right-1 bg-red-500 border-2 border-white dark:border-slate-900 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
-</div>
-
-<div id="chat-drawer" class="fixed top-0 right-0 h-full w-80 md:w-96 bg-white dark:bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-800 print:hidden">
-    <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
-        <div class="flex items-center gap-2">
-            <span class="text-xl">💬</span>
-            <h3 class="font-bold">Liaison Secrétariat</h3>
-        </div>
-        <button id="close-chat" class="text-indigo-200 hover:text-white text-2xl leading-none">&times;</button>
-    </div>
-
-    <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 custom-scroll"></div>
-
-    <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-        <form id="chat-form" class="flex gap-2">
-            <input type="text" id="chat-input" placeholder="Message à l'assistante..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white transition-colors">
-            <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-sm transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
-            </button>
-        </form>
-    </div>
-</div>
-
-<script nonce="<?= $nonce ?>">
-    const chatBtn = document.getElementById('chat-button');
-    const chatDrawer = document.getElementById('chat-drawer');
-    const closeChat = document.getElementById('close-chat');
-    const chatMessages = document.getElementById('chat-messages');
-    const chatForm = document.getElementById('chat-form');
-    const chatInput = document.getElementById('chat-input');
-    const chatBadge = document.getElementById('chat-badge');
-
-    let lastMsgCount = 0; 
-    let isDrawerOpen = false;
-    const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-
-    chatBtn.addEventListener('click', () => {
-        chatDrawer.classList.remove('translate-x-full');
-        isDrawerOpen = true;
-        chatBadge.classList.add('hidden'); 
-        chatBadge.textContent = '0';
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    });
-    
-    closeChat.addEventListener('click', () => {
-        chatDrawer.classList.add('translate-x-full');
-        isDrawerOpen = false;
-    });
-
-    function loadMessages() {
-        fetch('api_chat.php?action=fetch')
-            .then(res => res.json())
-            .then(data => {
-                let html = '';
-                data.forEach(msg => {
-                    if (msg.sender_type === 'system') {
-                        html += `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1 rounded-full">🤖 ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
-                    } else if (msg.sender_type === 'doctor') {
-                        html += `<div class="self-end max-w-[80%] flex flex-col items-end"><div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
-                    } else {
-                        html += `<div class="self-start max-w-[80%] flex flex-col items-start"><span class="text-[10px] font-bold text-slate-500 mb-1">👩‍💼 Assistante</span><div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
-                    }
-                });
-                chatMessages.innerHTML = html;
-
-                if (data.length > lastMsgCount) {
-                    if (lastMsgCount !== 0 && !isDrawerOpen) {
-                        let unread = parseInt(chatBadge.textContent) + (data.length - lastMsgCount);
-                        chatBadge.textContent = unread;
-                        chatBadge.classList.remove('hidden');
-                        notifSound.play().catch(e => console.log('Son bloqué')); 
-                    }
-                    if (isDrawerOpen) chatMessages.scrollTop = chatMessages.scrollHeight;
-                    lastMsgCount = data.length;
-                }
-            });
-    }
-
-    chatForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const text = chatInput.value.trim();
-        if (!text) return;
-        const formData = new FormData(); 
-        formData.append('message', text);
-        fetch('api_chat.php?action=send', { method: 'POST', body: formData })
-            .then(res => res.json())
-            .then(data => {
-                if(data.success) {
-                    chatInput.value = '';
-                    loadMessages();
-                }
-            });
-    });
-
-    loadMessages();
-    setInterval(loadMessages, 3000);
-</script>
 </body>
 </html>
