@@ -200,7 +200,7 @@ $stmt->close();
             <div class="flex items-center gap-3 mt-1.5 flex-wrap">
                 <p class="text-slate-500 dark:text-slate-400 text-sm">Voici le résumé de votre activité.</p>
                 
-                                <!-- BADGE CODE SECRÉTARIAT (Moderne et Interactif) -->
+                <!-- BADGE CODE SECRÉTARIAT (Moderne et Interactif) -->
                 <?php 
                 $cabinet_code = "Non généré";
                 $stmt_code = $conn->prepare("SELECT access_code FROM assistant_access WHERE doctor_id = ?");
@@ -213,7 +213,7 @@ $stmt->close();
                 $stmt_code->close();
                 ?>
                 <button type="button" 
-                        onclick="navigator.clipboard.writeText('<?= $cabinet_code ?>'); const txt = this.querySelector('.copy-txt'); const orig = txt.innerText; txt.innerText = 'Copié !'; this.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200'); setTimeout(() => { txt.innerText = orig; this.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200'); }, 2000);"
+                        onclick="copyCabinetCode(this, '<?= $cabinet_code ?>')"
                         class="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm text-xs font-medium text-slate-600 dark:text-slate-300 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-200" 
                         title="Code d'accès pour votre assistante">
                     <span class="flex items-center justify-center w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
