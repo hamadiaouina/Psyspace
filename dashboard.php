@@ -111,7 +111,6 @@ $stmt->close();
             darkMode: 'class',
             theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Merriweather', 'serif'] } } }
         };
-        // Gestion locale du Dark Mode
         if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         }
@@ -122,23 +121,20 @@ $stmt->close();
         .sidebar-link.active { background-color: #eef2ff; color: #4f46e5; font-weight: 600; }
         .dark .sidebar-link.active { background-color: rgba(79,70,229,0.2); color: #818cf8; }
     </style>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
-<script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
 </head>
 <body class="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 transition-colors duration-300">
 
 <div class="flex min-h-screen relative">
 
-    <!-- SIDEBAR MOBILE OVERLAY -->
     <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity"></div>
 
-    <!-- SIDEBAR -->
     <aside id="sidebar" class="w-64 bg-slate-900 dark:bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0 print:hidden">
         <div class="p-6 border-b border-slate-800 flex justify-between items-center">
             <a href="dashboard.php" class="flex items-center gap-3">
                 <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
                 <span class="text-lg font-bold text-white">PsySpace</span>
-            
             </a>
             <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-white">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -185,48 +181,44 @@ $stmt->close();
         </div>
     </aside>
 
-    <!-- MAIN CONTENT -->
     <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full">
         
-<!-- HEADER -->
-<div class="flex flex-wrap justify-between items-center mb-8 gap-4">
-    <div class="flex items-center gap-4">
-        <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-        </button>
-        <div>
-            <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
-            
-            <div class="flex items-center gap-3 mt-1.5 flex-wrap">
-                <p class="text-slate-500 dark:text-slate-400 text-sm">Voici le résumé de votre activité.</p>
-                
-                <!-- BADGE CODE SECRÉTARIAT (Moderne et Interactif) -->
-                <?php 
-                $cabinet_code = "Non généré";
-                $stmt_code = $conn->prepare("SELECT access_code FROM assistant_access WHERE doctor_id = ?");
-                $stmt_code->bind_param("i", $doc_id);
-                $stmt_code->execute();
-                $res_code = $stmt_code->get_result();
-                if ($row_code = $res_code->fetch_assoc()) {
-                    $cabinet_code = $row_code['access_code'];
-                }
-                $stmt_code->close();
-                ?>
-                <button type="button" 
-                        onclick="copyCabinetCode(this, '<?= $cabinet_code ?>')"
-                        class="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm text-xs font-medium text-slate-600 dark:text-slate-300 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-200" 
-                        title="Code d'accès pour votre assistante">
-                    <span class="flex items-center justify-center w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                    </span>
-                    <span class="opacity-80">Secrétariat :</span>
-                    <span class="font-mono font-bold tracking-widest text-slate-800 dark:text-slate-100"><?= $cabinet_code ?></span>
-                    <span class="copy-txt ml-1 opacity-0 group-hover:opacity-100 text-indigo-500 font-semibold transition-opacity duration-200">Copier</span>
+        <div class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div class="flex items-center gap-4">
+                <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Bonjour, Dr. <?= htmlspecialchars($nom_docteur) ?></h1>
+                    
+                    <div class="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <p class="text-slate-500 dark:text-slate-400 text-sm">Voici le résumé de votre activité.</p>
+                        
+                        <?php 
+                        $cabinet_code = "Non généré";
+                        $stmt_code = $conn->prepare("SELECT access_code FROM assistant_access WHERE doctor_id = ?");
+                        $stmt_code->bind_param("i", $doc_id);
+                        $stmt_code->execute();
+                        $res_code = $stmt_code->get_result();
+                        if ($row_code = $res_code->fetch_assoc()) {
+                            $cabinet_code = $row_code['access_code'];
+                        }
+                        $stmt_code->close();
+                        ?>
+                        <button type="button" 
+                                onclick="copyCabinetCode(this, '<?= $cabinet_code ?>')"
+                                class="group flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm text-xs font-medium text-slate-600 dark:text-slate-300 hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-200" 
+                                title="Code d'accès pour votre assistante">
+                            <span class="flex items-center justify-center w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                            </span>
+                            <span class="opacity-80">Secrétariat :</span>
+                            <span class="font-mono font-bold tracking-widest text-slate-800 dark:text-slate-100"><?= $cabinet_code ?></span>
+                            <span class="copy-txt ml-1 opacity-0 group-hover:opacity-100 text-indigo-500 font-semibold transition-opacity duration-200">Copier</span>
+                        </button>
+                    </div>
+                </div>
             </div>
-
-        </div>
-    </div>
             
             <div class="flex items-center gap-4">
                 <button id="btn-demo" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2">
@@ -243,7 +235,6 @@ $stmt->close();
             </div>
         </div>
 
-        <!-- COUNTDOWN PROCHAIN RDV -->
         <?php if($next_rdv): ?>
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
             <div class="flex items-center gap-4">
@@ -274,7 +265,6 @@ $stmt->close();
         </div>
         <?php endif; ?>
 
-        <!-- STATS GRID -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 hover:shadow-md transition-shadow">
                 <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Patients actifs</p>
@@ -299,9 +289,7 @@ $stmt->close();
             </div>
         </div>
 
-        <!-- TABLEAUX & LISTES -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
             <div class="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                     <h3 class="font-bold text-slate-900 dark:text-white">Prochains rendez-vous</h3>
@@ -329,27 +317,25 @@ $stmt->close();
                                         </div>
                                     </div>
                                 </td>
-                                    <td class="px-6 py-4 text-right">
-    <div class="flex items-center justify-end gap-2">
-        <!-- NOUVEAU BOUTON CALENDRIER -->
-        <a href="download_ics.php?id=<?= $row['id'] ?>" 
-           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-bold transition-colors shadow-sm"
-           title="Ajouter au calendrier (Outlook, Apple, Google)">
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            ICS
-        </a>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <a href="download_ics.php?id=<?= $row['id'] ?>" 
+                                           class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-600 dark:text-indigo-400 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-bold transition-colors shadow-sm"
+                                           title="Ajouter au calendrier (Outlook, Apple, Google)">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                            ICS
+                                        </a>
 
-        <!-- BOUTON DÉMARRER OU ARCHIVÉ -->
-        <?php if ($archived): ?>
-            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-md">Archivé</span>
-        <?php else: ?>
-            <a href="analyse_ia.php?patient_name=<?= $patient_enc ?>&id=<?= $row['id'] ?>"
-               class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors shadow-sm">
-                Démarrer <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-            </a>
-        <?php endif; ?>
-    </div>
-</td>
+                                        <?php if ($archived): ?>
+                                            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-md">Archivé</span>
+                                        <?php else: ?>
+                                            <a href="analyse_ia.php?patient_name=<?= $patient_enc ?>&id=<?= $row['id'] ?>"
+                                               class="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs font-bold transition-colors shadow-sm">
+                                                Démarrer <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
                             </tr>
                             <?php endwhile; else: ?>
                             <tr><td class="p-10 text-center text-slate-400 text-sm">Aucun rendez-vous à venir.</td></tr>
@@ -391,6 +377,34 @@ $stmt->close();
 </div>
 
 <script nonce="<?= $nonce ?>">
+// Fonction de copie ultra-robuste
+function copyCabinetCode(button, code) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(code);
+    } else {
+        let textArea = document.createElement("textarea");
+        textArea.value = code;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try { document.execCommand('copy'); } catch (err) {}
+        textArea.remove();
+    }
+
+    const txtSpan = button.querySelector('.copy-txt');
+    const originalText = txtSpan.innerText;
+    
+    txtSpan.innerText = 'Copié !';
+    button.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+    
+    setTimeout(() => {
+        txtSpan.innerText = originalText;
+        button.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+    }, 2000);
+}
+
 // Gestion Sidebar Mobile
 const sidebar = document.getElementById('sidebar');
 const overlay = document.getElementById('sidebar-overlay');
@@ -464,77 +478,35 @@ function updateCountdown() {
 updateCountdown();
 setInterval(updateCountdown, 1000);
 <?php endif; ?>
-</script>
-<script>
-// On attend que la page soit bien chargée avant de faire quoi que ce soit
+
 document.addEventListener('DOMContentLoaded', function() {
-    
-    // On cherche le bouton que tu viens d'ajouter à l'étape 2
     const btnDemo = document.getElementById('btn-demo');
-    
     if (btnDemo) {
-        // Quand on clique sur le bouton...
         btnDemo.addEventListener('click', function() {
-            
-            // On initialise le moteur Driver.js
             const driver = window.driver.js.driver;
-            
             const tour = driver({
-                showProgress: true,       // Affiche "1 sur 3"
-                nextBtnText: 'Suivant →', // Traduction des boutons en français
+                showProgress: true,
+                nextBtnText: 'Suivant →',
                 prevBtnText: '← Retour',
                 doneBtnText: 'Terminer',
-                
-                // Voici les étapes de ta visite guidée :
                 steps: [
-                    { 
-                        // Étape 1 : Pop-up central (pas lié à un élément précis)
-                        popover: { 
-                            title: 'Bienvenue sur PsySpace ! 👋', 
-                            description: 'Faisons un petit tour rapide de votre espace médecin pour vous familiariser avec les outils.' 
-                        } 
-                    },
-                    { 
-                        // Étape 2 : On éclaire la barre de navigation à gauche
-                        element: '#sidebar', 
-                        popover: { 
-                            title: 'Votre Menu Principal', 
-                            description: 'C\'est ici que vous gérez vos patients, vos rendez-vous et vos paramètres.', 
-                            side: "right", 
-                            align: 'start' 
-                        } 
-                    },
-                    { 
-                        // Étape 3 : On éclaire le bouton Dark Mode
-                        element: '#theme-toggle', 
-                        popover: { 
-                            title: 'Travailler de nuit ? 🌙', 
-                            description: 'Un simple clic ici permet de basculer l\'interface en mode sombre pour reposer vos yeux.', 
-                            side: "bottom", 
-                            align: 'end' 
-                        } 
-                    }
+                    { popover: { title: 'Bienvenue sur PsySpace ! 👋', description: 'Faisons un petit tour rapide de votre espace médecin pour vous familiariser avec les outils.' } },
+                    { element: '#sidebar', popover: { title: 'Votre Menu Principal', description: 'C\'est ici que vous gérez vos patients, vos rendez-vous et vos paramètres.', side: "right", align: 'start' } },
+                    { element: '#theme-toggle', popover: { title: 'Travailler de nuit ? 🌙', description: 'Un simple clic ici permet de basculer l\'interface en mode sombre pour reposer vos yeux.', side: "bottom", align: 'end' } }
                 ]
             });
-            
-            // On démarre l'animation !
             tour.drive();
         });
     }
 });
 </script>
-<!-- ========================================================================= -->
- <!-- ========================================================================= -->
-<!-- 💬 TIROIR DE TCHAT & FLUX D'ACTIVITÉ (VERSION DOCTEUR) -->
-<!-- ========================================================================= -->
+
 <div id="chat-button" class="fixed bottom-6 right-6 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-2xl cursor-pointer transition-transform hover:scale-105 z-50 flex items-center justify-center print:hidden">
     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-    <!-- Le badge rouge de notification -->
     <span id="chat-badge" class="absolute -top-1 -right-1 bg-red-500 border-2 border-white dark:border-slate-900 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center hidden animate-bounce">0</span>
 </div>
 
 <div id="chat-drawer" class="fixed top-0 right-0 h-full w-80 md:w-96 bg-white dark:bg-slate-900 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-slate-200 dark:border-slate-800 print:hidden">
-    <!-- Header -->
     <div class="p-4 bg-indigo-600 text-white flex justify-between items-center shadow-md">
         <div class="flex items-center gap-2">
             <span class="text-xl">💬</span>
@@ -543,10 +515,8 @@ document.addEventListener('DOMContentLoaded', function() {
         <button id="close-chat" class="text-indigo-200 hover:text-white text-2xl leading-none">&times;</button>
     </div>
 
-    <!-- Messages -->
     <div id="chat-messages" class="flex-1 p-4 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex flex-col gap-3 custom-scroll"></div>
 
-    <!-- Input -->
     <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <form id="chat-form" class="flex gap-2">
             <input type="text" id="chat-input" placeholder="Message à l'assistante..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white transition-colors">
@@ -557,7 +527,7 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 </div>
 
-<script>
+<script nonce="<?= $nonce ?>">
     const chatBtn = document.getElementById('chat-button');
     const chatDrawer = document.getElementById('chat-drawer');
     const closeChat = document.getElementById('close-chat');
@@ -570,7 +540,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let isDrawerOpen = false;
     const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 
-    // Ouvrir / Fermer
     chatBtn.addEventListener('click', () => {
         chatDrawer.classList.remove('translate-x-full');
         isDrawerOpen = true;
@@ -584,30 +553,22 @@ document.addEventListener('DOMContentLoaded', function() {
         isDrawerOpen = false;
     });
 
-    // Charger les messages (Version Docteur)
     function loadMessages() {
         fetch('api_chat.php?action=fetch')
             .then(res => res.json())
             .then(data => {
                 let html = '';
                 data.forEach(msg => {
-                    // 🤖 Alertes Système
                     if (msg.sender_type === 'system') {
                         html += `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1 rounded-full">🤖 ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
-                    } 
-                    // 👨‍⚕️ C'est MOI (le Docteur)
-                    else if (msg.sender_type === 'doctor') {
+                    } else if (msg.sender_type === 'doctor') {
                         html += `<div class="self-end max-w-[80%] flex flex-col items-end"><div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
-                    } 
-                    // 👩‍💼 C'est l'autre (l'Assistante)
-                    else {
+                    } else {
                         html += `<div class="self-start max-w-[80%] flex flex-col items-start"><span class="text-[10px] font-bold text-slate-500 mb-1">👩‍💼 Assistante</span><div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
                     }
                 });
-
                 chatMessages.innerHTML = html;
 
-                // NOTIFICATIONS 🔔
                 if (data.length > lastMsgCount) {
                     if (lastMsgCount !== 0 && !isDrawerOpen) {
                         let unread = parseInt(chatBadge.textContent) + (data.length - lastMsgCount);
@@ -621,15 +582,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    // Envoyer un message
     chatForm.addEventListener('submit', function(e) {
         e.preventDefault();
         const text = chatInput.value.trim();
         if (!text) return;
-
         const formData = new FormData(); 
         formData.append('message', text);
-
         fetch('api_chat.php?action=send', { method: 'POST', body: formData })
             .then(res => res.json())
             .then(data => {
@@ -640,10 +598,8 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     });
 
-    // Chargement initial et rafraîchissement toutes les 3 secondes
     loadMessages();
     setInterval(loadMessages, 3000);
 </script>
-<!-- ========================================================================= -->
 </body>
 </html>
