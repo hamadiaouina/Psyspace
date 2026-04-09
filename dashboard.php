@@ -45,7 +45,7 @@ $doc_photo     = $doc['photo'] ?? '';
 $doc_specialty = htmlspecialchars($doc['specialty'] ?? '');
 $doc_initial   = mb_substr($nom_docteur, 0, 1, 'UTF-8');
 
-// ── Stats ────────────────────────────────���───────────────────────
+// ── Stats ───────────────────────────────────────────────────────
 $stmt = $conn->prepare("SELECT COUNT(DISTINCT patient_name) as total FROM appointments WHERE doctor_id = ?");
 $stmt->bind_param("i", $doc_id); $stmt->execute();
 $total_patients = (int)$stmt->get_result()->fetch_assoc()['total'];
@@ -159,10 +159,13 @@ $stmt->close();
                 Archives
             </a>
 
-            <!-- NOUVEAU BOUTON : CONTACT ASSISTANT -->
-            <a href="chat_cabinet.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-                Contact Assistant
+            <!-- BOUTON CONTACT ASSISTANT AVEC PASTILLE -->
+            <a href="chat_cabinet.php" class="sidebar-link flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
+                <div class="flex items-center gap-3">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                    Contact Assistant
+                </div>
+                <span id="chat-badge-sidebar" class="hidden bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm transition-all duration-300">0</span>
             </a>
         </nav>
 
@@ -397,7 +400,7 @@ themeToggleBtn.addEventListener('click', function() {
     }
 });
 
-// Notifications
+// Notifications Prochain RDV
 if (Notification.permission !== "granted") {
     Notification.requestPermission();
 }
@@ -414,6 +417,25 @@ setInterval(() => {
     .then(data => { if(data.alert === true) alertPro(data.patient, data.time); })
     .catch(e => console.error('Erreur Polling:', e));
 }, 60000); 
+
+// --- NOUVEAU : POLLING POUR LA PASTILLE DU CHAT ---
+function checkUnreadMessages() {
+    fetch('api_chat_unread.php')
+    .then(r => r.json())
+    .then(data => {
+        const badge = document.getElementById('chat-badge-sidebar');
+        if (data.unread > 0) {
+            badge.textContent = '+' + data.unread;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+    })
+    .catch(e => console.error('Erreur Badge Chat:', e));
+}
+checkUnreadMessages(); // Appel immédiat au chargement
+setInterval(checkUnreadMessages, 5000); // Puis vérification toutes les 5 secondes
+
 
 // Compte à rebours
 <?php if($next_rdv): ?>
