@@ -27,6 +27,10 @@ require __DIR__ . '/vendor/PHPMailer/src/Exception.php';
 require __DIR__ . '/vendor/PHPMailer/src/PHPMailer.php';
 require __DIR__ . '/vendor/PHPMailer/src/SMTP.php';
 
+$stmt_read = $conn->prepare("UPDATE cabinet_chat SET is_read = 1 WHERE doctor_id = ? AND sender_type = 'assistant' AND is_read = 0");
+$stmt_read->bind_param("i", $_SESSION['id']);
+$stmt_read->execute();
+
 $nom_docteur = mb_strtoupper($_SESSION['nom'] ?? 'Docteur', 'UTF-8');
 $doc_id      = (int)$_SESSION['id'];
 
