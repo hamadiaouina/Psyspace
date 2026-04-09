@@ -32,14 +32,16 @@ include "header.php";
 
     <!-- HERO -->
     <section class="bg-slate-900 pt-20 pb-24 md:pt-28 md:pb-32 relative overflow-hidden">
+        <!-- Ligne de gradient indigo en haut -->
+        <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-indigo-500 to-transparent"></div>
         <!-- Grille de fond subtile -->
-        <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 32px 32px;"></div>
+        <div class="absolute inset-0 opacity-[0.04]" style="background-image: linear-gradient(#6366f1 1px, transparent 1px), linear-gradient(to right, #6366f1 1px, transparent 1px); background-size: 40px 40px;"></div>
 
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col lg:flex-row items-center gap-16 lg:gap-20 relative z-10">
             <div class="flex-1 space-y-8 text-center lg:text-left fade-up">
                 <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 mx-auto lg:mx-0 backdrop-blur-sm">
                     <span class="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-pulse"></span>
-                    <span class="text-xs font-semibold text-indigo-300 uppercase tracking-wider">Logiciel de cabinet psychologique</span>
+                    <span class="text-xs font-semibold text-indigo-300 uppercase tracking-wider">PsySpace · Cabinet Psychologique IA</span>
                 </div>
                 
                 <h1 class="font-serif text-4xl md:text-5xl lg:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-white to-slate-300 leading-tight tracking-tight">
@@ -65,9 +67,88 @@ include "header.php";
 
             <div class="flex-1 relative hidden lg:block fade-up" style="transition-delay: 0.2s;">
                 <div class="rounded-2xl overflow-hidden shadow-2xl bg-slate-800 border border-slate-700/50 relative group">
-                    <div class="absolute inset-0 bg-indigo-500/10 group-hover:bg-transparent transition-colors duration-500 z-10"></div>
-                    <img src="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&q=80&w=1200"
-                         class="w-full h-auto opacity-80 img-natural transform group-hover:scale-105 transition-transform duration-700" alt="Interface PsySpace">
+                    <!-- Mockup UI PsySpace — remplace la photo stock générique -->
+                    <svg viewBox="0 0 680 420" xmlns="http://www.w3.org/2000/svg" class="w-full h-auto" role="img" aria-label="Aperçu de l'interface PsySpace">
+                        <!-- Fond général -->
+                        <rect width="680" height="420" fill="#0f172a"/>
+                        <!-- Sidebar -->
+                        <rect width="160" height="420" fill="#1e293b"/>
+                        <rect x="0" y="0" width="3" height="420" fill="#4f46e5"/>
+                        <!-- Logo sidebar -->
+                        <rect x="18" y="22" width="28" height="28" rx="7" fill="#4f46e5"/>
+                        <text x="24" y="41" fill="white" font-size="12" font-weight="700" font-family="sans-serif">P</text>
+                        <text x="52" y="41" fill="white" font-size="13" font-weight="700" font-family="sans-serif">PsySpace</text>
+                        <!-- Nav items sidebar -->
+                        <rect x="12" y="72" width="136" height="34" rx="8" fill="#4f46e5" opacity="0.2"/>
+                        <rect x="18" y="82" width="14" height="14" rx="3" fill="#6366f1"/>
+                        <text x="40" y="93" fill="#a5b4fc" font-size="11" font-weight="600" font-family="sans-serif">Dashboard</text>
+                        <rect x="18" y="116" width="14" height="14" rx="3" fill="#475569"/>
+                        <text x="40" y="127" fill="#64748b" font-size="11" font-family="sans-serif">Patients</text>
+                        <rect x="18" y="144" width="14" height="14" rx="3" fill="#475569"/>
+                        <text x="40" y="155" fill="#64748b" font-size="11" font-family="sans-serif">Agenda</text>
+                        <rect x="18" y="172" width="14" height="14" rx="3" fill="#475569"/>
+                        <text x="40" y="183" fill="#64748b" font-size="11" font-family="sans-serif">Archives</text>
+                        <!-- Avatar bas de sidebar -->
+                        <circle cx="28" cy="396" r="14" fill="#4f46e5" opacity="0.4"/>
+                        <text x="21" y="401" fill="#a5b4fc" font-size="12" font-weight="700" font-family="sans-serif">HA</text>
+                        <text x="50" y="394" fill="#94a3b8" font-size="9" font-family="sans-serif">Dr. Aouina</text>
+                        <text x="50" y="405" fill="#4f46e5" font-size="8" font-family="sans-serif">Psychiatre</text>
+                        <!-- Zone principale -->
+                        <!-- Titre dashboard -->
+                        <text x="184" y="42" fill="white" font-size="16" font-weight="700" font-family="sans-serif">Bonjour, Dr. Aouina 👋</text>
+                        <text x="184" y="60" fill="#64748b" font-size="10" font-family="sans-serif">Voici le résumé de votre activité</text>
+                        <!-- Stat cards -->
+                        <rect x="184" y="78" width="116" height="72" rx="10" fill="#1e293b"/>
+                        <text x="196" y="96" fill="#64748b" font-size="8" font-weight="600" font-family="sans-serif">PATIENTS ACTIFS</text>
+                        <text x="196" y="130" fill="#6366f1" font-size="26" font-weight="700" font-family="sans-serif">24</text>
+                        <rect x="310" y="78" width="116" height="72" rx="10" fill="#1e293b"/>
+                        <text x="322" y="96" fill="#64748b" font-size="8" font-weight="600" font-family="sans-serif">SÉANCES DU JOUR</text>
+                        <text x="322" y="130" fill="white" font-size="26" font-weight="700" font-family="sans-serif">5</text>
+                        <rect x="310" y="140" width="116" height="4" rx="2" fill="#1e2d3d"/>
+                        <rect x="310" y="140" width="58" height="4" rx="2" fill="#4f46e5"/>
+                        <rect x="436" y="78" width="116" height="72" rx="10" fill="#1e293b"/>
+                        <text x="448" y="96" fill="#64748b" font-size="8" font-weight="600" font-family="sans-serif">TERMINÉES</text>
+                        <text x="448" y="130" fill="white" font-size="26" font-weight="700" font-family="sans-serif">3</text>
+                        <text x="448" y="148" fill="#10b981" font-size="9" font-family="sans-serif">60% complété</text>
+                        <!-- Table RDV -->
+                        <rect x="184" y="170" width="368" height="200" rx="12" fill="#1e293b"/>
+                        <text x="200" y="192" fill="white" font-size="11" font-weight="700" font-family="sans-serif">Prochains rendez-vous</text>
+                        <text x="498" y="192" fill="#6366f1" font-size="9" font-family="sans-serif">Voir l'agenda</text>
+                        <line x1="184" y1="200" x2="552" y2="200" stroke="#0f172a" stroke-width="1"/>
+                        <!-- RDV rows -->
+                        <rect x="196" y="212" width="40" height="38" rx="6" fill="#0f172a"/>
+                        <text x="205" y="226" fill="#94a3b8" font-size="7" font-weight="700" font-family="sans-serif">AVR</text>
+                        <text x="208" y="240" fill="white" font-size="11" font-weight="700" font-family="sans-serif">09</text>
+                        <text x="246" y="226" fill="white" font-size="10" font-weight="600" font-family="sans-serif">Sophie Martin</text>
+                        <text x="246" y="240" fill="#64748b" font-size="8" font-family="sans-serif">09:00 · Consultation</text>
+                        <rect x="476" y="214" width="60" height="22" rx="5" fill="#4f46e5"/>
+                        <text x="490" y="229" fill="white" font-size="9" font-weight="600" font-family="sans-serif">Démarrer</text>
+                        <line x1="196" y1="260" x2="544" y2="260" stroke="#0f172a" stroke-width="1"/>
+                        <rect x="196" y="270" width="40" height="38" rx="6" fill="#0f172a"/>
+                        <text x="205" y="284" fill="#94a3b8" font-size="7" font-weight="700" font-family="sans-serif">AVR</text>
+                        <text x="208" y="298" fill="white" font-size="11" font-weight="700" font-family="sans-serif">10</text>
+                        <text x="246" y="284" fill="white" font-size="10" font-weight="600" font-family="sans-serif">Karim Benali</text>
+                        <text x="246" y="298" fill="#64748b" font-size="8" font-family="sans-serif">14:30 · Suivi</text>
+                        <rect x="476" y="272" width="60" height="22" rx="5" fill="#0f172a" stroke="#4f46e5" stroke-width="1"/>
+                        <text x="492" y="287" fill="#6366f1" font-size="9" font-weight="600" font-family="sans-serif">ICS</text>
+                        <line x1="196" y1="318" x2="544" y2="318" stroke="#0f172a" stroke-width="1"/>
+                        <rect x="196" y="328" width="40" height="38" rx="6" fill="#0f172a"/>
+                        <text x="205" y="342" fill="#94a3b8" font-size="7" font-weight="700" font-family="sans-serif">AVR</text>
+                        <text x="208" y="356" fill="white" font-size="11" font-weight="700" font-family="sans-serif">11</text>
+                        <text x="246" y="342" fill="white" font-size="10" font-weight="600" font-family="sans-serif">Leila Hamdi</text>
+                        <text x="246" y="356" fill="#64748b" font-size="8" font-family="sans-serif">10:00 · Bilan</text>
+                        <rect x="476" y="330" width="60" height="22" rx="5" fill="#4f46e5"/>
+                        <text x="490" y="345" fill="white" font-size="9" font-weight="600" font-family="sans-serif">Démarrer</text>
+                        <!-- Overlay shimmer subtil -->
+                        <rect width="680" height="420" fill="url(#shimmer)" opacity="0.03"/>
+                        <defs>
+                            <linearGradient id="shimmer" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stop-color="#6366f1"/>
+                                <stop offset="100%" stop-color="#0f172a"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <div class="absolute inset-0 bg-indigo-500/5 group-hover:bg-transparent transition-colors duration-500 z-10"></div>
                 </div>
                 <!-- Badge Glassmorphism -->
                 <div class="absolute -bottom-6 -left-6 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl shadow-2xl px-5 py-4 flex items-center gap-4 border border-slate-200/50 dark:border-slate-700/50 z-20">
@@ -84,23 +165,31 @@ include "header.php";
     </section>
 
     <!-- TRUST BAR -->
-    <section class="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 py-6 transition-colors duration-300">
+    <section class="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 py-5 transition-colors duration-300">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-                <div class="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    <svg class="text-indigo-500 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    Certifié HDS
+            <div class="flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <svg class="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Hébergement HDS
                 </div>
-                <div class="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    <svg class="text-indigo-500 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span class="hidden sm:block text-slate-200 dark:text-slate-700">·</span>
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <svg class="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     Chiffrement AES-256
                 </div>
-                <div class="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    <svg class="text-indigo-500 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    Disponibilité 24/7
+                <span class="hidden sm:block text-slate-200 dark:text-slate-700">·</span>
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <svg class="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/></svg>
+                    RGPD conforme
                 </div>
-                <div class="flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    <svg class="text-indigo-500 shrink-0" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                <span class="hidden sm:block text-slate-200 dark:text-slate-700">·</span>
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <svg class="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Disponible 24/7
+                </div>
+                <span class="hidden sm:block text-slate-200 dark:text-slate-700">·</span>
+                <div class="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <svg class="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
                     Secret médical
                 </div>
             </div>
@@ -234,7 +323,7 @@ include "header.php";
 
 <!-- BADGE DÉVELOPPEUR -->
 <a href="developer.php" class="fixed bottom-6 left-6 z-50 hidden sm:flex items-center gap-3 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full py-2 pl-2 pr-5 shadow-lg hover:border-indigo-300 dark:hover:border-indigo-500 hover:-translate-y-1 transition-all">
-    <img src="assets/images/moi.jpg" class="w-9 h-9 rounded-full object-cover shadow-sm" alt="Hamadi">
+    <img src="assets/images/moi.JPG" class="w-9 h-9 rounded-full object-cover shadow-sm" alt="Hamadi">
     <div>
         <p class="text-sm font-bold text-slate-900 dark:text-white leading-none">Hamadi Aouina</p>
         <p class="text-xs text-slate-500 dark:text-slate-400">Développeur</p>

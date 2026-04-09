@@ -20,7 +20,7 @@
                 <!-- Photo -->
                 <div class="relative flex-shrink-0">
                     <div class="absolute -inset-1 rounded-[2rem] bg-gradient-to-br from-indigo-500 via-purple-500 to-cyan-400 opacity-40 blur-lg"></div>
-                    <img src="assets/images/moi.jpg" alt="Hamadi Aouina"
+                    <img src="assets/images/moi.JPG" alt="Hamadi Aouina"
                          class="relative w-56 h-56 md:w-72 md:h-72 rounded-[2rem] object-cover border border-slate-700 shadow-2xl">
                 </div>
 
@@ -265,7 +265,7 @@
                 L'architecture logicielle ne consiste pas seulement à faire fonctionner un programme, mais à construire un système capable d'évoluer.
             </blockquote>
             <div class="flex items-center justify-center gap-4">
-                <img src="assets/images/moi.jpg" class="w-12 h-12 rounded-full object-cover border-2 border-slate-700" alt="Hamadi">
+                <img src="assets/images/moi.JPG" class="w-12 h-12 rounded-full object-cover border-2 border-slate-700" alt="Hamadi">
                 <div class="text-left">
                     <p class="font-bold text-white">Hamadi Aouina</p>
                     <p class="text-sm text-slate-400">Étudiant · ISI Ariana · PFE 2026</p>

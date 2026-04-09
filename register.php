@@ -28,9 +28,9 @@ if (empty($_SESSION['csrf_token'])) {
         transition: border-color 0.2s, box-shadow 0.2s;
     }
     .input-field:focus {
-        border-color: #2563eb;
+        border-color: #4f46e5;
         background: #ffffff;
-        box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+        box-shadow: 0 0 0 3px rgba(79,70,229,0.08);
     }
     .input-field::placeholder { color: #94a3b8; }
     .input-field.error { border-color: #ef4444; }
@@ -59,7 +59,7 @@ if (empty($_SESSION['csrf_token'])) {
     <div class="w-full max-w-5xl flex rounded-3xl shadow-xl overflow-hidden border border-slate-200 fade-in bg-white">
 
         <!-- Panneau gauche -->
-        <div class="hidden md:flex w-5/12 bg-blue-950 flex-col justify-between p-12 text-white">
+        <div class="hidden md:flex w-5/12 bg-gradient-to-b from-slate-900 to-indigo-950 flex-col justify-between p-12 text-white">
             <div>
                 <a href="index.php" class="flex items-center gap-3 mb-12">
                     <img src="assets/images/logo.png" alt="PsySpace" class="h-8 w-auto">
@@ -67,19 +67,19 @@ if (empty($_SESSION['csrf_token'])) {
                 </a>
                 <h2 class="text-3xl font-bold leading-snug mb-4">
                     Rejoignez une pratique<br>
-                    <em class="text-blue-300 not-italic">plus fluide.</em>
+                    <em class="text-indigo-300 not-italic">plus fluide.</em>
                 </h2>
-                <p class="text-blue-200/70 text-sm leading-relaxed">
+                <p class="text-indigo-200/70 text-sm leading-relaxed">
                     Créez votre compte professionnel et accédez à un espace sécurisé pour gérer votre activité clinique.
                 </p>
             </div>
 
             <div class="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4">
-                <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-300 shrink-0">
+                <div class="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center text-indigo-300 shrink-0">
                     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 </div>
                 <div>
-                    <p class="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-0.5">Protection des données</p>
+                    <p class="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-0.5">Protection des données</p>
                     <p class="text-sm text-white/80">RGPD · HDS · chiffrement AES-256</p>
                 </div>
             </div>
@@ -167,7 +167,7 @@ if (empty($_SESSION['csrf_token'])) {
 
                 <div class="pt-2">
                     <button type="submit" id="submitBtn" disabled
-                        class="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm shadow-blue-100">
+                        class="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm shadow-indigo-100">
                         Créer mon compte
                     </button>
                 </div>
@@ -176,7 +176,7 @@ if (empty($_SESSION['csrf_token'])) {
             <div class="mt-10 pt-8 border-t border-slate-100 text-center">
                 <p class="text-sm text-slate-500">
                     Vous avez déjà un compte ?
-                    <a href="login.php" class="text-blue-600 font-semibold hover:text-blue-700 transition-colors ml-1">Se connecter</a>
+                    <a href="login.php" class="text-indigo-600 font-semibold hover:text-indigo-700 transition-colors ml-1">Se connecter</a>
                 </p>
             </div>
         </div>

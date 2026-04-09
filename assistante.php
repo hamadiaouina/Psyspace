@@ -206,7 +206,7 @@ $total = count($appointments);
 <div class="flex min-h-screen relative">
 
     <!-- SIDEBAR -->
-    <aside id="sidebar" class="w-64 bg-slate-900 dark:bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0">
+    <aside id="sidebar" class="w-64 bg-gradient-to-b from-slate-900 to-indigo-950 border-r border-white/5 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0">
         <div class="p-6 border-b border-slate-800 flex items-center gap-3">
             <div class="w-8 h-8 bg-indigo-500 text-white rounded-lg flex items-center justify-center font-bold">PS</div>
             <span class="text-lg font-bold text-white">PsySpace</span>
@@ -221,7 +221,7 @@ $total = count($appointments);
                 Agenda du Cabinet
             </a>
         </nav>
-        <div class="p-4 border-t border-slate-800">
+        <div class="p-4 border-t border-white/5">
              <a href="assistante.php?logout=1" class="flex items-center gap-2 text-slate-400 hover:text-red-400 text-sm font-medium transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                 Verrouiller le poste

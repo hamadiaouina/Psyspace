@@ -27,9 +27,9 @@ if (empty($_SESSION['csrf_token'])) {
         transition: border-color 0.2s, box-shadow 0.2s;
     }
     .input-field:focus {
-        border-color: #2563eb;
+        border-color: #4f46e5;
         background: #ffffff;
-        box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
+        box-shadow: 0 0 0 3px rgba(79,70,229,0.08);
     }
     .input-field::placeholder { color: #94a3b8; }
     .input-field.error { border-color: #ef4444; }
@@ -42,7 +42,7 @@ if (empty($_SESSION['csrf_token'])) {
     <div class="w-full max-w-5xl flex rounded-2xl shadow-xl overflow-hidden border border-slate-200 fade-in">
 
         <!-- PARTIE GAUCHE (DESIGN) -->
-        <div class="hidden md:flex w-5/12 bg-blue-950 flex-col justify-between p-12 text-white">
+        <div class="hidden md:flex w-5/12 bg-gradient-to-b from-slate-900 to-indigo-950 flex-col justify-between p-12 text-white">
             <div>
                 <a href="index.php" class="flex items-center gap-3 mb-16">
                     <img src="assets/images/logo.png" alt="PsySpace" class="h-8 w-auto">
@@ -50,19 +50,19 @@ if (empty($_SESSION['csrf_token'])) {
                 </a>
                 <h2 class="font-serif text-3xl font-bold leading-snug mb-4">
                     L'intelligence<br>
-                    <em class="text-blue-300">au service du soin.</em>
+                    <em class="text-indigo-300">au service du soin.</em>
                 </h2>
-                <p class="text-blue-200/70 text-sm leading-relaxed">
+                <p class="text-indigo-200/70 text-sm leading-relaxed">
                     Accédez à votre interface sécurisée pour piloter vos analyses cliniques.
                 </p>
             </div>
 
             <div class="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-4">
-                <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-blue-300 shrink-0">
+                <div class="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center text-indigo-300 shrink-0">
                     <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </div>
                 <div>
-                    <p class="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-0.5">Connexion sécurisée</p>
+                    <p class="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-0.5">Connexion sécurisée</p>
                     <p class="text-sm text-white/80">Chiffrement AES-256 · HDS</p>
                 </div>
             </div>
@@ -122,7 +122,7 @@ if (empty($_SESSION['csrf_token'])) {
                 <div class="space-y-1.5">
                     <div class="flex justify-between items-center">
                         <label class="text-xs font-semibold text-slate-600 uppercase tracking-wider">Mot de passe</label>
-                        <a href="forgot.php" class="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">Mot de passe oublié ?</a>
+                        <a href="forgot.php" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors">Mot de passe oublié ?</a>
                     </div>
                     <div class="relative">
                         <input type="password" id="loginPassword" name="password" required autocomplete="current-password"
@@ -147,7 +147,7 @@ if (empty($_SESSION['csrf_token'])) {
 
                 <div class="flex items-center gap-3">
                     <input type="checkbox" id="remember" name="remember" value="1"
-                           class="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-600 cursor-pointer">
+                           class="w-4 h-4 rounded border-slate-300 text-indigo-600 accent-indigo-600 cursor-pointer">
                     <label for="remember" class="text-sm text-slate-500 cursor-pointer select-none">Rester connecté</label>
                 </div>
 
@@ -157,7 +157,7 @@ if (empty($_SESSION['csrf_token'])) {
 
                 <div class="pt-2">
                     <button type="submit" id="loginBtn"
-                            class="w-full flex justify-center items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
+                            class="w-full flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all hover:-translate-y-0.5 shadow-sm">
                         <span id="btnText">Se connecter</span>
                         
                         <svg id="btnSpinner" class="hidden animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -170,7 +170,7 @@ if (empty($_SESSION['csrf_token'])) {
 
             <div class="mt-10 pt-8 border-t border-slate-100 text-center space-y-3">
                 <p class="text-sm text-slate-500">
-                    Pas encore de compte ? <a href="register.php" class="text-blue-600 font-semibold">Créer un compte</a>
+                    Pas encore de compte ? <a href="register.php" class="text-indigo-600 font-semibold">Créer un compte</a>
                 </p>
                 <a href="index.php" class="text-xs text-slate-400 flex items-center justify-center gap-1">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
