@@ -1,5 +1,4 @@
 <?php
-// --- 1. SÉCURITÉ DES SESSIONS & HEADERS ---
 ini_set('session.cookie_httponly', '1'); 
 ini_set('session.use_only_cookies', '1');
 ini_set('session.cookie_samesite', 'Lax');
@@ -22,7 +21,6 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
-// --- Inclusion de PHPMailer pour l'envoi d'email à l'assistante ---
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 require __DIR__ . '/vendor/PHPMailer/src/Exception.php';
@@ -32,15 +30,14 @@ require __DIR__ . '/vendor/PHPMailer/src/SMTP.php';
 $nom_docteur = mb_strtoupper($_SESSION['nom'] ?? 'Docteur', 'UTF-8');
 $doc_id      = (int)$_SESSION['id'];
 
-// ── Récupération des données du médecin ───────────────────────────
 $stmt = $conn->prepare("SELECT * FROM doctor WHERE docid=? LIMIT 1");
-$stmt->bind_param("i", $doc_id); $stmt->execute();
+$stmt->bind_param("i", $doc_id); 
+$stmt->execute();
 $doc = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 $doc_photo   = $doc['photo'] ?? '';
 $doc_initial = mb_substr($nom_docteur, 0, 1, 'UTF-8');
 
-// ── Récupération du VRAI code Assistante ───────────────────────────
 $cabinet_code = "ERREUR (Non généré)";
 $stmt_code = $conn->prepare("SELECT access_code FROM assistant_access WHERE doctor_id = ?");
 $stmt_code->bind_param("i", $doc_id);
@@ -51,12 +48,10 @@ if ($row_code = $res_code->fetch_assoc()) {
 }
 $stmt_code->close();
 
-// --- TRAITEMENT DU FORMULAIRE D'ENVOI D'EMAIL À L'ASSISTANTE ---
 $email_status = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_invite_email'])) {
-    // Vérification du jeton CSRF
     if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'])) {
-        $email_status = "<div class='text-red-600 bg-red-50 p-3 rounded-lg text-sm mb-4 font-semibold'>Erreur de sécurité (CSRF).</div>";
+        $email_status = "<div class='text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm mb-4 font-semibold'>Erreur de sécurité (CSRF).</div>";
     } else {
         $target_email = trim($_POST['assistant_email']);
         if (filter_var($target_email, FILTER_VALIDATE_EMAIL)) {
@@ -77,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_invite_email']))
                 $mail->setFrom($smtp_user, 'Le cabinet du Dr. ' . ucwords(strtolower($nom_docteur)));
                 $mail->addAddress($target_email);
                 $mail->isHTML(true);
-                $mail->Subject = "🔑 Vos accès au secrétariat PsySpace";
+                $mail->Subject = "Vos accès au secrétariat PsySpace";
                 
                 $mail->Body = "
                 <div style='font-family:sans-serif; max-width:500px; margin:0 auto; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;'>
@@ -101,18 +96,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_invite_email']))
                 </div>";
 
                 $mail->send();
-                $email_status = "<div class='text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-sm mb-4 font-semibold flex items-center gap-2'>✅ Invitation envoyée avec succès !</div>";
+                $email_status = "<div class='text-emerald-700 bg-emerald-50 border border-emerald-200 p-3 rounded-lg text-sm mb-4 font-semibold flex items-center gap-2'><svg class='w-5 h-5' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M5 13l4 4L19 7'></path></svg> Invitation envoyée avec succès.</div>";
             } catch (Exception $e) {
                 error_log("Erreur Mail Assistante : " . $e->getMessage());
-                $email_status = "<div class='text-red-600 bg-red-50 p-3 rounded-lg text-sm mb-4 font-semibold'>L'envoi de l'email a échoué.</div>";
+                $email_status = "<div class='text-red-600 bg-red-50 border border-red-200 p-3 rounded-lg text-sm mb-4 font-semibold'>L'envoi de l'email a échoué.</div>";
             }
         } else {
-            $email_status = "<div class='text-amber-600 bg-amber-50 p-3 rounded-lg text-sm mb-4 font-semibold'>Adresse email invalide.</div>";
+            $email_status = "<div class='text-amber-600 bg-amber-50 border border-amber-200 p-3 rounded-lg text-sm mb-4 font-semibold'>Adresse email invalide.</div>";
         }
     }
 }
 
-// Renouvellement du jeton CSRF pour la page
 $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 ?>
 
@@ -153,7 +147,6 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 
     <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity"></div>
 
-    <!-- SIDEBAR -->
     <aside id="sidebar" class="w-64 bg-slate-900 dark:bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0">
         <div class="p-6 border-b border-slate-800 flex justify-between items-center">
             <a href="dashboard.php" class="flex items-center gap-3">
@@ -209,17 +202,16 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         </div>
     </aside>
 
-    <!-- MAIN CONTENT -->
     <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full flex flex-col lg:flex-row gap-6 h-screen overflow-hidden">
         
-        <!-- SECTION GAUCHE : TCHAT CABINET -->
         <div class="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-            <!-- Header du Chat -->
             <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center gap-4 bg-slate-50 dark:bg-slate-800/50">
                 <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
-                <div class="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center text-xl shadow-inner shrink-0">👩‍💼</div>
+                <div class="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center shadow-inner shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                </div>
                 <div>
                     <h2 class="font-bold text-slate-900 dark:text-white">Accueil Secrétariat</h2>
                     <p class="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1 font-medium mt-0.5">
@@ -228,12 +220,9 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 </div>
             </div>
 
-            <!-- Messages -->
             <div id="chat-messages" class="flex-1 p-5 overflow-y-auto bg-slate-50/50 dark:bg-slate-900 flex flex-col gap-4 custom-scroll">
-                <!-- Les messages seront chargés ici par AJAX -->
             </div>
 
-            <!-- Input Box -->
             <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
                 <form id="chat-form" class="flex gap-3">
                     <input type="text" id="chat-input" placeholder="Envoyer un message à l'assistante..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 dark:text-white transition-all">
@@ -245,10 +234,8 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             </div>
         </div>
 
-        <!-- SECTION DROITE : GESTION DES ACCÈS -->
         <div class="w-full lg:w-80 flex flex-col gap-6 overflow-y-auto custom-scroll pr-1">
             
-            <!-- Bloc Code actuel -->
             <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
                 <div class="flex items-center gap-2 mb-4">
                     <div class="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-900/30 text-pink-600 flex items-center justify-center">
@@ -262,7 +249,6 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 </div>
             </div>
 
-            <!-- Bloc Envoyer l'accès par mail -->
             <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
                 <div class="flex items-center gap-2 mb-4">
                     <div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center">
@@ -273,7 +259,7 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 
                 <?= $email_status ?>
 
-                <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Entrez l'email de votre assistante. Elle recevra le lien de connexion et le code magique.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">Entrez l'email de votre assistante. Elle recevra le lien de connexion et le code d'accès.</p>
                 
                 <form method="POST" action="chat_cabinet.php" class="space-y-3">
                     <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
@@ -288,7 +274,6 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
                 </form>
             </div>
             
-            <!-- Informations d'aide -->
             <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-5">
                 <h4 class="text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase tracking-wider mb-2">Comment ça marche ?</h4>
                 <ul class="text-xs text-indigo-700 dark:text-indigo-400 space-y-2 list-disc list-inside pl-2">
@@ -304,7 +289,6 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 </div>
 
 <script nonce="<?= $nonce ?>">
-    // --- 1. GESTION DU TCHAT AJAX ---
     const chatMessages = document.getElementById('chat-messages');
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
@@ -317,15 +301,12 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             .then(data => {
                 let html = '';
                 data.forEach(msg => {
-                    // Alertes Système
                     if (msg.sender_type === 'system') {
-                        html += `<div class="text-center my-3"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1.5 rounded-full inline-flex items-center gap-1.5">🤖 ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
+                        html += `<div class="text-center my-3"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
                     } 
-                    // Moi (Docteur)
                     else if (msg.sender_type === 'doctor') {
                         html += `<div class="self-end max-w-[85%] flex flex-col items-end mb-2"><div class="bg-indigo-600 text-white text-sm py-2.5 px-4 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
                     } 
-                    // Assistante
                     else {
                         html += `<div class="self-start max-w-[85%] flex flex-col items-start mb-2"><span class="text-[10px] font-bold text-slate-500 mb-1 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Assistante</span><div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2.5 px-4 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
                     }
@@ -360,11 +341,9 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             });
     });
 
-    // Chargement initial et rafraîchissement
     loadMessages();
     setInterval(loadMessages, 3000);
 
-    // --- 2. GESTION SIDEBAR MOBILE ---
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     const openBtn = document.getElementById('open-sidebar');
