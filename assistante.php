@@ -33,18 +33,43 @@ if ($row_ip = $res_ip->fetch_assoc()) {
         <head>
             <meta charset='UTF-8'>
             <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-            <title>Accès bloqué | PsySpace</title>
+            <title>Accès Restreint | Sécurité PsySpace</title>
             <script src='https://cdn.tailwindcss.com' nonce='$nonce'></script>
-            <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' rel='stylesheet'>
-            <style nonce='$nonce'>body { font-family: 'Inter', sans-serif; }</style>
+            <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap' rel='stylesheet'>
+            <style nonce='$nonce'>
+                body { font-family: 'Inter', sans-serif; background-color: #0f172a; }
+                .font-mono { font-family: 'JetBrains Mono', monospace; }
+                .glow-red { box-shadow: 0 0 20px rgba(220, 38, 38, 0.4); }
+            </style>
         </head>
-        <body class='bg-slate-50 flex items-center justify-center min-h-screen p-4'>
-            <div class='bg-white max-w-md w-full rounded-2xl shadow-sm border border-red-100 p-8 text-center'>
-                <div class='w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4'>
-                    <svg class='w-8 h-8' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'/></svg>
+        <body class='flex items-center justify-center min-h-screen p-4'>
+            <div class='bg-slate-900 max-w-md w-full rounded-2xl glow-red border border-red-500/30 p-8 text-center relative overflow-hidden'>
+                <div class='absolute top-0 left-0 w-full h-1 bg-red-600'></div>
+                
+                <div class='w-20 h-20 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20'>
+                    <svg class='w-10 h-10' fill='none' stroke='currentColor' viewBox='0 0 24 24'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'/></svg>
                 </div>
-                <h2 class='text-xl font-bold text-slate-800 mb-2'>Accès bloqué</h2>
-                <p class='text-slate-500 text-sm'>Par mesure de sécurité, suite à de nombreuses tentatives échouées, votre adresse IP a été temporairement bloquée. Veuillez réessayer dans 15 minutes.</p>
+                
+                <h2 class='text-2xl font-bold text-white mb-2 tracking-wide uppercase'>Accès Restreint</h2>
+                
+                <div class='bg-red-500/10 border border-red-500/20 rounded-lg p-5 mb-6 mt-4'>
+                    <p class='text-red-400 text-sm font-medium leading-relaxed'>
+                        Par mesure de sécurité, suite à de multiples tentatives de connexion échouées, l'accès depuis ce réseau a été temporairement suspendu.
+                    </p>
+                </div>
+                
+                <div class='bg-slate-950 border border-slate-800 rounded-lg p-4 mb-6 text-left flex flex-col gap-2'>
+                    <div class='flex justify-between items-center border-b border-slate-800 pb-2'>
+                        <span class='text-slate-500 text-xs uppercase font-bold tracking-wider'>Adresse IP</span>
+                        <span class='text-red-400 text-xs font-mono'>" . htmlspecialchars($ip_visiteur) . "</span>
+                    </div>
+                    <div class='flex justify-between items-center pt-1'>
+                        <span class='text-slate-500 text-xs uppercase font-bold tracking-wider'>Statut</span>
+                        <span class='text-red-500 text-xs font-bold flex items-center gap-1.5'><span class='w-2 h-2 rounded-full bg-red-500 animate-pulse'></span> BLOQUÉ</span>
+                    </div>
+                </div>
+                
+                <p class='text-slate-400 text-xs'>Veuillez patienter 15 minutes avant toute nouvelle tentative.</p>
             </div>
         </body>
         </html>
