@@ -115,63 +115,98 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
 ?>
 <!DOCTYPE html>
-<html lang="fr" class="dark">
+<html lang="fr" class="scroll-smooth">
 <head>
-    <link rel="icon" type="image/png" href="../assets/images/logo.png">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vérification de sécurité | PsySpace</title>
+    <title>Vérification 2FA | PsySpace Admin</title>
+    <link rel="icon" type="image/png" href="../assets/images/logo.png">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <script>
         tailwind.config = {
             darkMode: 'class',
-            theme: { extend: { fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] } } }
+            theme: { 
+                extend: { 
+                    fontFamily: { 
+                        sans: ['IBM Plex Sans', 'sans-serif'],
+                        mono: ['IBM Plex Mono', 'monospace']
+                    },
+                    colors: {
+                        brand: '#3d52a0',
+                        brand_hover: '#2d3d80',
+                        dark_bg: '#0c0c12',
+                        dark_surface: '#14141e',
+                        dark_border: '#26263a'
+                    }
+                } 
+            }
         };
+        // Auto Dark Mode
+        if (localStorage.getItem('psyadmin_dark') === '1' || (!('psyadmin_dark' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
     </script>
+    <style>
+        body { font-family: 'IBM Plex Sans', sans-serif; }
+        .font-mono { font-family: 'IBM Plex Mono', monospace; }
+        .glow { box-shadow: 0 0 40px rgba(61, 82, 160, 0.15); }
+        .dark .glow { box-shadow: 0 0 40px rgba(61, 82, 160, 0.08); }
+    </style>
 </head>
-<body class="bg-slate-950 text-white flex justify-center items-center min-h-screen font-sans selection:bg-indigo-500 selection:text-white">
+<body class="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-dark_bg text-slate-900 dark:text-slate-200 transition-colors duration-300 p-4">
 
-    <div class="w-full max-w-md p-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl relative overflow-hidden">
-        
-        <!-- Décoration de la carte -->
-        <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-rose-500"></div>
-
+    <div class="w-full max-w-[400px]">
+        <!-- Header Gateway -->
         <div class="text-center mb-8">
-            <div class="w-14 h-14 mx-auto bg-indigo-500/10 text-indigo-500 rounded-2xl flex items-center justify-center mb-5 border border-indigo-500/20 shadow-inner">
-                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            <div class="inline-flex items-center justify-center w-14 h-14 bg-white dark:bg-dark_surface border border-slate-200 dark:border-dark_border rounded-xl shadow-sm mb-5 relative">
+                <div class="absolute inset-0 border border-brand/30 rounded-xl animate-pulse"></div>
+                <svg class="w-6 h-6 text-brand dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
             </div>
-            <h2 class="text-2xl font-bold text-white tracking-tight">Authentification 2FA</h2>
-            <p class="text-sm text-slate-400 mt-2 leading-relaxed">
-                Un code de sécurité à 6 chiffres a été envoyé à votre adresse e-mail. Veuillez le saisir ci-dessous.
-            </p>
+            <h1 class="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Authentification 2FA</h1>
+            <p class="text-[11px] uppercase tracking-[0.15em] font-mono text-slate-500 dark:text-slate-400 mt-2">Vérification d'identité</p>
         </div>
 
-        <?php if($error): ?>
-            <div class="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm font-medium flex items-center gap-3">
-                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                <?= htmlspecialchars($error) ?>
-            </div>
-        <?php endif; ?>
+        <!-- Box Verify -->
+        <div class="bg-white dark:bg-dark_surface rounded-xl shadow-2xl dark:shadow-none border border-slate-200 dark:border-dark_border p-8 glow relative overflow-hidden">
+            <!-- Ligne supérieure de décoration -->
+            <div class="absolute top-0 left-0 w-full h-1 bg-brand"></div>
 
-        <form method="POST" class="space-y-6">
-            <!-- SÉCURITÉ : JETON CSRF -->
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
-            
-            <div>
-                <input type="text" name="otp" placeholder="••••••" maxlength="6" required autocomplete="off" autofocus 
-                       class="w-full px-4 py-4 bg-slate-950 border border-slate-800 rounded-xl text-center text-3xl font-bold tracking-[0.5em] text-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-700"
-                       oninput="this.value = this.value.replace(/[^0-9]/g, '');">
-            </div>
-            
-            <button type="submit" 
-                    class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-indigo-500/25 flex justify-center items-center gap-2">
-                <span>Confirmer l'accès</span>
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-            </button>
-        </form>
+            <p class="text-[13px] text-slate-500 dark:text-slate-400 text-center mb-6 leading-relaxed">
+                Un code de sécurité à 6 chiffres a été envoyé à votre adresse e-mail. Veuillez le saisir ci-dessous.
+            </p>
+
+            <!-- Affichage des erreurs -->
+            <?php if($error): ?>
+                <div class="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-[13px] text-red-600 dark:text-red-400 flex items-start gap-3">
+                    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span class="font-medium leading-tight"><?= htmlspecialchars($error) ?></span>
+                </div>
+            <?php endif; ?>
+
+            <form method="POST" class="space-y-6">
+                <!-- SÉCURITÉ : JETON CSRF -->
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
+                
+                <div>
+                    <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider font-mono text-center">Code de sécurité</label>
+                    <input type="text" name="otp" placeholder="••••••" maxlength="6" required autocomplete="off" autofocus 
+                           class="w-full py-3 bg-slate-50 dark:bg-dark_bg border border-slate-200 dark:border-dark_border rounded-lg text-center text-2xl font-bold tracking-[0.5em] text-brand dark:text-white font-mono focus:ring-1 focus:ring-brand focus:border-brand dark:focus:ring-indigo-500 dark:focus:border-indigo-500 outline-none transition-colors placeholder-slate-300 dark:placeholder-slate-700"
+                           oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                </div>
+                
+                <div class="pt-2">
+                    <button type="submit" 
+                            class="w-full py-2.5 px-4 bg-brand hover:bg-brand_hover text-white text-[13px] font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
+                        Confirmer l'accès
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </button>
+                </div>
+            </form>
+        </div>
+        
     </div>
 
 </body>
