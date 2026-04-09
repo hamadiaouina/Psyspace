@@ -136,23 +136,11 @@ try {
     $hashed_password = password_hash($password, PASSWORD_ARGON2ID);
     $otp = rand(100000, 999999);
 
-    $sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status, dob) VALUES (?, ?, ?, ?, 'pending', ?)";
+      $sql = "INSERT INTO doctor (docemail, docname, docpassword, otp_code, status, dob) VALUES (?, ?, ?, ?, 'pending', ?)";
     $insertStmt = $con->prepare($sql);
     $insertStmt->bind_param("sssis", $email, $fullName, $hashed_password, $otp, $dob);
     $insertStmt->execute();
-    
-    // 🔒 SÉCURITÉ MAXIMALE : On récupère l'ID du docteur créé
-    $new_doc_id = $insertStmt->insert_id;
     $insertStmt->close();
-
-    // 🔒 SÉCURITÉ MAXIMALE : Création du code Assistante dans la nouvelle table
-    if ($new_doc_id > 0) {
-        $access_code = strtoupper(bin2hex(random_bytes(5))); // Code unique et aléatoire à 10 caractères
-        $stmt_assist = $con->prepare("INSERT INTO assistant_access (doctor_id, access_code) VALUES (?, ?)");
-        $stmt_assist->bind_param("is", $new_doc_id, $access_code);
-        $stmt_assist->execute();
-        $stmt_assist->close();
-    }
 
     // --- 9. ENVOI DU MAIL OTP ---
     $mail = new PHPMailer(true);

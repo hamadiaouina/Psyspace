@@ -74,8 +74,15 @@ if ($result && $result->num_rows > 0) {
         // =====================================================================
         $doc_id = $doctor['docid'];
         $fullName = $doctor['docname'];
-        // Création du code 10 caractères unique au docteur
-        $cabinet_code = strtoupper(substr(md5($doc_id . "PsySpaceCabinet2026"), 0, 10));
+        
+        // 🔒 SÉCURITÉ MAXIMALE : Création du code Assistante unique et aléatoire
+        $cabinet_code = strtoupper(bin2hex(random_bytes(5))); // Code unique et aléatoire à 10 caractères
+        
+        // Sauvegarde du code dans la nouvelle table assistant_access
+        $stmt_assist = $con->prepare("INSERT INTO assistant_access (doctor_id, access_code) VALUES (?, ?)");
+        $stmt_assist->bind_param("is", $doc_id, $cabinet_code);
+        $stmt_assist->execute();
+        $stmt_assist->close();
 
         try {
             $mail = new PHPMailer(true);
