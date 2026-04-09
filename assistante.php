@@ -5,6 +5,11 @@
 ini_set('session.cookie_httponly', '1'); 
 ini_set('session.use_only_cookies', '1');
 ini_set('session.cookie_samesite', 'Lax');
+
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+    ini_set('session.cookie_secure', '1');
+}
+
 session_start();
 
 $nonce = base64_encode(random_bytes(16));
@@ -15,10 +20,23 @@ header("Referrer-Policy: strict-origin-when-cross-origin");
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
-// Fonction magique pour générer le code du cabinet
-function getCabinetCode($docid) {
-    return strtoupper(substr(md5($docid . "PsySpaceCabinet2026"), 0, 10));
+// ==========================================
+// 🛡️ 2. GESTION DU LOGIN ASSISTANTE (MAX SÉCURITÉ)
+// ==========================================
+$ip_visiteur = $_SERVER['REMOTE_ADDR'];
+
+// 🔒 SÉCURITÉ 1 : Vérifier si l'IP est bloquée (Anti Brute-Force robuste)
+$stmt_check_ip = $conn->prepare("SELECT attempts, last_attempt FROM login_attempts WHERE ip_address = ? AND last_attempt > NOW() - INTERVAL 15 MINUTE");
+$stmt_check_ip->bind_param("s", $ip_visiteur);
+$stmt_check_ip->execute();
+$res_ip = $stmt_check_ip->get_result();
+
+if ($row_ip = $res_ip->fetch_assoc()) {
+    if ($row_ip['attempts'] >= 5) {
+        die("<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'><title>Accès Bloqué</title></head><body style='background:#0f172a; color:#fff; text-align:center; padding:100px; font-family:sans-serif;'><h2>🔒 Sécurité PsySpace</h2><p>Votre adresse IP a été temporairement bloquée suite à de trop nombreuses tentatives échouées.</p><p>Veuillez réessayer dans 15 minutes.</p></body></html>");
+    }
 }
+$stmt_check_ip->close();
 
 // Déconnexion
 if (isset($_GET['logout'])) {
@@ -27,35 +45,46 @@ if (isset($_GET['logout'])) {
     exit();
 }
 
-// ==========================================
-// 2. GESTION DU LOGIN ASSISTANTE
-// ==========================================
-if (!isset($_SESSION['sec_login_attempts'])) { $_SESSION['sec_login_attempts'] = 0; }
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
-    if ($_SESSION['sec_login_attempts'] >= 5) {
-        $login_error = "Trop de tentatives. Veuillez patienter.";
-    } else {
-        $input_code = strtoupper(trim($_POST['cabinet_code']));
-        $res_docs = $conn->query("SELECT docid, docname FROM doctor WHERE status = 'active'");
-        $found = false;
+    $input_code = strtoupper(trim($_POST['cabinet_code']));
+    
+    // 🔒 SÉCURITÉ 2 : Vérification du code dans la NOUVELLE table avec jointure
+    $stmt = $conn->prepare("
+        SELECT d.docid, d.docname 
+        FROM doctor d 
+        JOIN assistant_access a ON d.docid = a.doctor_id 
+        WHERE d.status = 'active' AND a.access_code = ?
+    ");
+    $stmt->bind_param("s", $input_code);
+    $stmt->execute();
+    $res_docs = $stmt->get_result();
+    
+    if ($doc = $res_docs->fetch_assoc()) {
+        // ✅ CODE VALIDE : Connexion réussie
+        session_regenerate_id(true); // Empêche le vol de session
+        $_SESSION['sec_doc_id'] = $doc['docid'];
+        $_SESSION['sec_doc_name'] = $doc['docname'];
+        $_SESSION['csrf_sec_token'] = bin2hex(random_bytes(32)); 
         
-        while ($doc = $res_docs->fetch_assoc()) {
-            if (getCabinetCode($doc['docid']) === $input_code) {
-                session_regenerate_id(true); 
-                $_SESSION['sec_doc_id'] = $doc['docid'];
-                $_SESSION['sec_doc_name'] = $doc['docname'];
-                $_SESSION['csrf_sec_token'] = bin2hex(random_bytes(32)); 
-                $_SESSION['sec_login_attempts'] = 0;
-                $found = true;
-                break;
-            }
-        }
-        if (!$found) {
-            $_SESSION['sec_login_attempts']++;
-            $login_error = "Code d'accès invalide.";
-        }
+        // On pardonne les erreurs passées de cette IP
+        $stmt_del = $conn->prepare("DELETE FROM login_attempts WHERE ip_address = ?");
+        $stmt_del->bind_param("s", $ip_visiteur);
+        $stmt_del->execute();
+        $stmt_del->close();
+        
+        header("Location: assistante.php");
+        exit();
+    } else {
+        // ❌ CODE INVALIDE : On enregistre la tentative d'intrusion
+        sleep(2); // Ralentit les robots (très important)
+        $stmt_fail = $conn->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (?, 1) ON DUPLICATE KEY UPDATE attempts = attempts + 1, last_attempt = NOW()");
+        $stmt_fail->bind_param("s", $ip_visiteur);
+        $stmt_fail->execute();
+        $stmt_fail->close();
+        
+        $login_error = "Code d'accès invalide.";
     }
+    $stmt->close();
 }
 
 // ==========================================
@@ -82,11 +111,11 @@ if (!isset($_SESSION['sec_doc_id'])) {
             <p class="text-slate-500 mb-8 text-sm">Entrez le code sécurisé à 10 caractères du cabinet.</p>
             
             <?php if (isset($login_error)): ?>
-                <div class="text-red-600 text-sm font-bold bg-red-50 p-3 rounded-xl mb-6 animate-pulse"><?= $login_error ?></div>
+                <div class="text-red-600 text-sm font-bold bg-red-50 p-3 rounded-xl mb-6 animate-pulse"><?= htmlspecialchars($login_error) ?></div>
             <?php endif; ?>
 
             <form method="POST" action="assistante.php">
-                <input type="text" name="cabinet_code" required placeholder="XXXXXXXXXX" maxlength="10"
+                <input type="text" name="cabinet_code" required placeholder="XXXXXXXXXX" maxlength="15"
                        class="w-full border-2 border-slate-200 rounded-xl p-4 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50 outline-none text-center tracking-[0.4em] font-bold uppercase mb-6 text-xl transition-all" autocomplete="off">
                 <button type="submit" class="w-full bg-slate-900 hover:bg-indigo-600 text-white font-bold py-4 rounded-xl transition-colors shadow-md text-lg">
                     Déverrouiller l'Agenda
@@ -105,63 +134,101 @@ if (!isset($_SESSION['sec_doc_id'])) {
 $doc_id = (int)$_SESSION['sec_doc_id'];
 $doc_name = $_SESSION['sec_doc_name'];
 
-// --- CRUD : AJOUTER / MODIFIER (Avec Notification Chat) ---
+// Vérification globale du Token CSRF pour les actions POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!isset($_POST['csrf_token']) || !hash_equals($_SESSION['csrf_sec_token'], $_POST['csrf_token'])) {
+        die("Action non autorisée (Erreur de jeton de sécurité CSRF).");
+    }
+}
+
+// --- CRUD : AJOUTER / MODIFIER (100% Requêtes Préparées Anti-Injection) ---
 if(isset($_POST['save_appointment'])) {
     $edit_id = !empty($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0;
-    $p_name  = mysqli_real_escape_string($conn, trim($_POST['p_name']));
-    $p_phone = mysqli_real_escape_string($conn, trim($_POST['p_phone']));
+    $p_name  = trim($_POST['p_name']);
+    $p_phone = trim($_POST['p_phone']);
     $p_date  = $_POST['p_date']; 
     $app_datetime = date('Y-m-d H:i:s', strtotime($p_date));
     $date_format_chat = date('d/m à H:i', strtotime($p_date));
     
-    // Gérer le patient
-    $check_p = $conn->query("SELECT id FROM patients WHERE pphone = '$p_phone' LIMIT 1");
-    if($check_p->num_rows > 0) { 
-        $final_patient_id = $check_p->fetch_assoc()['id']; 
+    // Gérer le patient (Préparée)
+    $stmt_p = $conn->prepare("SELECT id FROM patients WHERE pphone = ? LIMIT 1");
+    $stmt_p->bind_param("s", $p_phone);
+    $stmt_p->execute();
+    $res_p = $stmt_p->get_result();
+    
+    if($res_p->num_rows > 0) { 
+        $final_patient_id = $res_p->fetch_assoc()['id']; 
     } else {
-        $conn->query("INSERT INTO patients (pname, pphone) VALUES ('$p_name', '$p_phone')");
-        $final_patient_id = $conn->insert_id;
+        $stmt_ins_p = $conn->prepare("INSERT INTO patients (pname, pphone) VALUES (?, ?)");
+        $stmt_ins_p->bind_param("ss", $p_name, $p_phone);
+        $stmt_ins_p->execute();
+        $final_patient_id = $stmt_ins_p->insert_id;
+        $stmt_ins_p->close();
     }
+    $stmt_p->close();
     
     if ($edit_id > 0) {
-        // Envoi au Tchat : RDV Modifié
-        $sys_msg = "✏️ RDV modifié : " . mysqli_real_escape_string($conn, $p_name) . " décalé au " . $date_format_chat;
-        $conn->query("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES ('$doc_id', 'system', '$sys_msg')");
+        // Modification (Préparée)
+        $sys_msg = "✏️ RDV modifié : " . $p_name . " décalé au " . $date_format_chat;
+        $stmt_chat = $conn->prepare("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES (?, 'system', ?)");
+        $stmt_chat->bind_param("is", $doc_id, $sys_msg);
+        $stmt_chat->execute(); $stmt_chat->close();
         
-        $conn->query("UPDATE appointments SET patient_id='$final_patient_id', patient_name='$p_name', patient_phone='$p_phone', app_date='$app_datetime' WHERE id='$edit_id' AND doctor_id='$doc_id'");
+        $stmt_upd = $conn->prepare("UPDATE appointments SET patient_id=?, patient_name=?, patient_phone=?, app_date=? WHERE id=? AND doctor_id=?");
+        $stmt_upd->bind_param("isssii", $final_patient_id, $p_name, $p_phone, $app_datetime, $edit_id, $doc_id);
+        $stmt_upd->execute(); $stmt_upd->close();
+        
         header("Location: assistante.php?success=edit"); exit();
     } else {
-        // Envoi au Tchat : RDV Ajouté
-        $sys_msg = "✅ Nouveau RDV : " . mysqli_real_escape_string($conn, $p_name) . " planifié le " . $date_format_chat;
-        $conn->query("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES ('$doc_id', 'system', '$sys_msg')");
+        // Ajout (Préparée)
+        $sys_msg = "✅ Nouveau RDV : " . $p_name . " planifié le " . $date_format_chat;
+        $stmt_chat = $conn->prepare("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES (?, 'system', ?)");
+        $stmt_chat->bind_param("is", $doc_id, $sys_msg);
+        $stmt_chat->execute(); $stmt_chat->close();
         
-        $conn->query("INSERT INTO appointments (doctor_id, patient_id, patient_name, patient_phone, app_date, app_type) VALUES ('$doc_id','$final_patient_id','$p_name','$p_phone','$app_datetime', 'Consultation')");
+        $app_type = 'Consultation';
+        $stmt_ins = $conn->prepare("INSERT INTO appointments (doctor_id, patient_id, patient_name, patient_phone, app_date, app_type) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt_ins->bind_param("iissss", $doc_id, $final_patient_id, $p_name, $p_phone, $app_datetime, $app_type);
+        $stmt_ins->execute(); $stmt_ins->close();
+        
         header("Location: assistante.php?success=add"); exit();
     }
 }
 
-// --- CRUD : SUPPRIMER (Avec Notification Chat) ---
+// --- CRUD : SUPPRIMER (100% Requêtes Préparées Anti-Injection) ---
 if (isset($_POST['delete_app'])) {
     $app_id = (int)$_POST['app_id'];
     
-    // Récupérer le nom avant de supprimer
-    $res_name = $conn->query("SELECT patient_name FROM appointments WHERE id='$app_id'");
+    // Récupérer le nom (Préparée)
+    $stmt_nm = $conn->prepare("SELECT patient_name FROM appointments WHERE id=? AND doctor_id=?");
+    $stmt_nm->bind_param("ii", $app_id, $doc_id);
+    $stmt_nm->execute();
+    $res_name = $stmt_nm->get_result();
     $del_name = ($res_name->num_rows > 0) ? $res_name->fetch_assoc()['patient_name'] : 'Inconnu';
+    $stmt_nm->close();
     
-    // Envoi au Tchat : RDV Annulé
-    $sys_msg = "❌ RDV annulé : " . mysqli_real_escape_string($conn, $del_name);
-    $conn->query("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES ('$doc_id', 'system', '$sys_msg')");
+    // Notification Chat (Préparée)
+    $sys_msg = "❌ RDV annulé : " . $del_name;
+    $stmt_chat = $conn->prepare("INSERT INTO cabinet_chat (doctor_id, sender_type, message) VALUES (?, 'system', ?)");
+    $stmt_chat->bind_param("is", $doc_id, $sys_msg);
+    $stmt_chat->execute(); $stmt_chat->close();
     
-    // Suppression
-    $conn->query("DELETE FROM appointments WHERE id='$app_id' AND doctor_id='$doc_id'");
+    // Suppression (Préparée)
+    $stmt_del = $conn->prepare("DELETE FROM appointments WHERE id=? AND doctor_id=?");
+    $stmt_del->bind_param("ii", $app_id, $doc_id);
+    $stmt_del->execute(); $stmt_del->close();
+    
     header("Location: assistante.php?success=delete"); exit();
 }
 
 // --- RÉCUPÉRATION DE L'AGENDA POUR L'AFFICHAGE ---
-$sql = "SELECT * FROM appointments WHERE doctor_id = '$doc_id' AND app_date >= CURDATE() ORDER BY app_date ASC";
-$query = $conn->query($sql);
+$stmt_agenda = $conn->prepare("SELECT * FROM appointments WHERE doctor_id = ? AND app_date >= CURDATE() ORDER BY app_date ASC");
+$stmt_agenda->bind_param("i", $doc_id);
+$stmt_agenda->execute();
+$query = $stmt_agenda->get_result();
 $appointments = [];
 while($row = $query->fetch_assoc()) $appointments[] = $row;
+$stmt_agenda->close();
 
 $booked = [];
 foreach($appointments as $app) {
@@ -213,7 +280,7 @@ $total = count($appointments);
         </div>
         <div class="p-6 border-b border-slate-800">
             <p class="text-xs text-slate-500 uppercase font-bold tracking-wider mb-2">Espace Secrétariat</p>
-            <p class="text-white font-semibold">Dr. <?= htmlspecialchars($doc_name) ?></p>
+            <p class="text-white font-semibold">Dr. <?= htmlspecialchars($doc_name, ENT_QUOTES, 'UTF-8') ?></p>
         </div>
         <nav class="flex-1 p-4 space-y-1">
             <a href="#" class="bg-indigo-600/20 text-indigo-400 flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium">
@@ -308,8 +375,8 @@ $total = count($appointments);
                         <?php foreach($appointments as $row):
                             $ts = strtotime($row['app_date']);
                             $id = $row['id'];
-                            $pname = htmlspecialchars($row['patient_name'], ENT_QUOTES);
-                            $pphone = htmlspecialchars($row['patient_phone'], ENT_QUOTES);
+                            $pname = htmlspecialchars($row['patient_name'], ENT_QUOTES, 'UTF-8');
+                            $pphone = htmlspecialchars($row['patient_phone'], ENT_QUOTES, 'UTF-8');
                             $date_raw = date('Y-m-d', $ts);
                             $time_raw = date('H:i', $ts);
                         ?>
@@ -334,6 +401,8 @@ $total = count($appointments);
                                 </button>
                                 
                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Annuler le rendez-vous de <?= addslashes($pname) ?> ?');">
+                                    <!-- 🔒 SÉCURITÉ : Jeton CSRF ajouté -->
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_sec_token'] ?>">
                                     <input type="hidden" name="delete_app" value="1">
                                     <input type="hidden" name="app_id" value="<?= $id ?>">
                                     <button type="submit" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg font-semibold text-xs hover:bg-red-100 transition flex items-center gap-1 border border-red-100">
@@ -364,6 +433,8 @@ $total = count($appointments);
         <div class="grid grid-cols-1 md:grid-cols-2">
             <div class="p-6 border-b md:border-b-0 md:border-r border-slate-100 dark:border-slate-800">
                 <form action="assistante.php" method="POST" class="space-y-5">
+                    <!-- 🔒 SÉCURITÉ : Jeton CSRF ajouté -->
+                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_sec_token'] ?>">
                     <input type="hidden" name="save_appointment" value="1">
                     <input type="hidden" name="edit_id" id="edit_id_input" value="0">
                     
@@ -444,6 +515,8 @@ $total = count($appointments);
 
     <div class="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <form id="chat-form" class="flex gap-2">
+            <!-- 🔒 SÉCURITÉ : Jeton CSRF ajouté -->
+            <input type="hidden" id="chat-csrf" value="<?= $_SESSION['csrf_sec_token'] ?>">
             <input type="text" id="chat-input" placeholder="Votre message..." required autocomplete="off" class="flex-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2 text-sm outline-none focus:border-indigo-500 dark:text-white">
             <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-10 h-10 flex items-center justify-center shrink-0 shadow-sm transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
@@ -587,8 +660,9 @@ const chatMessages = document.getElementById('chat-messages');
 const chatForm = document.getElementById('chat-form');
 const chatInput = document.getElementById('chat-input');
 const chatBadge = document.getElementById('chat-badge');
+const chatCsrf = document.getElementById('chat-csrf'); // NOUVEAU
 
-const amI_Assistant = true; // On est sur assistante.php
+const amI_Assistant = true; 
 let lastMsgCount = 0; 
 let isDrawerOpen = false;
 const notifSound = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
@@ -611,10 +685,10 @@ function loadMessages() {
                 if (msg.sender_type === 'system') {
                     html += `<div class="text-center my-2"><span class="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-bold px-3 py-1 rounded-full">🤖 ${msg.message}</span><div class="text-[9px] text-slate-400 mt-1">${msg.time}</div></div>`;
                 } 
-                else if (msg.sender_type === 'assistant') { // C'est MOI (l'assistante)
+                else if (msg.sender_type === 'assistant') { 
                     html += `<div class="self-end max-w-[80%] flex flex-col items-end"><div class="bg-indigo-600 text-white text-sm py-2 px-3 rounded-2xl rounded-tr-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
                 } 
-                else { // C'est l'autre (le Docteur)
+                else { 
                     html += `<div class="self-start max-w-[80%] flex flex-col items-start"><span class="text-[10px] font-bold text-slate-500 mb-1">👨‍⚕️ Docteur</span><div class="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-sm py-2 px-3 rounded-2xl rounded-tl-sm shadow-sm">${msg.message}</div><span class="text-[10px] text-slate-400 mt-1">${msg.time}</span></div>`;
                 }
             });
@@ -638,14 +712,17 @@ chatForm.addEventListener('submit', function(e) {
     e.preventDefault();
     const text = chatInput.value.trim();
     if (!text) return;
-    const formData = new FormData(); formData.append('message', text);
+    const formData = new FormData(); 
+    formData.append('message', text);
+    if(chatCsrf) formData.append('csrf_token', chatCsrf.value); // NOUVEAU
+    
     fetch('api_chat.php?action=send', { method: 'POST', body: formData })
         .then(res => res.json())
         .then(data => { if(data.success) { chatInput.value = ''; loadMessages(); } });
 });
 
 loadMessages();
-setInterval(loadMessages, 3000); // Check toutes les 3 secondes
+setInterval(loadMessages, 3000); 
 </script>
 </body>
 </html>
