@@ -20,7 +20,7 @@ session_start();
 include "../connection.php";
 if (!isset($con) && isset($conn)) { $con = $conn; }
 
-// --- 2. SÉCURITÉ : VÉRIFICATION DU BADGE INVISIBLE (God Mode) ---
+// --- 2. SÉCURITÉ : VÉRIFICATION DU BADGE INVISIBLE ---
 $admin_secret_key = getenv('ADMIN_BADGE_TOKEN') ?: "";
 if (empty($admin_secret_key) || !isset($_COOKIE['psyspace_boss_key']) || $_COOKIE['psyspace_boss_key'] !== $admin_secret_key) {
     session_destroy();
@@ -133,11 +133,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             logAction($con, $admin_id, 'clean_tokens', "All reset tokens cleaned"); break;
 
         case 'unblock_ip':
-            $ip_to_unblock = trim($_POST['target_ip'] ?? '');
-            if ($ip_to_unblock) {
-                $s = $con->prepare("DELETE FROM login_attempts WHERE ip_address = ?");
-                $s->bind_param("s", $ip_to_unblock); $s->execute(); $s->close();
-                logAction($con, $admin_id, 'unblock_ip', "IP Assistante débloquée: $ip_to_unblock");
+            $target_ip = trim($_POST['target_ip'] ?? '');
+            if (filter_var($target_ip, FILTER_VALIDATE_IP)) {
+                // Supprime le blocage effectif
+                $s = $con->prepare("DELETE FROM login_attempts WHERE ip_address=?");
+                $s->bind_param("s", $target_ip); $s->execute(); $s->close();
+                // Efface l'historique d'échec pour restaurer le score
+                $s = $con->prepare("DELETE FROM admin_logs WHERE ip=? AND action='login_failed'");
+                $s->bind_param("s", $target_ip); $s->execute(); $s->close();
+                logAction($con, $admin_id, 'unblock_ip', "IP débloquée : $target_ip");
             } break;
 
         case 'export_csv':
@@ -305,36 +309,20 @@ $sec = [];
 if ($section === 'security') {
     $sec['weak_hash']        = $con->query("SELECT docid, docname, docemail FROM doctor WHERE docpassword LIKE '\$2y\$%'");
     $sec['weak_hash_count']  = $sec['weak_hash'] ? $sec['weak_hash']->num_rows : 0;
-    
     $sec['stale_tokens']     = $con->query("SELECT docid, docname, docemail, token_expiry FROM doctor WHERE reset_token IS NOT NULL");
     $sec['stale_token_count']= $sec['stale_tokens'] ? $sec['stale_tokens']->num_rows : 0;
-    
     $sec['pending_count']    = $stat_pending;
-    
-    // Admin Brute Force
     $sec['brute_ips_count']  = 0; $sec['brute_force'] = null; $sec['total_failed'] = 0;
     if ($con->query("SHOW TABLES LIKE 'admin_logs'")->num_rows > 0) {
         $sec['brute_force']     = $con->query("SELECT ip, COUNT(*) as attempts, MAX(created_at) as last_attempt FROM admin_logs WHERE action='login_failed' GROUP BY ip HAVING attempts >= 3 ORDER BY attempts DESC LIMIT 50");
         $sec['brute_ips_count'] = $sec['brute_force'] ? $sec['brute_force']->num_rows : 0;
         $sec['total_failed']    = (int)$con->query("SELECT COUNT(*) c FROM admin_logs WHERE action='login_failed'")->fetch_assoc()['c'];
     }
-
-    // Assistante Brute Force (login_attempts)
-    $sec['ast_blocked_count'] = 0;
-    $sec['ast_tracked']       = null;
-    if ($con->query("SHOW TABLES LIKE 'login_attempts'")->num_rows > 0) {
-        $sec['ast_blocked_count'] = (int)$con->query("SELECT COUNT(*) c FROM login_attempts WHERE attempts >= 5 AND last_attempt > NOW() - INTERVAL 15 MINUTE")->fetch_assoc()['c'];
-        $sec['ast_tracked']       = $con->query("SELECT * FROM login_attempts ORDER BY last_attempt DESC LIMIT 50");
-    }
-
-    // Calcul du score
     $score = 100;
-    if ($sec['weak_hash_count']   > 0) $score -= min(30, $sec['weak_hash_count']   * 10);
-    if ($sec['stale_token_count'] > 0) $score -= min(20, $sec['stale_token_count'] * 5);
-    if ($sec['brute_ips_count']   > 0) $score -= min(25, $sec['brute_ips_count']   * 8);
-    if ($sec['ast_blocked_count'] > 0) $score -= min(20, $sec['ast_blocked_count'] * 5);
-    if ($sec['pending_count']     > 5) $score -= 10;
-    
+    if ($sec['weak_hash_count']  > 0) $score -= min(30, $sec['weak_hash_count']  * 10);
+    if ($sec['stale_token_count']> 0) $score -= min(20, $sec['stale_token_count']* 5);
+    if ($sec['brute_ips_count']  > 0) $score -= min(25, $sec['brute_ips_count']  * 8);
+    if ($sec['pending_count']    > 5) $score -= 10;
     $score              = max(0, $score);
     $sec['score']       = $score;
     $sec['score_label'] = $score >= 90 ? 'Excellent' : ($score >= 70 ? 'Bon' : ($score >= 50 ? 'Moyen' : 'Critique'));
@@ -350,7 +338,7 @@ $nav_items = [
     'consultations' => ['label' => 'Consultations',    'icon' => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
     'alerts'        => ['label' => 'Alertes',          'icon' => 'M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z'],
     'logs'          => ['label' => 'Journal',          'icon' => 'M4 6h16M4 10h16M4 14h16M4 18h16'],
-    'security'      => ['label' => 'Sécurité',         'icon' => 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'],
+    'security'      => ['label' => 'Securite',         'icon' => 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'],
 ];
 $counts = [
     'doctors'       => $stat_doctors,
@@ -648,10 +636,7 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
     <div class="tb-path">PsySpace <span class="tb-sep">/</span> <span><?= $section_label ?></span></div>
     <div class="tb-r">
       <?php if($critical_count>0): ?>
-        <a href="?section=alerts" class="tb-pill tb-pill-er">
-          <svg viewBox="0 0 24 24" style="width:10px;height:10px;display:inline-block;stroke:currentColor;fill:none;vertical-align:middle;margin-right:2px;stroke-width:2;"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <?= $critical_count ?> critique<?= $critical_count>1?'s':'' ?>
-        </a>
+        <a href="?section=alerts" class="tb-pill tb-pill-er">⚠ <?= $critical_count ?> critique<?= $critical_count>1?'s':'' ?></a>
       <?php endif; ?>
       <?php if($stat_pending>0): ?><div class="tb-pill tb-pill-er"><?= $stat_pending ?> en attente</div><?php endif; ?>
       <?php if($stat_suspended>0): ?><div class="tb-pill tb-pill-wa"><?= $stat_suspended ?> suspendu<?= $stat_suspended>1?'s':'' ?></div><?php endif; ?>
@@ -1029,7 +1014,7 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
       <?php endif; ?>
     </div>
 
-<?php /* ═══════════════════════ APPOINTMENTS ═══════════════════════════ */ ?>
+<?php /* ═══════════════════════ APPOINTMENTS ══════��════════════════════ */ ?>
 <?php elseif($section==='appointments'): ?>
 
     <div class="toolbar">
@@ -1180,7 +1165,7 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
       <?php endif; ?>
     </div>
 
-<?php /* ═════════��═════════════ LOGS ═══════════════════════════ */ ?>
+<?php /* ═══════════════════════ LOGS ═══════════════════════════ */ ?>
 <?php elseif($section==='logs'): ?>
 
     <div class="toolbar">
@@ -1240,26 +1225,13 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
       </div>
       <div class="panel" style="margin-bottom:0;">
         <div class="panel-head"><div class="ph-l"><div class="ph-t">Risques détectés</div></div></div>
-        
-        <!-- Brute Force Admin -->
         <div class="risk-row">
           <div class="risk-ico" style="background:<?= $sec['brute_ips_count']>0?'var(--er-l)':'var(--ok-l)' ?>;color:<?= $sec['brute_ips_count']>0?'var(--er)':'var(--ok)' ?>;">
             <svg viewBox="0 0 24 24"><?php echo $sec['brute_ips_count']>0?'<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>':'<polyline points="20 6 9 17 4 12"/>'; ?></svg>
           </div>
-          <div style="flex:1;"><div class="risk-t">Portail Admin (Brute force)</div><div class="risk-d"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP(s) suspectes · $sec[total_failed] échec(s)":'Aucune IP suspecte' ?></div></div>
+          <div style="flex:1;"><div class="risk-t">Brute force</div><div class="risk-d"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP(s) suspectes · $sec[total_failed] échec(s)":'Aucune IP suspecte' ?></div></div>
           <span class="tag <?= $sec['brute_ips_count']>0?'tag-er':'tag-ok' ?>"><?= $sec['brute_ips_count']>0?"$sec[brute_ips_count] IP":'OK' ?></span>
         </div>
-
-        <!-- Brute Force Assistante -->
-        <div class="risk-row">
-          <div class="risk-ico" style="background:<?= $sec['ast_blocked_count']>0?'var(--er-l)':'var(--ok-l)' ?>;color:<?= $sec['ast_blocked_count']>0?'var(--er)':'var(--ok)' ?>;">
-            <svg viewBox="0 0 24 24"><?php echo $sec['ast_blocked_count']>0?'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>':'<polyline points="20 6 9 17 4 12"/>'; ?></svg>
-          </div>
-          <div style="flex:1;"><div class="risk-t">Portail Secrétariat (Brute force)</div><div class="risk-d"><?= $sec['ast_blocked_count']>0?"$sec[ast_blocked_count] IP(s) actuellement bloquée(s)":'Aucune adresse IP bloquée' ?></div></div>
-          <span class="tag <?= $sec['ast_blocked_count']>0?'tag-er':'tag-ok' ?>"><?= $sec['ast_blocked_count']>0?"$sec[ast_blocked_count] Bloquée(s)":'OK' ?></span>
-        </div>
-
-        <!-- Comptes Faibles -->
         <div class="risk-row">
           <div class="risk-ico" style="background:<?= $sec['weak_hash_count']>0?'var(--wa-l)':'var(--ok-l)' ?>;color:<?= $sec['weak_hash_count']>0?'var(--wa)':'var(--ok)' ?>;">
             <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
@@ -1267,8 +1239,6 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
           <div style="flex:1;"><div class="risk-t">Hash bcrypt (non-Argon2)</div><div class="risk-d"><?= $sec['weak_hash_count']>0?"$sec[weak_hash_count] compte(s) à migrer":'Tous les comptes utilisent Argon2id' ?></div></div>
           <span class="tag <?= $sec['weak_hash_count']>0?'tag-wa':'tag-ok' ?>"><?= $sec['weak_hash_count']>0?"$sec[weak_hash_count]":'OK' ?></span>
         </div>
-        
-        <!-- Tokens -->
         <div class="risk-row">
           <div class="risk-ico" style="background:<?= $sec['stale_token_count']>0?'var(--wa-l)':'var(--ok-l)' ?>;color:<?= $sec['stale_token_count']>0?'var(--wa)':'var(--ok)' ?>;">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -1283,8 +1253,6 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
           </form>
           <?php else: ?><span class="tag tag-ok">OK</span><?php endif; ?>
         </div>
-
-        <!-- En attente -->
         <div class="risk-row">
           <div class="risk-ico" style="background:<?= $sec['pending_count']>5?'var(--wa-l)':'var(--ok-l)' ?>;color:<?= $sec['pending_count']>5?'var(--wa)':'var(--ok)' ?>;">
             <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
@@ -1292,7 +1260,6 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
           <div style="flex:1;"><div class="risk-t">Comptes en attente</div><div class="risk-d"><?= $sec['pending_count']>0?"$sec[pending_count] compte(s) non activé(s)":'Tous les comptes sont actifs' ?></div></div>
           <span class="tag <?= $sec['pending_count']>5?'tag-wa':'tag-n' ?>"><?= $sec['pending_count'] ?></span>
         </div>
-
         <?php if($critical_count>0): ?>
         <div class="risk-row">
           <div class="risk-ico" style="background:var(--er-l);color:var(--er);">
@@ -1305,37 +1272,11 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
       </div>
     </div>
 
-    <!-- TABLEAU : IP SECRÉTARIAT TRACKÉES -->
-    <?php if($sec['ast_tracked'] && $sec['ast_tracked']->num_rows > 0): ?>
-    <div class="panel" style="margin-bottom:12px;">
-      <div class="panel-head"><div class="ph-l"><div class="ph-t">Sécurité Secrétariat · Historique des IPs</div><span class="ph-c"><?= $sec['ast_tracked']->num_rows ?></span></div></div>
-      <div class="tw"><table>
-        <thead><tr><th>IP Assistante</th><th>Tentatives échouées</th><th>Dernier échec</th><th>Statut</th><th>Action</th></tr></thead>
-        <tbody>
-        <?php while($la = $sec['ast_tracked']->fetch_assoc()): 
-          $is_blocked = ($la['attempts'] >= 5 && strtotime($la['last_attempt']) > time() - 900);
-        ?>
-        <tr>
-          <td class="mn" style="<?= $is_blocked ? 'color:var(--er);font-weight:500;' : '' ?>"><?= htmlspecialchars($la['ip_address']) ?></td>
-          <td><span class="tag <?= $is_blocked ? 'tag-er' : ($la['attempts']>=3?'tag-wa':'tag-n') ?>"><?= $la['attempts'] ?></span></td>
-          <td class="mn"><?= date('d/m/Y H:i:s',strtotime($la['last_attempt'])) ?></td>
-          <td><span class="tag <?= $is_blocked ? 'tag-er' : 'tag-ok' ?>"><?= $is_blocked ? 'Bloquée (15 min)' : 'Surveillée' ?></span></td>
-          <td>
-            <button class="btn <?= $is_blocked ? 'btn-ok' : 'btn' ?>" data-modal="unblock" data-action="unblock_ip" data-targetip="<?= htmlspecialchars($la['ip_address']) ?>" data-title="Débloquer cette IP ?" data-msg="L'IP <?= htmlspecialchars($la['ip_address']) ?> sera supprimée du registre et pourra à nouveau tenter de se connecter au portail assistante.">Débloquer</button>
-          </td>
-        </tr>
-        <?php endwhile; ?>
-        </tbody>
-      </table></div>
-    </div>
-    <?php endif; ?>
-
-    <!-- TABLEAU : IP ADMIN SUSPECTES -->
     <?php if($sec['brute_force']&&$sec['brute_force']->num_rows>0): ?>
     <div class="panel" style="margin-bottom:12px;">
-      <div class="panel-head"><div class="ph-l"><div class="ph-t">Sécurité Admin · IPs suspectes</div><span class="ph-c"><?= $sec['brute_ips_count'] ?></span></div></div>
+      <div class="panel-head"><div class="ph-l"><div class="ph-t">IPs suspectes</div><span class="ph-c"><?= $sec['brute_ips_count'] ?></span></div></div>
       <div class="tw"><table>
-        <thead><tr><th>IP Admin</th><th>Tentatives</th><th>Dernière tentative</th><th>Niveau</th></tr></thead>
+        <thead><tr><th>IP</th><th>Tentatives</th><th>Dernière tentative</th><th>Niveau</th><th>Action</th></tr></thead>
         <tbody>
         <?php while($bf=$sec['brute_force']->fetch_assoc()): ?>
         <tr>
@@ -1343,6 +1284,9 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
           <td><span class="tag <?= $bf['attempts']>=10?'tag-er':($bf['attempts']>=5?'tag-wa':'tag-n') ?>"><?= $bf['attempts'] ?></span></td>
           <td class="mn"><?= date('d/m/Y H:i',strtotime($bf['last_attempt'])) ?></td>
           <td><span class="tag <?= $bf['attempts']>=10?'tag-er':($bf['attempts']>=5?'tag-wa':'tag-ac') ?>"><?= $bf['attempts']>=10?'Critique':($bf['attempts']>=5?'Élevé':'Modéré') ?></span></td>
+          <td>
+            <button class="btn btn-ok" data-modal="unblock" data-action="unblock_ip" data-ip="<?= htmlspecialchars($bf['ip']) ?>" data-title="Débloquer cette IP ?" data-msg="L'adresse <?= htmlspecialchars($bf['ip']) ?> pourra à nouveau tenter de se connecter.">Débloquer</button>
+          </td>
         </tr>
         <?php endwhile; ?>
         </tbody>
@@ -1387,8 +1331,8 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
         <input type="hidden" name="action"     id="mc-action">
         <input type="hidden" name="rid"        id="mc-rid">
         <input type="hidden" name="docid"      id="mc-docid">
-        <input type="hidden" name="target_ip"  id="mc-targetip">
         <input type="hidden" name="new_status" id="mc-ns">
+        <input type="hidden" name="target_ip"  id="mc-ip">
         <input type="hidden" name="section"    value="<?= $section ?>">
         <button type="submit" class="btn btn-er" id="mc-confirm">Confirmer</button>
       </form>
@@ -1453,35 +1397,28 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
   document.getElementById('rp-cancel').addEventListener('click',close);
   ovC.addEventListener('click',function(e){if(e.target===this)close();});
   ovR.addEventListener('click',function(e){if(e.target===this)close();});
-  
   document.addEventListener('click',function(e){
     var btn=e.target.closest('[data-modal]');
     if(!btn) return;
     var type=btn.getAttribute('data-modal');
-    
     if(type==='delete'||type==='toggle'||type==='unblock'){
       var action=btn.getAttribute('data-action')||'';
       var ns=btn.getAttribute('data-newstatus')||'';
-      
       document.getElementById('mc-title').textContent=btn.getAttribute('data-title')||'Confirmer ?';
       document.getElementById('mc-msg').textContent=btn.getAttribute('data-msg')||'';
       document.getElementById('mc-action').value=action;
       document.getElementById('mc-rid').value=btn.getAttribute('data-rid')||'';
       document.getElementById('mc-docid').value=btn.getAttribute('data-docid')||'';
-      document.getElementById('mc-targetip').value=btn.getAttribute('data-targetip')||'';
+      document.getElementById('mc-ip').value=btn.getAttribute('data-ip')||'';
       document.getElementById('mc-ns').value=ns;
-      
       var cfm=document.getElementById('mc-confirm');
       var tag=document.getElementById('mc-tag');
-      
       if(action==='toggle_doctor'&&ns==='active'){cfm.className='btn btn-ok';cfm.textContent='Activer';tag.textContent='Activation';}
       else if(action==='toggle_doctor'&&ns==='suspended'){cfm.className='btn btn-wa';cfm.textContent='Suspendre';tag.textContent='Suspension';}
-      else if(action==='unblock_ip'){cfm.className='btn btn-ok';cfm.textContent='Confirmer';tag.textContent='Sécurité réseau';}
+      else if(action==='unblock_ip'){cfm.className='btn btn-ok';cfm.textContent='Débloquer';tag.textContent='Sécurité';}
       else{cfm.className='btn btn-er';cfm.textContent='Supprimer';tag.textContent='Action irréversible';}
-      
       ovC.classList.add('open');
     }
-    
     if(type==='resetpw'){
       document.getElementById('rp-docid').value=btn.getAttribute('data-docid')||'';
       document.getElementById('rp-desc').textContent='Nouveau mot de passe pour Dr. '+(btn.getAttribute('data-docname')||'');
