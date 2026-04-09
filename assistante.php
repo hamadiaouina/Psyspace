@@ -85,6 +85,7 @@ if (isset($_GET['logout'])) {
     exit();
 }
 
+
 // --- Authentification Assistante ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
     $input_code = strtoupper(trim($_POST['cabinet_code']));
@@ -108,6 +109,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
         $stmt_del = $conn->prepare("DELETE FROM login_attempts WHERE ip_address = ?");
         $stmt_del->bind_param("s", $ip_visiteur);
         $stmt_del->execute();
+
+        // NOUVEAU : Log le succès pour le Dashboard Admin
+        $log_det = "Connexion réussie Secrétariat (Dr. " . $doc['docname'] . ")";
+        $stmt_log = $conn->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (0, 'assistant_login', ?, ?)");
+        $stmt_log->bind_param("ss", $log_det, $ip_visiteur);
+        $stmt_log->execute();
         
         header("Location: assistante.php");
         exit();
@@ -116,6 +123,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cabinet_code'])) {
         $stmt_fail = $conn->prepare("INSERT INTO login_attempts (ip_address, attempts) VALUES (?, 1) ON DUPLICATE KEY UPDATE attempts = attempts + 1, last_attempt = NOW()");
         $stmt_fail->bind_param("s", $ip_visiteur);
         $stmt_fail->execute();
+
+        // NOUVEAU : Log l'échec pour remonter l'IP suspecte dans le Dashboard Admin
+        $log_det = "Échec connexion Secrétariat (Code invalide : $input_code)";
+        $stmt_log = $conn->prepare("INSERT INTO admin_logs (admin_id, action, details, ip) VALUES (0, 'login_failed', ?, ?)");
+        $stmt_log->bind_param("ss", $log_det, $ip_visiteur);
+        $stmt_log->execute();
+
         $login_error = "Code d'accès invalide.";
     }
 }
