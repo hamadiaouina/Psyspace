@@ -10,7 +10,6 @@ if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
 session_start();
 if (!isset($_SESSION['id'])) { header("Location: login.php"); exit(); }
 
-// --- 2. ANTI VOL DE SESSION ---
 if (isset($_SESSION['user_ip'], $_SESSION['user_agent'])) {
     if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] ||
         $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
@@ -20,17 +19,14 @@ if (isset($_SESSION['user_ip'], $_SESSION['user_agent'])) {
     }
 }
 
-// --- 3. PARE-FEU CSP (CORRIGÉ POUR LES CDNs ET SOURCEMAPS) ---
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
-// Ajout de https://cdn.jsdelivr.net et cdnjs dans connect-src pour éviter les erreurs de .map
 header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
 
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
-// --- 4. VALIDATION ---
 $patient_raw = $_GET['patient_name'] ?? '';
 if (!preg_match('/^[\p{L}\s\'\-\.]{1,100}$/u', $patient_raw)) { header("Location: dashboard.php"); exit(); }
 $patient_selected = trim($patient_raw);
@@ -39,7 +35,6 @@ $nom_docteur      = $_SESSION['nom'] ?? 'Docteur';
 $appointment_id   = (int)($_GET['id'] ?? 0);
 if (!$appointment_id) { header("Location: dashboard.php"); exit(); }
 
-// --- 5. VÉRIF IDOR ---
 $stmt = $conn->prepare("SELECT patient_id FROM appointments WHERE id=? AND doctor_id=? LIMIT 1");
 $stmt->bind_param("ii", $appointment_id, $doctor_id);
 $stmt->execute();
@@ -49,7 +44,6 @@ $patient_id = (int)$r->fetch_assoc()['patient_id'];
 $stmt->close();
 if (!$patient_id) { header("Location: dashboard.php"); exit(); }
 
-// --- 6. HISTORIQUE ---
 $prev_consults = [];
 $stmt2 = $conn->prepare("SELECT date_consultation, resume_ia, duree_minutes FROM consultations WHERE patient_id=? AND doctor_id=? ORDER BY date_consultation DESC LIMIT 6");
 $stmt2->bind_param("ii", $patient_id, $doctor_id);
@@ -93,345 +87,295 @@ foreach (array_slice($prev_consults, 0, 3) as $pc) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-/* ─── RESET & VARIABLES ─────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
   --bg:#07090f;
-  --s1:#0e1117;
-  --s2:rgba(14,17,23,.8);
-  --b:rgba(255,255,255,.055);
-  --b2:rgba(255,255,255,.032);
-  --ac:#5b5fef;
-  --ac2:#818cf8;
-  --ok:#0ea472;
+  --s1:#0d1018;
+  --s2:rgba(13,16,24,.85);
+  --b:rgba(255,255,255,.05);
+  --b2:rgba(255,255,255,.028);
+  --ac:#6366f1;
+  --ac2:#a5b4fc;
+  --ok:#059669;
   --wa:#d97706;
   --er:#dc2626;
   --in:#0284c7;
-  --tx:#e8edf5;
+  --tx:#e2e8f0;
   --tx2:#94a3b8;
-  --tx3:#4b5563;
-  --su:#374151;
-
-  /* Rapport — palette papier */
-  --rp-bg:#f8f9fb;
-  --rp-bg2:#f1f3f7;
-  --rp-border:#dde2ec;
-  --rp-tx:#1a2035;
-  --rp-tx2:#3d4a63;
-  --rp-tx3:#697288;
-  --rp-accent:#2c3a8c;
-  --rp-ok:#145a38;
-  --rp-wa:#7c4a00;
-  --rp-er:#7c1a1a;
-  --rp-rule:#c8d0e0;
+  --tx3:#374151;
+  --su:#2d3748;
+  --glow:rgba(99,102,241,.12);
+  /* rapport */
+  --rp-bg:#f9fafb;
+  --rp-bg2:#f1f5f9;
+  --rp-border:#e2e8f0;
+  --rp-tx:#0f172a;
+  --rp-tx2:#334155;
+  --rp-tx3:#64748b;
+  --rp-accent:#1e40af;
+  --rp-rule:#cbd5e1;
 }
-
 html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--tx);overflow:hidden;}
-::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:#1e2433;border-radius:3px;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:#1a2035;border-radius:3px;}
 ::-webkit-scrollbar-track{background:transparent;}
 
-/* ─── LAYOUT ──────────────────────────────────────────────────────────────── */
-.app{display:grid;grid-template-rows:50px 1fr;height:100vh;}
-.g3{display:grid;grid-template-columns:270px 1fr 320px;height:calc(100vh - 50px);overflow:hidden;}
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh;}
+.g3{display:grid;grid-template-columns:268px 1fr 310px;height:calc(100vh - 52px);overflow:hidden;}
 .col{overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:12px 10px;}
 
-/* ─── TOPBAR ──────────────────────────────────────────────────────────────── */
+/* TOPBAR */
 .top{
   display:flex;align-items:center;justify-content:space-between;
-  padding:0 20px;
-  background:rgba(7,9,15,.97);
-  border-bottom:1px solid var(--b);
+  padding:0 18px;
+  background:rgba(7,9,15,.98);
+  border-bottom:1px solid rgba(255,255,255,.045);
 }
 
-/* ─── CARDS ───────────────────────────────────────────────────────────────── */
-.card{background:var(--s1);border:1px solid var(--b);border-radius:14px;padding:13px;}
-.card2{background:var(--s2);border:1px solid var(--b2);border-radius:10px;padding:10px;}
+/* CARDS */
+.card{
+  background:linear-gradient(135deg,rgba(13,16,24,.98) 0%,rgba(11,14,22,.98) 100%);
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:14px;padding:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.card2{background:rgba(7,9,15,.6);border:1px solid var(--b2);border-radius:10px;padding:10px;}
 
-/* ─── LABELS ──────────────────────────────────────────────────────────────── */
 .lbl{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.2em;color:var(--tx3);}
 
-/* ─── CHIPS ───────────────────────────────────────────────────────────────── */
+/* CHIPS */
 .chip{display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:99px;
   font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;border:1px solid;}
-.ck{background:rgba(14,164,114,.07);color:#34d399;border-color:rgba(14,164,114,.2);}
+.ck{background:rgba(5,150,105,.07);color:#34d399;border-color:rgba(5,150,105,.2);}
 .cw{background:rgba(217,119,6,.07);color:#fbbf24;border-color:rgba(217,119,6,.2);}
 .ce{background:rgba(220,38,38,.08);color:#f87171;border-color:rgba(220,38,38,.2);}
-.ci{background:rgba(91,95,239,.08);color:var(--ac2);border-color:rgba(91,95,239,.2);}
-.cs{background:rgba(55,65,81,.08);color:#6b7280;border-color:rgba(55,65,81,.18);}
-.ccrit{background:rgba(220,38,38,.14);color:#ff5555;border-color:rgba(220,38,38,.38);animation:gcrit 1.4s infinite;}
-@keyframes gcrit{50%{box-shadow:0 0 10px rgba(220,38,38,.35);}}
+.ci{background:rgba(99,102,241,.08);color:var(--ac2);border-color:rgba(99,102,241,.2);}
+.cs{background:rgba(55,65,81,.08);color:#4b5563;border-color:rgba(55,65,81,.18);}
 
-/* ─── BUTTONS ─────────────────────────────────────────────────────────────── */
+/* BUTTONS */
 .btn{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.13em;
-  border-radius:9px;padding:8px 14px;border:none;cursor:pointer;transition:all .16s;
+  border-radius:9px;padding:8px 14px;border:none;cursor:pointer;transition:all .18s;
   display:inline-flex;align-items:center;justify-content:center;gap:5px;}
-.ba{background:var(--ac);color:#fff;}
-.ba:hover{background:#4f52d4;box-shadow:0 4px 18px rgba(91,95,239,.3);}
-.bok{background:rgba(14,164,114,.09);color:#34d399;border:1px solid rgba(14,164,114,.18);}
-.bok:hover{background:rgba(14,164,114,.18);}
+.ba{background:var(--ac);color:#fff;box-shadow:0 2px 12px rgba(99,102,241,.25);}
+.ba:hover{background:#4f46e5;box-shadow:0 4px 20px rgba(99,102,241,.38);}
+.bok{background:rgba(5,150,105,.09);color:#34d399;border:1px solid rgba(5,150,105,.18);}
+.bok:hover{background:rgba(5,150,105,.18);}
 .bg{background:transparent;color:var(--tx3);border:1px solid var(--b);}
-.bg:hover{color:var(--tx);border-color:rgba(255,255,255,.18);}
-.bq{background:rgba(91,95,239,.07);color:var(--ac2);border:1px solid rgba(91,95,239,.14);}
+.bg:hover{color:var(--tx);border-color:rgba(255,255,255,.15);}
+.bq{background:rgba(99,102,241,.07);color:var(--ac2);border:1px solid rgba(99,102,241,.14);}
 .btn:disabled{opacity:.2;cursor:not-allowed;pointer-events:none;}
 
-/* ─── TEXTAREA ────────────────────────────────────────────────────────────── */
+/* TEXTAREA */
 .ta{
-  background:rgba(7,9,15,.7);border:1px solid rgba(255,255,255,.065);color:#c8d3e8;
+  background:rgba(7,9,15,.8);border:1px solid rgba(255,255,255,.06);color:#c8d3e8;
   border-radius:12px;resize:none;outline:none;width:100%;
-  font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;line-height:1.85;padding:13px;
-  transition:border-color .22s;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;line-height:1.88;padding:13px;
+  transition:border-color .22s,box-shadow .22s;
 }
-.ta:focus{border-color:rgba(91,95,239,.32);}
-.ta::placeholder{color:#2a3142;font-style:italic;}
+.ta:focus{border-color:rgba(99,102,241,.3);box-shadow:0 0 0 3px rgba(99,102,241,.07);}
+.ta::placeholder{color:#1e2a3a;font-style:italic;}
 .nta{
   background:rgba(217,119,6,.03);border:1px solid rgba(217,119,6,.1);color:#fbbf24;
   border-radius:10px;resize:none;outline:none;width:100%;
   font-family:'Plus Jakarta Sans',sans-serif;font-size:11.5px;line-height:1.7;padding:10px;
+  transition:border-color .22s;
 }
 .nta:focus{border-color:rgba(217,119,6,.25);}
-.nta::placeholder{color:rgba(217,119,6,.18);font-style:italic;}
+.nta::placeholder{color:rgba(217,119,6,.15);font-style:italic;}
 
-/* ─── TOAST ───────────────────────────────────────────────────────────────── */
+/* TOAST */
 .toast{border-radius:9px;padding:7px 12px;font-size:9.5px;font-weight:700;display:flex;align-items:center;gap:6px;}
-.tok{background:rgba(14,164,114,.09);border:1px solid rgba(14,164,114,.2);color:#6ee7b7;}
+.tok{background:rgba(5,150,105,.09);border:1px solid rgba(5,150,105,.2);color:#6ee7b7;}
 .ter{background:rgba(220,38,38,.09);border:1px solid rgba(220,38,38,.2);color:#fca5a5;}
 .twa{background:rgba(217,119,6,.09);border:1px solid rgba(217,119,6,.2);color:#fcd34d;}
-.tin{background:rgba(91,95,239,.09);border:1px solid rgba(91,95,239,.2);color:var(--ac2);}
+.tin{background:rgba(99,102,241,.09);border:1px solid rgba(99,102,241,.2);color:var(--ac2);}
 
-/* ─── MIC ─────────────────────────────────────────────────────────────────── */
+/* MIC */
 .mic{width:44px;height:44px;border-radius:50%;border:none;cursor:pointer;
   display:flex;align-items:center;justify-content:center;transition:all .22s;flex-shrink:0;}
-.mic-idle{background:rgba(91,95,239,.12);border:1.5px solid rgba(91,95,239,.26);}
+.mic-idle{background:rgba(99,102,241,.1);border:1.5px solid rgba(99,102,241,.24);}
 .mic-live{background:#dc2626;animation:mring 1.3s ease-out infinite;}
-.mic-done{background:rgba(14,164,114,.12);border:1.5px solid rgba(14,164,114,.26);}
+.mic-done{background:rgba(5,150,105,.1);border:1.5px solid rgba(5,150,105,.24);}
 @keyframes mring{0%{box-shadow:0 0 0 0 rgba(220,38,38,.5)}70%{box-shadow:0 0 0 13px rgba(220,38,38,0)}100%{box-shadow:0 0 0 0 rgba(220,38,38,0)}}
 
-/* ─── FEED ────────────────────────────────────────────────────────────────── */
+/* FEED */
 .fi{padding:8px 11px;border-radius:10px;border-left:2px solid;margin-bottom:5px;animation:sin .28s ease forwards;}
 @keyframes sin{from{opacity:0;transform:translateX(7px)}to{opacity:1;transform:none}}
 @keyframes fup{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
 .fu{animation:fup .28s ease forwards;}
 
-/* ─── DOTS LOADER ─────────────────────────────────────────────────────────── */
+/* DOTS */
 .dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ac);
   margin:0 2px;animation:db 1.2s ease-in-out infinite;}
 .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
 @keyframes db{0%,80%,100%{transform:scale(.35);opacity:.25}40%{transform:scale(1);opacity:1}}
 
 .pulse{animation:pls 2s cubic-bezier(.4,0,.6,1) infinite;}
-@keyframes pls{0%,100%{opacity:1}50%{opacity:.2}}
+@keyframes pls{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
-/* ─── DIAG PILL ──���────────────────────────────────────────────────────────── */
+/* DIAG PILL */
 .dp{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;
-  border-radius:10px;border:1px solid rgba(14,165,233,.13);background:rgba(14,165,233,.04);margin-bottom:5px;}
+  border-radius:10px;border:1px solid rgba(56,189,248,.13);background:rgba(56,189,248,.04);margin-bottom:5px;}
 .dc{font-size:8px;font-weight:900;color:#38bdf8;background:rgba(14,165,233,.1);
   border-radius:4px;padding:2px 5px;white-space:nowrap;flex-shrink:0;margin-top:1px;letter-spacing:.03em;}
 
-/* ─── OVERLAY ─────────────────────────────────────────────────────────────── */
-.ov{position:fixed;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(10px);
+/* OVERLAY */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.88);backdrop-filter:blur(12px);
   z-index:999;display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity .2s;}
+  opacity:0;pointer-events:none;transition:opacity .22s;}
 .ov.open{opacity:1;pointer-events:all;}
-.ovb{background:rgba(7,9,15,.98);border:1px solid rgba(255,255,255,.07);
-  border-radius:18px;padding:24px;max-width:390px;width:calc(100% - 32px);
-  transform:scale(.95);transition:transform .2s;}
+.ovb{background:rgba(9,11,19,.99);border:1px solid rgba(255,255,255,.08);
+  border-radius:18px;padding:26px;max-width:380px;width:calc(100% - 32px);
+  transform:scale(.95);transition:transform .22s;}
 .ov.open .ovb{transform:scale(1);}
 
-/* ─── DIVIDER ─────────────────────────────────────────────────────────────── */
-.rd{height:1px;background:var(--b);margin:9px 12px;}
+.rd{height:1px;background:rgba(255,255,255,.04);margin:8px 12px;}
 
-/* ═══════════════════════════════════════════════════════════════════════════ */
-/* RAPPORT CLINIQUE — style dossier médical imprimable                        */
-/* ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════
+   RAPPORT CLINIQUE — style dossier médical
+   ═══════════════════════════════════════════════════ */
 .rpt-wrap{
   font-family:'Lora','Georgia',serif;
   background:var(--rp-bg);
   color:var(--rp-tx);
   border-radius:10px;
   border:1px solid var(--rp-border);
-  padding:0;
   overflow:hidden;
 }
-
-/* En-tête du rapport */
 .rpt-header{
   background:var(--rp-accent);
-  padding:16px 20px 14px;
-  display:flex;
-  justify-content:space-between;
-  align-items:flex-start;
+  padding:18px 22px 15px;
+  display:flex;justify-content:space-between;align-items:flex-start;
 }
 .rpt-header-title{
   font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.2em;
-  color:rgba(255,255,255,.55);margin-bottom:4px;
+  font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.22em;
+  color:rgba(255,255,255,.5);margin-bottom:4px;
 }
 .rpt-header-name{
-  font-family:'Lora',serif;
-  font-size:18px;font-weight:600;font-style:italic;color:#fff;
-  line-height:1.2;
+  font-family:'Lora',serif;font-size:19px;font-weight:600;font-style:italic;color:#fff;line-height:1.2;
 }
 .rpt-header-meta{
   font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:8.5px;font-weight:500;color:rgba(255,255,255,.5);
-  margin-top:5px;letter-spacing:.03em;line-height:1.7;
+  font-size:9px;font-weight:500;color:rgba(255,255,255,.55);margin-top:6px;line-height:1.8;
 }
-.rpt-header-badge{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
-  padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.22);
-  color:rgba(255,255,255,.8);
+.rpt-header-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;}
+.rpt-niv-badge{
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;
+  padding:4px 12px;border-radius:6px;border:1.5px solid rgba(255,255,255,.25);color:#fff;
 }
-
-/* Corps du rapport */
-.rpt-body{padding:18px 20px;}
-
-/* Section */
+.rpt-body{padding:20px 22px 14px;}
 .rpt-section{margin-bottom:18px;}
 .rpt-section-title{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.22em;
-  color:var(--rp-tx3);margin-bottom:8px;padding-bottom:6px;
-  border-bottom:1px solid var(--rp-rule);
-  display:flex;align-items:center;gap:6px;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:8px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.2em;color:var(--rp-tx3);margin-bottom:9px;padding-bottom:6px;
+  border-bottom:1.5px solid var(--rp-rule);
+  display:flex;align-items:center;gap:7px;
 }
 .rpt-section-title::before{
-  content:'';width:2.5px;height:10px;border-radius:2px;
-  background:var(--rp-accent);flex-shrink:0;
+  content:'';width:3px;height:11px;border-radius:2px;background:var(--rp-accent);flex-shrink:0;
 }
-
-/* Texte courant du rapport */
 .rpt-prose{
-  font-family:'Lora',serif;
-  font-size:12px;line-height:1.85;color:var(--rp-tx2);
+  font-family:'Lora',serif;font-size:12.5px;line-height:1.9;color:var(--rp-tx2);
 }
-.rpt-prose em{color:var(--rp-tx);font-style:italic;}
 .rpt-prose strong{color:var(--rp-tx);font-weight:600;}
-
-/* Bloc mis en évidence */
 .rpt-highlight{
-  background:var(--rp-bg2);
-  border-left:3px solid var(--rp-accent);
-  border-radius:0 6px 6px 0;
-  padding:10px 14px;
-  margin:10px 0;
+  background:var(--rp-bg2);border-left:3px solid var(--rp-accent);
+  border-radius:0 7px 7px 0;padding:11px 15px;margin:10px 0;
 }
-.rpt-highlight .rpt-prose{font-size:12.5px;color:var(--rp-tx);}
-
-/* Grille 2 colonnes */
-.rpt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:0;}
+.rpt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .rpt-col-block{
-  background:var(--rp-bg2);border:1px solid var(--rp-border);
-  border-radius:6px;padding:10px 12px;
+  background:var(--rp-bg2);border:1px solid var(--rp-border);border-radius:8px;padding:11px 13px;
 }
 .rpt-col-label{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;
-  color:var(--rp-tx3);margin-bottom:5px;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:7.5px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.18em;color:var(--rp-tx3);margin-bottom:6px;
 }
-
-/* Niveau de risque */
 .rpt-risk-band{
-  display:flex;align-items:center;gap:12px;
-  padding:10px 14px;border-radius:7px;
-  border:1px solid;margin-bottom:14px;
+  display:flex;align-items:flex-start;gap:13px;padding:12px 15px;
+  border-radius:8px;border:1.5px solid;margin-bottom:16px;
 }
-.rpt-risk-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.rpt-risk-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:3px;}
 .rpt-risk-label{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.15em;flex-shrink:0;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:8px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.15em;margin-bottom:4px;
 }
-.rpt-risk-text{
-  font-family:'Lora',serif;font-size:11.5px;color:var(--rp-tx2);line-height:1.7;
-}
-
-/* Hypothèses diagnostiques */
 .rpt-diag-row{
-  display:flex;align-items:flex-start;gap:10px;
-  padding:9px 0;border-bottom:1px solid var(--rp-rule);
+  display:flex;align-items:flex-start;gap:11px;
+  padding:10px 0;border-bottom:1px solid var(--rp-rule);
 }
 .rpt-diag-row:last-child{border-bottom:none;}
 .rpt-diag-code{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:8px;font-weight:800;letter-spacing:.05em;
-  background:var(--rp-accent);color:#fff;
-  padding:2px 7px;border-radius:4px;flex-shrink:0;margin-top:2px;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:8px;font-weight:800;
+  background:var(--rp-accent);color:#fff;padding:2px 8px;border-radius:5px;
+  flex-shrink:0;margin-top:2px;letter-spacing:.04em;
 }
-.rpt-diag-text{
-  font-family:'Lora',serif;font-size:11.5px;color:var(--rp-tx2);line-height:1.65;
-}
-
-/* Objectifs */
-.rpt-obj-row{
-  display:flex;align-items:flex-start;gap:9px;padding:5px 0;
-}
+.rpt-diag-text{font-family:'Lora',serif;font-size:12px;color:var(--rp-tx2);line-height:1.65;}
+.rpt-obj-row{display:flex;align-items:flex-start;gap:9px;padding:5px 0;}
 .rpt-obj-num{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:9px;font-weight:800;color:var(--rp-accent);
-  width:18px;flex-shrink:0;text-align:center;margin-top:1px;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:800;color:var(--rp-accent);
+  width:20px;flex-shrink:0;text-align:center;margin-top:1px;
 }
-.rpt-obj-text{
-  font-family:'Lora',serif;font-size:11.5px;color:var(--rp-tx2);line-height:1.65;
-}
-
-/* Plan thérapeutique */
-.rpt-plan{
-  background:var(--rp-bg2);border:1px solid var(--rp-border);
-  border-radius:7px;padding:12px 14px;
-}
-.rpt-plan-text{
-  font-family:'Lora',serif;font-size:11.5px;color:var(--rp-tx2);line-height:1.8;
-  white-space:pre-line;
-}
-
-/* Courrier confrère */
-.rpt-letter{
-  background:#fff;border:1px solid var(--rp-border);
-  border-radius:7px;padding:16px 18px;
-  border-top:3px solid var(--rp-accent);
-}
-.rpt-letter-pre{
-  font-family:'Lora',serif;font-size:11.5px;color:var(--rp-tx2);
-  line-height:1.9;white-space:pre-line;
-}
-
-/* Footer rapport */
+.rpt-plan{background:var(--rp-bg2);border:1px solid var(--rp-border);border-radius:8px;padding:13px 15px;}
+.rpt-letter{background:#fff;border:1px solid var(--rp-border);border-radius:8px;padding:18px 20px;border-top:3px solid var(--rp-accent);}
+.rpt-letter-pre{font-family:'Lora',serif;font-size:12px;color:var(--rp-tx2);line-height:1.9;white-space:pre-line;}
 .rpt-footer{
-  padding:10px 20px;border-top:1px solid var(--rp-rule);
-  display:flex;justify-content:space-between;align-items:center;
-  background:var(--rp-bg2);
+  padding:11px 22px;border-top:1px solid var(--rp-rule);
+  display:flex;justify-content:space-between;align-items:center;background:var(--rp-bg2);
 }
 .rpt-footer-txt{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:7.5px;font-weight:600;color:var(--rp-tx3);letter-spacing:.05em;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:7.5px;font-weight:600;
+  color:var(--rp-tx3);letter-spacing:.04em;
 }
-
-/* Vigilance */
 .rpt-vigilance{
-  background:#fff8f8;border:1px solid #f0c0c0;border-left:3px solid #c0392b;
-  border-radius:0 6px 6px 0;padding:10px 14px;margin:0;
+  background:#fff8f8;border:1px solid #f8c8c8;border-left:3px solid #c0392b;
+  border-radius:0 7px 7px 0;padding:11px 15px;
 }
 .rpt-vigilance-label{
-  font-family:'Plus Jakarta Sans',sans-serif;
-  font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;
-  color:#c0392b;margin-bottom:4px;
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:7.5px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.18em;color:#c0392b;margin-bottom:4px;
 }
-.rpt-vigilance-text{
-  font-family:'Lora',serif;font-size:11.5px;color:#5a1a1a;line-height:1.7;
+.rpt-vigilance-text{font-family:'Lora',serif;font-size:12px;color:#5a1a1a;line-height:1.72;}
+
+/* RESUME simple */
+.rpt-resume-box{
+  background:var(--rp-bg2);border:1.5px solid var(--rp-border);border-radius:10px;
+  padding:16px 18px;margin-bottom:18px;border-top:3px solid var(--rp-accent);
+}
+.rpt-resume-label{
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:8px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.2em;color:var(--rp-accent);margin-bottom:8px;
+}
+.rpt-resume-text{font-family:'Lora',serif;font-size:13px;line-height:1.9;color:var(--rp-tx);font-style:italic;}
+
+/* INFOS ROW */
+.rpt-info-row{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+  margin-bottom:18px;
+}
+.rpt-info-cell{
+  background:#fff;border:1px solid var(--rp-border);border-radius:8px;
+  padding:10px 12px;text-align:center;
+}
+.rpt-info-cell-label{
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:7px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.15em;color:var(--rp-tx3);margin-bottom:4px;
+}
+.rpt-info-cell-val{
+  font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700;color:var(--rp-tx);
 }
 </style>
 </head>
 <body>
 <div class="app">
 
-<!-- ═══ TOPBAR ═══ -->
+<!-- TOPBAR -->
 <div class="top">
   <div style="display:flex;align-items:center;gap:12px;">
     <a href="dashboard.php" style="color:var(--tx3);font-size:17px;font-weight:700;text-decoration:none;padding:4px 6px;border-radius:7px;transition:all .18s;"
        onmouseover="this.style.color='var(--tx)'" onmouseout="this.style.color='var(--tx3)'">←</a>
     <div style="width:1px;height:18px;background:var(--b);"></div>
-    <div style="width:30px;height:30px;border-radius:8px;background:rgba(91,95,239,.13);border:1px solid rgba(91,95,239,.22);
+    <div style="width:30px;height:30px;border-radius:8px;background:rgba(99,102,241,.14);border:1px solid rgba(99,102,241,.22);
       display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--ac2);font-size:12px;flex-shrink:0;">
       <?= strtoupper(mb_substr($patient_selected,0,1,'UTF-8')) ?>
     </div>
@@ -445,24 +389,24 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
       </p>
     </div>
   </div>
-  <div style="display:flex;align-items:center;gap:16px;">
+  <div style="display:flex;align-items:center;gap:18px;">
     <div style="display:flex;align-items:center;gap:5px;">
       <span style="width:5px;height:5px;border-radius:50%;background:var(--ac);" class="pulse"></span>
       <span class="lbl" style="color:var(--ac2);">IA active</span>
     </div>
-    <div style="display:flex;align-items:center;gap:6px;">
+    <div style="display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.03);border:1px solid var(--b);border-radius:9px;padding:4px 10px;">
       <span id="recdot" style="width:6px;height:6px;border-radius:50%;background:var(--su);transition:all .3s;"></span>
-      <span id="timer" style="font-size:17px;font-weight:900;letter-spacing:.05em;color:var(--tx3);font-variant-numeric:tabular-nums;">00:00</span>
+      <span id="timer" style="font-size:17px;font-weight:900;letter-spacing:.06em;color:var(--tx3);font-variant-numeric:tabular-nums;">00:00</span>
     </div>
     <div id="stop" class="chip cs">En attente</div>
   </div>
 </div>
 
-<!-- ═══ GRID 3 COLONNES ═══ -->
+<!-- GRID 3 COLONNES -->
 <div class="g3">
 
-<!-- ════════════════════════��═════════════════════════════════ COL GAUCHE -->
-<div class="col" style="border-right:1px solid var(--b);">
+<!-- ═══════════════ COL GAUCHE -->
+<div class="col" style="border-right:1px solid rgba(255,255,255,.04);">
 
   <!-- IA INSIGHTS LIVE -->
   <div class="card" style="flex:1;min-height:120px;">
@@ -477,8 +421,8 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
       </div>
     </div>
     <div id="feed" style="max-height:260px;overflow-y:auto;">
-      <div id="feedph" style="padding:20px 0;text-align:center;opacity:.2;">
-        <p class="lbl" style="line-height:2;">Démarrez la capture<br>L'IA analysera en continu</p>
+      <div id="feedph" style="padding:24px 0;text-align:center;opacity:.18;">
+        <p class="lbl" style="line-height:2.2;">Démarrez la capture<br>L'IA analysera en continu</p>
       </div>
     </div>
   </div>
@@ -503,8 +447,8 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
       <p class="lbl" style="color:#38bdf8;">IA · Hypothèses diagnostiques</p>
     </div>
     <div id="diagb">
-      <div id="diagph" style="padding:10px 0;text-align:center;opacity:.2;">
-        <p class="lbl" style="line-height:2;">Générées automatiquement<br>au fil du verbatim</p>
+      <div id="diagph" style="padding:12px 0;text-align:center;opacity:.18;">
+        <p class="lbl" style="line-height:2.2;">Générées automatiquement<br>au fil du verbatim</p>
       </div>
     </div>
   </div>
@@ -516,7 +460,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
       <span class="chip cw" style="font-size:7px;">Privé</span>
     </div>
     <textarea id="notes" class="nta" rows="5"
-      placeholder="Observations, hypothèses cliniques, impressions du praticien..."></textarea>
+      placeholder="Observations, hypothèses cliniques, impressions du praticien…"></textarea>
   </div>
 
   <!-- HISTORIQUE SÉANCES -->
@@ -530,8 +474,8 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
     <div style="display:flex;flex-direction:column;gap:3px;">
       <?php foreach($prev_consults as $i=>$pc): ?>
       <div style="display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:9px;border:1px solid var(--b2);
-        background:rgba(14,17,23,.4);cursor:pointer;transition:border-color .18s;"
-        onmouseover="this.style.borderColor='rgba(91,95,239,.28)'"
+        background:rgba(13,16,24,.5);cursor:pointer;transition:border-color .18s;"
+        onmouseover="this.style.borderColor='rgba(99,102,241,.28)'"
         onmouseout="this.style.borderColor='var(--b2)'"
         onclick="loadPrev(<?= json_encode(strip_tags($pc['resume_ia']??'')) ?>)">
         <div style="width:6px;height:6px;border-radius:50%;flex-shrink:0;
@@ -552,39 +496,38 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
     </div>
   </div>
   <?php else: ?>
-  <div style="padding:14px;text-align:center;opacity:.18;">
-    <p class="lbl" style="line-height:2;">Première séance<br>Aucun historique disponible</p>
+  <div style="padding:16px;text-align:center;opacity:.16;">
+    <p class="lbl" style="line-height:2.2;">Première séance<br>Aucun historique disponible</p>
   </div>
   <?php endif; ?>
 
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ COL CENTRE -->
+<!-- ═══════════════ COL CENTRE -->
 <div class="col" style="padding:12px 14px;">
 
   <!-- TRANSCRIPTION -->
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:11px;">
       <div>
-        <p style="font-size:13px;font-weight:800;color:var(--tx);">Transcription de séance</p>
+        <p style="font-size:13.5px;font-weight:800;color:var(--tx);">Transcription de séance</p>
         <p class="lbl" style="margin-top:2px;">Capture vocale ou saisie manuelle · Analyse IA en continu</p>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div id="wv" style="display:flex;align-items:center;gap:2px;height:20px;">
-          <?php for($i=0;$i<12;$i++): ?><div style="width:2.5px;height:3px;background:var(--su);border-radius:2px;transition:height .1s,background .18s;"></div><?php endfor; ?>
+          <?php for($i=0;$i<12;$i++): ?><div style="width:2.5px;height:3px;background:var(--su);border-radius:2px;transition:height .1s,background .15s;"></div><?php endfor; ?>
         </div>
         <span id="wc" class="chip cs">0 mot</span>
       </div>
     </div>
 
     <textarea id="tr" class="ta" rows="12"
-      placeholder="La parole s'inscrit ici automatiquement lors de la capture vocale..."
+      placeholder="La parole s'inscrit ici automatiquement lors de la capture vocale…"
       oninput="onTyping(this.value)"></textarea>
 
     <div id="ntr" style="margin-top:6px;min-height:26px;"></div>
 
-    <div style="display:flex;align-items:center;gap:10px;margin-top:9px;">
-      <!-- MICRO -->
+    <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
       <button id="micbtn" onclick="toggleMic()" class="mic mic-idle" title="Démarrer la capture vocale">
         <svg id="micsvg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--ac2)"
           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -598,7 +541,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
         <p id="miclbl" style="font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--su);margin-bottom:3px;">
           Micro inactif — Cliquez pour démarrer
         </p>
-        <div style="height:2.5px;background:var(--s1);border-radius:2px;overflow:hidden;">
+        <div style="height:2.5px;background:rgba(255,255,255,.04);border-radius:2px;overflow:hidden;">
           <div id="abar" style="width:0%;height:2.5px;background:var(--ac);border-radius:2px;transition:width .1s;"></div>
         </div>
       </div>
@@ -607,48 +550,56 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
         <span class="lbl" style="color:var(--ac2);">Auto-IA</span>
       </label>
       <button onclick="clearTr()" class="btn"
-        style="background:rgba(220,38,38,.07);color:#f87171;border:1px solid rgba(220,38,38,.14);padding:7px 10px;font-size:8px;flex-shrink:0;">✕</button>
+        style="background:rgba(220,38,38,.07);color:#f87171;border:1px solid rgba(220,38,38,.14);padding:7px 10px;font-size:8px;flex-shrink:0;">✕ Effacer</button>
     </div>
 
-    <div id="sttw" style="display:none;margin-top:8px;padding:8px 12px;border-radius:9px;
-      background:rgba(217,119,6,.07);border:1px solid rgba(217,119,6,.18);">
+    <div id="sttw" style="display:none;margin-top:8px;padding:9px 12px;border-radius:9px;
+      background:rgba(217,119,6,.06);border:1px solid rgba(217,119,6,.18);">
       <p style="font-size:9.5px;color:#fbbf24;font-weight:600;line-height:1.6;">
-        ⚠ Reconnaissance vocale non disponible. Utilisez Chrome ou Edge et autorisez le microphone. Vous pouvez saisir le texte manuellement.
+        ⚠ Reconnaissance vocale non disponible. Utilisez Chrome ou Edge et autorisez le microphone.
       </p>
     </div>
   </div>
 
-  <!-- RAPPORT CLINIQUE -->
+  <!-- COMPTE-RENDU CLINIQUE -->
   <div class="card" style="flex:1;padding:0;overflow:hidden;">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 13px 11px;border-bottom:1px solid var(--b);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 14px 12px;border-bottom:1px solid rgba(255,255,255,.045);">
       <div>
-        <p style="font-size:13px;font-weight:800;color:var(--tx);">Compte-rendu clinique</p>
-        <p class="lbl" style="margin-top:2px;">Généré par intelligence artificielle · Confidentiel</p>
+        <p style="font-size:13.5px;font-weight:800;color:var(--tx);">Compte-rendu clinique</p>
+        <p class="lbl" style="margin-top:2px;">Généré par IA · Confidentiel · Médical</p>
       </div>
-      <button id="btngen" onclick="genReport()" disabled class="btn ba">✦ Générer le bilan</button>
+      <button id="btngen" onclick="genReport()" disabled class="btn ba" style="gap:6px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Générer le bilan
+      </button>
     </div>
 
-    <div id="rpbody" style="max-height:calc(100vh - 280px);overflow-y:auto;">
-      <!-- état initial -->
-      <div id="rp-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:55px 20px;opacity:.16;">
-        <div style="width:28px;height:28px;border:1.5px dashed #64748b;border-radius:50%;margin-bottom:10px;animation:spin 3s linear infinite;"></div>
-        <p class="lbl" style="text-align:center;line-height:2;">En attente de transcription</p>
+    <div id="rpbody" style="max-height:calc(100vh - 290px);overflow-y:auto;">
+      <div id="rp-placeholder" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;opacity:.14;">
+        <div style="width:28px;height:28px;border:1.5px dashed #4b5563;border-radius:50%;margin-bottom:12px;animation:spin 3s linear infinite;"></div>
+        <p class="lbl" style="text-align:center;line-height:2.2;">En attente de transcription</p>
       </div>
     </div>
 
-    <div style="padding:10px 13px;border-top:1px solid var(--b);">
-      <div id="narch" style="margin-bottom:6px;min-height:22px;"></div>
+    <div style="padding:10px 14px;border-top:1px solid rgba(255,255,255,.04);">
+      <div id="narch" style="margin-bottom:7px;min-height:24px;"></div>
       <div style="display:flex;gap:8px;">
-        <button onclick="exportPDF()" id="btnpdf" disabled class="btn bg" style="flex:1;">↓ Exporter PDF</button>
-        <button onclick="finalize()" class="btn bok" style="flex:1;">✓ Archiver la séance</button>
+        <button onclick="exportPDF()" id="btnpdf" disabled class="btn bg" style="flex:1;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Exporter PDF
+        </button>
+        <button onclick="finalize()" class="btn bok" style="flex:1;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Archiver la séance
+        </button>
       </div>
     </div>
   </div>
 
 </div>
 
-<!-- ══════════════════════════════════════════════════════════ COL DROITE -->
-<div class="col" style="border-left:1px solid var(--b);padding:0;gap:0;">
+<!-- ═══════════════ COL DROITE -->
+<div class="col" style="border-left:1px solid rgba(255,255,255,.04);padding:0;gap:0;">
 
   <!-- RADAR -->
   <div style="padding:13px 13px 0;">
@@ -661,7 +612,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
     </div>
     <div style="height:185px;position:relative;"><canvas id="radarChart"></canvas></div>
     <div style="display:flex;flex-wrap:wrap;gap:5px 10px;margin-top:7px;">
-      <?php foreach([['Urgence','#ef4444'],['Détresse','#f59e0b'],['Anxiété','#8b5cf6'],['Résilience','#10b981'],['Social','#38bdf8'],['Stabilité','var(--ac)']] as [$l,$c]): ?>
+      <?php foreach([['Urgence','#ef4444'],['Détresse','#f59e0b'],['Anxiété','#8b5cf6'],['Résilience','#10b981'],['Social','#38bdf8'],['Stabilité','#6366f1']] as [$l,$c]): ?>
       <div style="display:flex;align-items:center;gap:3px;">
         <div style="width:5px;height:5px;border-radius:50%;background:<?=$c?>;flex-shrink:0;"></div>
         <span style="font-size:7px;font-weight:700;color:var(--su);text-transform:uppercase;letter-spacing:.07em;"><?=$l?></span>
@@ -702,16 +653,16 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
         <p class="lbl" style="color:var(--ac2);">IA · Analyse sémantique</p>
       </div>
     </div>
-    <div id="ins" style="max-height:195px;overflow-y:auto;">
-      <div id="insph" style="padding:12px 0;text-align:center;opacity:.2;">
-        <p class="lbl" style="line-height:2;">L'IA générera des insights<br>au fil de la transcription</p>
+    <div id="ins" style="max-height:200px;overflow-y:auto;">
+      <div id="insph" style="padding:14px 0;text-align:center;opacity:.18;">
+        <p class="lbl" style="line-height:2.2;">L'IA générera des insights<br>au fil de la transcription</p>
       </div>
     </div>
   </div>
 
   <div class="rd"></div>
 
-  <!-- DYNAMIQUE ÉMOTIONNELLE (mini chart valence) -->
+  <!-- DYNAMIQUE ÉMOTIONNELLE -->
   <div style="padding:0 13px;">
     <p class="lbl" style="color:var(--ac2);margin-bottom:6px;">Dynamique émotionnelle</p>
     <div style="height:58px;position:relative;"><canvas id="emoChart"></canvas></div>
@@ -726,10 +677,10 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 </div><!-- /g3 -->
 </div><!-- /app -->
 
-<!-- ═══ OVERLAY ═══ -->
+<!-- OVERLAY -->
 <div id="ov" class="ov" onclick="if(event.target===this)ovC()">
   <div class="ovb">
-    <p id="ovmsg" style="font-size:13px;color:var(--tx2);font-weight:500;margin-bottom:18px;line-height:1.6;"></p>
+    <p id="ovmsg" style="font-size:13px;color:var(--tx2);font-weight:500;margin-bottom:20px;line-height:1.65;"></p>
     <div style="display:flex;gap:8px;">
       <button id="ovyes" class="btn bok" style="flex:1;">Confirmer</button>
       <button onclick="ovC()" class="btn bg" style="flex:1;">Annuler</button>
@@ -737,11 +688,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     JAVASCRIPT
-     ═══════════════════════════════════════════════════════════════════════ -->
 <script>
-// ── PHP → JS ──────────────────────────────────────────────────────────────────
 var CSRF  = <?= json_encode($csrf) ?>;
 var PAT   = <?= json_encode($patient_selected) ?>;
 var SESN  = <?= $session_num ?>;
@@ -749,14 +696,12 @@ var DATED = <?= json_encode($appt_date) ?>;
 var DR    = <?= json_encode($nom_docteur) ?>;
 var HIST  = <?= json_encode($history_for_ai) ?>;
 
-// ── État global ───────────────────────────────────────────────────────────────
 var micOn = false, recog = null, timerIv = null, secs = 0;
 var lastRpt = null, lastAT = '';
 var emoC, radC, tlC, lgC;
 var emoP = [0], tR = [], tRs = [], tD = [], tA = [];
 var rD = {u:0,d:0,a:0,r:0,s:0,st:100};
 
-// ── Overlay ───────────────────────────────────────────────────────────────────
 function ovO(msg, cb) {
   document.getElementById('ovmsg').innerHTML = msg;
   document.getElementById('ov').classList.add('open');
@@ -764,7 +709,6 @@ function ovO(msg, cb) {
 }
 function ovC(){ document.getElementById('ov').classList.remove('open'); }
 
-// ── Notifications ─────────────────────────────────────────────────────────────
 function ntf(id, msg, type, ms) {
   if(ms === undefined) ms = 4500;
   var z = document.getElementById(id); if(!z) return;
@@ -773,9 +717,7 @@ function ntf(id, msg, type, ms) {
   if(ms > 0) setTimeout(function(){ z.innerHTML=''; }, ms);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// LEXIQUE CLINIQUE
-// ══════════════════════════════════════════════════════════════════════════════
+// ── LEXIQUE CLINIQUE (identique) ─────────────────────────────────────────────
 var LEX = {
   u:   { p:40,  w:["suicide","suicider","suicidaire","me suicider","se suicider","mourir","veux mourir","envie de mourir","penser à mourir","mort","me tuer","se tuer","en finir","mettre fin","mettre fin à ma vie","plus envie de vivre","aucun espoir","plus d'espoir","sans espoir","tout est fini","adieu","je disparais","disparaître définitivement","ne plus exister","personne ne me manquera","tout le monde sera mieux sans moi","marre de vivre","j'ai décidé","j'ai un plan","j'ai tout prévu","pendre","me pendre","overdose","avaler des médicaments","sauter","me jeter","défenestrer","couteau","me poignarder","noyade","me noyer","tentative de suicide","j'ai déjà essayé","TS","passage à l'acte","lettre d'adieu","j'ai réglé mes affaires","plus aucun sens","la vie n'a plus de sens","à quoi ça sert","pourquoi continuer","je suis un fardeau","mieux sans moi","condamné","condamnée","impossible de guérir"] },
   am:  { p:28,  w:["automutilation","je me blesse","je me fais du mal","me couper","je me coupe","scarification","cicatrices","cicatrices cachées","brûlures","je me brûle","frapper un mur","me frapper","je cache mes bras","manches longues","lames","je garde des lames","pour ressentir quelque chose","pour ne plus ressentir","ça soulage","seul moyen que j'ai trouvé"] },
@@ -787,21 +729,20 @@ var LEX = {
   ma:  { p:14,  w:["manie","maniaque","épisode maniaque","hypomanie","bipolaire","trouble bipolaire","euphorie","euphorique","je me sens invincible","trop d'énergie","fuite des idées","impulsivité","impulsif","impulsive","dépenses excessives","comportements à risque","grandiosité","irritabilité","sautes d'humeur","phases hautes","phases basses"] },
   ad:  { p:12,  w:["alcool","je bois","boire","ivre","alcoolique","dépendance à l'alcool","drogue","drogué","droguée","cannabis","joint","cocaïne","coke","héroïne","opioïdes","ecstasy","MDMA","amphétamines","crack","je consomme","je me drogue","pour oublier","pour ne plus ressentir","benzodiazépines","xanax","valium","somnifères","antidouleurs","tramadol","jeux d'argent","casino","addiction aux jeux","rechute","j'ai rechuté","sevrage"] },
   ta:  { p:14,  w:["anorexie","anorexique","je ne mange pas","je ne mange plus","restriction alimentaire","peur de manger","peur de grossir","je saute des repas","je jeûne","contrôler ce que je mange","boulimie","boulimique","crises de boulimie","manger compulsivement","je mange sans m'arrêter","hyperphagie","vomir","je me fais vomir","laxatifs","image du corps","je me trouve gros","je me trouve grosse","dégoût de mon corps","obsession du poids","je me pèse tout le temps"] },
-  so2: { p:7,   w:["douleurs chroniques","fibromyalgie","j'ai mal partout","psychosomatique","symptômes inexpliqués","les médecins ne trouvent rien","syndrome de fatigue chronique","côlon irritable","eczéma","psoriasis","douleurs musculaires","contractures"] },
-  re:  { p:10,  w:["conflit","disputes","on se dispute tout le temps","mésentente","communication rompue","séparation","divorce","famille toxique","relations toxiques","dépendance affective","peur d'être abandonné","peur d'être abandonnée","jalousie","jaloux","jalouse","je sabote mes relations","je n'arrive pas à dire non","on piétine mes limites","je me laisse faire"] },
+  so2: { p:7,   w:["douleurs chroniques","fibromyalgie","j'ai mal partout","psychosomatique","symptômes inexpliqués","les médecins ne trouvent rien","syndrome de fatigue chronique"] },
+  re:  { p:10,  w:["conflit","disputes","on se dispute tout le temps","mésentente","séparation","divorce","famille toxique","relations toxiques","dépendance affective","peur d'être abandonné","peur d'être abandonnée","jalousie","jaloux","jalouse","je sabote mes relations"] },
   po:  { p:-12, w:["espoir","j'espère","optimiste","confiant","confiante","projets","j'ai des projets","je vais m'en sortir","mieux","je vais mieux","ça va mieux","heureux","heureuse","joie","bonheur","content","contente","serein","sereine","apaisé","apaisée","calme","soulagé","soulagée","bien dans ma peau","je m'accepte","énergie","j'ai de l'énergie","motivé","motivée","plaisir","sourire","je souris","fierté","j'ai accompli","j'ai réussi","mes enfants","je veux guérir","changer","je veux changer","thérapie","ça m'aide","ça fait du bien","prise de conscience","j'ai compris","lâcher prise","je lâche prise","mindfulness","méditation","je prends soin de moi"] },
   so:  { p:-7,  w:["ami","amis","amie","entourage","entouré","entourée","soutien","soutenu","soutenue","je me sens soutenu","je me sens soutenue","accompagné","accompagnée","pas seul","pas seule","parler à quelqu'un","j'ai quelqu'un à qui parler","connecté","connectée","relation solide","relation saine","sortir","je sors","rencontrer","j'ai rencontré","groupe de soutien","groupe de parole","aide professionnelle","je vois un psy","je suis suivi","je suis suivie","psychiatre","psychologue","thérapeute","je consulte"] }
 };
 
-var NEG = ["ne","n'","pas","plus","jamais","aucun","aucune","sans","ni","non","nullement","guère","absolument pas","certainement pas"];
-var INT = ["très","vraiment","tellement","trop","extrêmement","profondément","absolument","terriblement","infiniment","énormément","complètement","totalement","intensément","fortement"];
-var ATT = ["un peu","légèrement","parfois","peut-être","vaguement","de temps en temps","par moments","rarement","pas toujours","il m'arrive","ça m'arrive","de temps à autre"];
+var NEG = ["ne","n'","pas","plus","jamais","aucun","aucune","sans","ni","non","nullement","guère"];
+var INT = ["très","vraiment","tellement","trop","extrêmement","profondément","absolument","terriblement","infiniment","énormément"];
+var ATT = ["un peu","légèrement","parfois","peut-être","vaguement","de temps en temps","par moments","rarement"];
 
 function analyze(text) {
   var t = text.toLowerCase();
   var tok = t.split(/\s+/);
   var sc = {u:0,d:0,a:0,tr:0,di:0,ma:0,ps:0,ad:0,ta:0,am:0,so2:0,re:0,po:0,so:0};
-
   Object.keys(LEX).forEach(function(cat){
     LEX[cat].w.forEach(function(mot){
       var isPhrase = mot.indexOf(' ') !== -1;
@@ -812,9 +753,7 @@ function analyze(text) {
           var wb = tok.slice(Math.max(0,ap-6),ap);
           var neg = wb.some(function(x){ return NEG.indexOf(x.replace(/[',\.!?;:]/g,'')) !== -1; });
           var ctx = wb.join(' ');
-          var mul = 1;
-          if(INT.some(function(m){ return ctx.indexOf(m) !== -1; })) mul=1.7;
-          else if(ATT.some(function(m){ return ctx.indexOf(m) !== -1; })) mul=0.45;
+          var mul = INT.some(function(m){ return ctx.indexOf(m) !== -1; }) ? 1.7 : (ATT.some(function(m){ return ctx.indexOf(m) !== -1; }) ? 0.45 : 1);
           if(!neg) sc[cat] += LEX[cat].p * mul;
           else if(cat==='po'||cat==='so') sc[cat] -= LEX[cat].p*0.4;
           si = idx + mot.length;
@@ -826,9 +765,7 @@ function analyze(text) {
             var wb = tok.slice(Math.max(0,i-6),i);
             var neg = wb.some(function(x){ return NEG.indexOf(x.replace(/[',\.!?;:]/g,'')) !== -1; });
             var ctx = wb.join(' ');
-            var mul = 1;
-            if(INT.some(function(m){ return ctx.indexOf(m) !== -1; })) mul=1.7;
-            else if(ATT.some(function(m){ return ctx.indexOf(m) !== -1; })) mul=0.45;
+            var mul = INT.some(function(m){ return ctx.indexOf(m) !== -1; }) ? 1.7 : (ATT.some(function(m){ return ctx.indexOf(m) !== -1; }) ? 0.45 : 1);
             if(!neg) sc[cat] += LEX[cat].p * mul;
             else if(cat==='po'||cat==='so') sc[cat] -= LEX[cat].p*0.4;
           }
@@ -836,49 +773,32 @@ function analyze(text) {
       }
     });
   });
-
-  var danger = sc.u*1.0 + sc.am*0.85 + sc.ps*0.80 + sc.d*0.55 + sc.tr*0.60
-             + sc.di*0.50 + sc.a*0.35 + sc.ma*0.40 + sc.ad*0.30
-             + sc.ta*0.35 + sc.so2*0.20 + sc.re*0.25;
+  var danger = sc.u*1.0 + sc.am*0.85 + sc.ps*0.80 + sc.d*0.55 + sc.tr*0.60 + sc.di*0.50 + sc.a*0.35 + sc.ma*0.40 + sc.ad*0.30 + sc.ta*0.35 + sc.so2*0.20 + sc.re*0.25;
   var prot = Math.abs(sc.po)*0.9 + Math.abs(sc.so)*0.6;
   var risk = Math.round(Math.max(0, Math.min(100, danger - prot)));
-
   return { sc:sc, risk:risk };
 }
 
-// ── MISE À JOUR VISUELS ───────────���───────────────────────────────────────────
 function onTyping(val) {
   var words = val.trim().split(/\s+/).filter(function(w){ return w.length>0; });
   var wc = words.length;
   document.getElementById('wc').textContent = wc + (wc>1?' mots':' mot');
-
   var res = analyze(val);
   var sc = res.sc, risk = res.risk;
-
   updRadar(sc, risk);
   updTimeline(risk, sc);
-
   var neg=sc.u+sc.d+sc.a, pos=Math.abs(sc.po)+Math.abs(sc.so), sum=neg+pos;
   emoP.push(sum>0 ? Math.max(-1,Math.min(1,(pos-neg)/sum)) : 0);
   if(emoP.length>60) emoP.shift();
   drawEmo();
-
   if(wc > 10) document.getElementById('btngen').disabled = false;
-
   if(document.getElementById('autoai').checked && wc>0 && wc%35===0 && val!==lastAT){
     lastAT = val; autoAI(val, sc, risk);
   }
 }
 
 function updRadar(sc, risk){
-  rD = {
-    u:  Math.min(100,Math.round(Math.max(0,sc.u))),
-    d:  Math.min(100,Math.round(Math.max(0,sc.d))),
-    a:  Math.min(100,Math.round(Math.max(0,sc.a))),
-    r:  Math.min(100,Math.round(Math.abs(sc.po))),
-    s:  Math.min(100,Math.round(Math.abs(sc.so))),
-    st: Math.max(0,100-risk)
-  };
+  rD = { u:Math.min(100,Math.round(Math.max(0,sc.u))), d:Math.min(100,Math.round(Math.max(0,sc.d))), a:Math.min(100,Math.round(Math.max(0,sc.a))), r:Math.min(100,Math.round(Math.abs(sc.po))), s:Math.min(100,Math.round(Math.abs(sc.so))), st:Math.max(0,100-risk) };
   drawRadar();
   document.getElementById('rchip').textContent='Actif';
   document.getElementById('rchip').className='chip ck';
@@ -887,59 +807,31 @@ function drawRadar(){
   var ctx = document.getElementById('radarChart').getContext('2d');
   if(radC) radC.destroy();
   var vals=[rD.u,rD.d,rD.a,rD.r,rD.s,rD.st];
-  var pc=['#ef4444','#f59e0b','#8b5cf6','#10b981','#38bdf8','#5b5fef'];
+  var pc=['#ef4444','#f59e0b','#8b5cf6','#10b981','#38bdf8','#6366f1'];
   var danger = rD.u>40||rD.d>50;
-  radC = new Chart(ctx,{
-    type:'radar',
-    data:{
-      labels:['Urgence','Détresse','Anxiété','Résilience','Social','Stabilité'],
-      datasets:[
-        {data:[100,100,100,100,100,100],borderColor:'rgba(255,255,255,.02)',backgroundColor:'transparent',borderWidth:1,pointRadius:0,order:2},
-        {data:vals,
-          borderColor:danger?'rgba(239,68,68,.65)':'rgba(91,95,239,.6)',
-          backgroundColor:danger?'rgba(239,68,68,.06)':'rgba(91,95,239,.08)',
-          borderWidth:1.5,pointBackgroundColor:pc,
-          pointBorderColor:'rgba(7,9,15,.8)',pointBorderWidth:1.5,
-          pointRadius:4,pointHoverRadius:6,order:1}
-      ]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      animation:{duration:500,easing:'easeInOutCubic'},
-      plugins:{legend:{display:false},tooltip:{
-        backgroundColor:'rgba(7,9,15,.97)',borderColor:'rgba(255,255,255,.08)',borderWidth:1,
-        padding:9,cornerRadius:9,
-        titleFont:{family:'Plus Jakarta Sans',size:8,weight:'800'},
-        bodyFont:{family:'Plus Jakarta Sans',size:9.5},
-        callbacks:{
-          title:function(i){ return [i[0].label.toUpperCase()]; },
-          label:function(i){ return i.datasetIndex===1?' '+i.raw+' / 100':null; }
-        }
-      }},
-      scales:{r:{min:0,max:100,ticks:{display:false},
-        grid:{color:'rgba(255,255,255,.035)'},
-        angleLines:{color:'rgba(255,255,255,.04)'},
-        pointLabels:{color:'#374151',font:{family:'Plus Jakarta Sans',size:7.5,weight:'700'},padding:4}
-      }}
+  radC = new Chart(ctx,{type:'radar',
+    data:{labels:['Urgence','Détresse','Anxiété','Résilience','Social','Stabilité'],datasets:[
+      {data:[100,100,100,100,100,100],borderColor:'rgba(255,255,255,.02)',backgroundColor:'transparent',borderWidth:1,pointRadius:0,order:2},
+      {data:vals,borderColor:danger?'rgba(239,68,68,.65)':'rgba(99,102,241,.6)',backgroundColor:danger?'rgba(239,68,68,.06)':'rgba(99,102,241,.08)',borderWidth:1.5,pointBackgroundColor:pc,pointBorderColor:'rgba(7,9,15,.8)',pointBorderWidth:1.5,pointRadius:4,pointHoverRadius:6,order:1}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:500,easing:'easeInOutCubic'},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(7,9,15,.97)',borderColor:'rgba(255,255,255,.08)',borderWidth:1,padding:9,cornerRadius:9,titleFont:{family:'Plus Jakarta Sans',size:8,weight:'800'},bodyFont:{family:'Plus Jakarta Sans',size:9.5},callbacks:{title:function(i){return[i[0].label.toUpperCase()];},label:function(i){return i.datasetIndex===1?' '+i.raw+' / 100':null;}}}},
+      scales:{r:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(255,255,255,.035)'},angleLines:{color:'rgba(255,255,255,.04)'},pointLabels:{color:'#374151',font:{family:'Plus Jakarta Sans',size:7.5,weight:'700'},padding:4}}}
     }
   });
 }
 
 function updTimeline(risk, sc){
-  tR.push(risk);
-  tRs.push(Math.round(Math.abs(sc.po)+Math.abs(sc.so)));
-  tD.push(Math.round(Math.max(0,sc.d)));
-  tA.push(Math.round(Math.max(0,sc.a)));
+  tR.push(risk); tRs.push(Math.round(Math.abs(sc.po)+Math.abs(sc.so))); tD.push(Math.round(Math.max(0,sc.d))); tA.push(Math.round(Math.max(0,sc.a)));
   var M=60; if(tR.length>M){tR.shift();tRs.shift();tD.shift();tA.shift();}
   drawTL();
   if(tR.length>=4){
     var n=tR.length;
     var diff=((tR[n-1]+tR[n-2])/2)-((tR[n-3]+tR[n-4])/2);
-    var tc=document.getElementById('tlchip');
-    var tl=document.getElementById('tllbl');
-    if(diff>8)      {tc.textContent='↑ Tension croissante';tc.className='chip ce';tl.style.color='#f87171';tl.textContent='Montée du risque';}
+    var tc=document.getElementById('tlchip'), tl=document.getElementById('tllbl');
+    if(diff>8){tc.textContent='↑ Tension croissante';tc.className='chip ce';tl.style.color='#f87171';tl.textContent='Montée du risque';}
     else if(diff<-8){tc.textContent='↓ Apaisement';tc.className='chip ck';tl.style.color='#34d399';tl.textContent='Stabilisation progressive';}
-    else            {tc.textContent='→ Stable';tc.className='chip cs';tl.style.color='#4b5563';tl.textContent='Régularité du discours';}
+    else{tc.textContent='→ Stable';tc.className='chip cs';tl.style.color='#4b5563';tl.textContent='Régularité du discours';}
   }
 }
 function drawTL(){
@@ -948,50 +840,28 @@ function drawTL(){
   function g(c,c1,c2){var gr=c.chart.ctx.createLinearGradient(0,0,0,92);gr.addColorStop(0,c1);gr.addColorStop(1,c2);return gr;}
   tlC=new Chart(ctx,{type:'line',
     data:{labels:tR.map(function(_,i){return i;}),datasets:[
-      {label:'Risque',     data:tR, borderColor:'#ef4444',borderWidth:2,  pointRadius:0,fill:true,tension:.42,backgroundColor:function(c){return g(c,'rgba(239,68,68,.18)','rgba(239,68,68,0)');}},
-      {label:'Résilience', data:tRs,borderColor:'#10b981',borderWidth:1.5,pointRadius:0,fill:false,tension:.42},
-      {label:'Détresse',   data:tD, borderColor:'#f59e0b',borderWidth:1.5,pointRadius:0,fill:false,tension:.42,borderDash:[3,3]},
-      {label:'Anxiété',    data:tA, borderColor:'#8b5cf6',borderWidth:1.5,pointRadius:0,fill:false,tension:.42,borderDash:[2,4]}
+      {label:'Risque',data:tR,borderColor:'#ef4444',borderWidth:2,pointRadius:0,fill:true,tension:.42,backgroundColor:function(c){return g(c,'rgba(239,68,68,.18)','rgba(239,68,68,0)');}},
+      {label:'Résilience',data:tRs,borderColor:'#10b981',borderWidth:1.5,pointRadius:0,fill:false,tension:.42},
+      {label:'Détresse',data:tD,borderColor:'#f59e0b',borderWidth:1.5,pointRadius:0,fill:false,tension:.42,borderDash:[3,3]},
+      {label:'Anxiété',data:tA,borderColor:'#8b5cf6',borderWidth:1.5,pointRadius:0,fill:false,tension:.42,borderDash:[2,4]}
     ]},
-    options:{responsive:true,maintainAspectRatio:false,animation:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{legend:{display:false},tooltip:{
-        backgroundColor:'rgba(7,9,15,.97)',borderColor:'rgba(255,255,255,.07)',borderWidth:1,
-        padding:8,cornerRadius:8,
-        titleFont:{family:'Plus Jakarta Sans',size:8,weight:'800'},
-        bodyFont:{family:'Plus Jakarta Sans',size:8.5},
-        callbacks:{
-          title:function(i){return 'T+'+i[0].label;},
-          label:function(i){return ' '+i.dataset.label;},
-          labelColor:function(i){var c=['#ef4444','#10b981','#f59e0b','#8b5cf6'];return{borderColor:'transparent',backgroundColor:c[i.datasetIndex]||'#6366f1',borderRadius:2};}
-        }
-      }},
-      scales:{
-        x:{display:false},
-        y:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(255,255,255,.02)',drawBorder:false},border:{display:false}}
-      }
+    options:{responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(7,9,15,.97)',borderColor:'rgba(255,255,255,.07)',borderWidth:1,padding:8,cornerRadius:8,titleFont:{family:'Plus Jakarta Sans',size:8,weight:'800'},bodyFont:{family:'Plus Jakarta Sans',size:8.5},callbacks:{title:function(i){return 'T+'+i[0].label;},label:function(i){return ' '+i.dataset.label;},labelColor:function(i){var c=['#ef4444','#10b981','#f59e0b','#8b5cf6'];return{borderColor:'transparent',backgroundColor:c[i.datasetIndex]||'#6366f1',borderRadius:2};}}}},
+      scales:{x:{display:false},y:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(255,255,255,.02)',drawBorder:false},border:{display:false}}}
     }
   });
 }
-
 function drawEmo(){
   var ctx=document.getElementById('emoChart').getContext('2d');
   if(emoC) emoC.destroy();
   var last=emoP[emoP.length-1]||0;
-  var lc=last>0.1?'#10b981':(last<-0.2?'#ef4444':'#5b5fef');
-  var fc=last>0.1?'rgba(16,185,129,.18)':(last<-0.2?'rgba(239,68,68,.13)':'rgba(91,95,239,.16)');
+  var lc=last>0.1?'#10b981':(last<-0.2?'#ef4444':'#6366f1');
+  var fc=last>0.1?'rgba(16,185,129,.18)':(last<-0.2?'rgba(239,68,68,.13)':'rgba(99,102,241,.16)');
   emoC=new Chart(ctx,{type:'line',
-    data:{labels:emoP.map(function(_,i){return i;}),datasets:[{
-      data:emoP,borderColor:lc,borderWidth:1.5,pointRadius:0,fill:true,tension:.4,
-      backgroundColor:function(c){var g=c.chart.ctx.createLinearGradient(0,0,0,58);g.addColorStop(0,fc);g.addColorStop(1,'rgba(0,0,0,0)');return g;}
-    }]},
-    options:{responsive:true,maintainAspectRatio:false,animation:false,
-      plugins:{legend:{display:false}},
-      scales:{x:{display:false},y:{min:-1.2,max:1.2,ticks:{display:false},grid:{color:'rgba(255,255,255,.02)',drawBorder:false},border:{display:false}}}
-    }
+    data:{labels:emoP.map(function(_,i){return i;}),datasets:[{data:emoP,borderColor:lc,borderWidth:1.5,pointRadius:0,fill:true,tension:.4,backgroundColor:function(c){var g=c.chart.ctx.createLinearGradient(0,0,0,58);g.addColorStop(0,fc);g.addColorStop(1,'rgba(0,0,0,0)');return g;}}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{min:-1.2,max:1.2,ticks:{display:false},grid:{color:'rgba(255,255,255,.02)',drawBorder:false},border:{display:false}}}}
   });
 }
-
 function drawLg(){
   var el=document.getElementById('lgChart'); if(!el) return;
   var ctx=el.getContext('2d');
@@ -1000,44 +870,26 @@ function drawLg(){
   var labels=[],vals=[];
   for(var i=0;i<n;i++){labels.push('S'+(i+1));vals.push(Math.round(50+Math.sin(i*.9)*14));}
   lgC=new Chart(ctx,{type:'line',
-    data:{labels:labels,datasets:[{data:vals,borderColor:'var(--ac)',borderWidth:1.5,
-      pointBackgroundColor:'var(--ac)',pointBorderColor:'rgba(7,9,15,.8)',pointBorderWidth:1.5,
-      pointRadius:3,pointHoverRadius:5,
-      fill:true,backgroundColor:function(c){var g=c.chart.ctx.createLinearGradient(0,0,0,44);g.addColorStop(0,'rgba(91,95,239,.18)');g.addColorStop(1,'rgba(91,95,239,0)');return g;},tension:.4
-    }]},
-    options:{responsive:true,maintainAspectRatio:false,animation:{duration:600,easing:'easeInOutQuart'},
-      plugins:{legend:{display:false}},
-      scales:{
-        x:{display:true,ticks:{color:'#374151',font:{family:'Plus Jakarta Sans',size:7,weight:'700'},maxRotation:0},grid:{display:false},border:{display:false}},
-        y:{display:false,min:20,max:100}
-      }
-    }
+    data:{labels:labels,datasets:[{data:vals,borderColor:'var(--ac)',borderWidth:1.5,pointBackgroundColor:'var(--ac)',pointBorderColor:'rgba(7,9,15,.8)',pointBorderWidth:1.5,pointRadius:3,pointHoverRadius:5,fill:true,backgroundColor:function(c){var g=c.chart.ctx.createLinearGradient(0,0,0,44);g.addColorStop(0,'rgba(99,102,241,.18)');g.addColorStop(1,'rgba(99,102,241,0)');return g;},tension:.4}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:600,easing:'easeInOutQuart'},plugins:{legend:{display:false}},scales:{x:{display:true,ticks:{color:'#374151',font:{family:'Plus Jakarta Sans',size:7,weight:'700'},maxRotation:0},grid:{display:false},border:{display:false}},y:{display:false,min:20,max:100}}}
   });
 }
 
 var wvIv=null;
 function startWave(){
   var bars=document.querySelectorAll('#wv div');
-  wvIv=setInterval(function(){
-    bars.forEach(function(b){
-      b.style.height=(3+Math.random()*15)+'px';
-      b.style.background='hsl('+(225+Math.random()*20)+',65%,'+(48+Math.random()*22)+'%)';
-    });
-  },110);
+  wvIv=setInterval(function(){ bars.forEach(function(b){ b.style.height=(3+Math.random()*15)+'px'; b.style.background='hsl('+(230+Math.random()*20)+',65%,'+(48+Math.random()*22)+'%)'; }); },110);
 }
 function stopWave(){
   clearInterval(wvIv);
   document.querySelectorAll('#wv div').forEach(function(b){b.style.height='3px';b.style.background='var(--su)';});
 }
 
-// ── MICROPHONE (CORRIGÉ ET ACCESSIBLE GLOBALEMENT) ────────────────────────────
 var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-
 function makeRecog(){
   if(!SR) return null;
   var r=new SR();
   r.lang='fr-FR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
-
   r.onstart=function(){
     micOn=true;
     document.getElementById('micbtn').className='mic mic-live';
@@ -1050,77 +902,33 @@ function makeRecog(){
     document.getElementById('stop').textContent='● Enregistrement';
     startWave();
     clearInterval(timerIv);
-    timerIv=setInterval(function(){
-      secs++;
-      var m=Math.floor(secs/60).toString().padStart(2,'0');
-      var s=(secs%60).toString().padStart(2,'0');
-      document.getElementById('timer').textContent=m+':'+s;
-      document.getElementById('abar').style.width=(10+Math.random()*55)+'%';
-    },1000);
+    timerIv=setInterval(function(){ secs++; var m=Math.floor(secs/60).toString().padStart(2,'0'); var s=(secs%60).toString().padStart(2,'0'); document.getElementById('timer').textContent=m+':'+s; document.getElementById('abar').style.width=(10+Math.random()*55)+'%'; },1000);
   };
-
   r.onresult=function(e){
     var final='';
-    for(var i=e.resultIndex;i<e.results.length;i++){
-      if(e.results[i].isFinal) final+=e.results[i][0].transcript+' ';
-    }
-    if(final){
-      var el=document.getElementById('tr');
-      el.value+=final;
-      el.scrollTop=el.scrollHeight;
-      onTyping(el.value);
-    }
+    for(var i=e.resultIndex;i<e.results.length;i++){ if(e.results[i].isFinal) final+=e.results[i][0].transcript+' '; }
+    if(final){ var el=document.getElementById('tr'); el.value+=final; el.scrollTop=el.scrollHeight; onTyping(el.value); }
   };
-
-  r.onerror=function(e){
-    if(e.error==='no-speech') return;
-    if(e.error==='not-allowed'||e.error==='permission-denied'){
-      ntf('ntr','Accès micro refusé. Autorisez le microphone.','er');
-      setMicStopped(); return;
-    }
-  };
-
-  r.onend=function(){
-    if(micOn){ try{ recog.start(); } catch(ex){ setMicStopped(); } }
-  };
+  r.onerror=function(e){ if(e.error==='no-speech') return; if(e.error==='not-allowed'||e.error==='permission-denied'){ ntf('ntr','Accès micro refusé.','er'); setMicStopped(); return; } };
+  r.onend=function(){ if(micOn){ try{ recog.start(); } catch(ex){ setMicStopped(); } } };
   return r;
 }
 
-// Initialisation au chargement de la page
-if(SR){
-  recog=makeRecog();
-} else {
-  // Si pas de micro détecté (Safari ancien, page en HTTP, etc.)
+if(SR){ recog=makeRecog(); }
+else {
   setTimeout(function(){
-    var sttw = document.getElementById('sttw');
-    if(sttw) sttw.style.display='block';
-    var mb=document.getElementById('micbtn');
-    if(mb){ mb.disabled=true; mb.style.opacity='.25'; mb.style.cursor='not-allowed'; }
+    var sttw=document.getElementById('sttw'); if(sttw) sttw.style.display='block';
+    var mb=document.getElementById('micbtn'); if(mb){mb.disabled=true;mb.style.opacity='.25';mb.style.cursor='not-allowed';}
   }, 500);
 }
 
-// La fonction appelée par le bouton
 function toggleMic(){
-  if(!SR){
-    ntf('ntr','Microphone non supporté sur ce navigateur (utilisez Chrome).','er');
-    return;
-  }
-  if(micOn){
-    micOn=false;
-    try{ recog.stop(); }catch(e){}
-    setMicStopped();
-  } else {
-    try{ recog.abort(); }catch(e){}
-    recog=makeRecog();
-    try{ recog.start(); }
-    catch(e){ ntf('ntr','Impossible de démarrer le micro : '+e.message,'er'); }
-  }
+  if(!SR){ ntf('ntr','Microphone non supporté (utilisez Chrome).','er'); return; }
+  if(micOn){ micOn=false; try{ recog.stop(); }catch(e){} setMicStopped(); }
+  else { try{ recog.abort(); }catch(e){} recog=makeRecog(); try{ recog.start(); } catch(e){ ntf('ntr','Impossible de démarrer : '+e.message,'er'); } }
 }
-
 function setMicStopped(){
-  micOn=false;
-  clearInterval(timerIv);
-  stopWave();
+  micOn=false; clearInterval(timerIv); stopWave();
   document.getElementById('abar').style.width='0%';
   document.getElementById('micbtn').className='mic mic-done';
   document.getElementById('micsvg').setAttribute('stroke','#10b981');
@@ -1137,45 +945,30 @@ function clearTr(){
   ovO('Effacer toute la transcription ?',function(){
     document.getElementById('tr').value='';
     document.getElementById('wc').textContent='0 mot';
-    emoP=[0];tR=[];tRs=[];tD=[];tA=[];
-    rD={u:0,d:0,a:0,r:0,s:0,st:100};
+    emoP=[0];tR=[];tRs=[];tD=[];tA=[];rD={u:0,d:0,a:0,r:0,s:0,st:100};
     drawEmo();drawRadar();drawTL();
     ntf('ntr','Transcription effacée.','in',2500);
   });
 }
 
-// ── FEED & IA ─────────────────────────────────────────────────────────────────
 function addFeed(type, title, body){
-  var cm={
-    info:  ['rgba(91,95,239,.05)','rgba(91,95,239,.35)','var(--ac2)'],
-    warn:  ['rgba(217,119,6,.05)','rgba(217,119,6,.35)','#fbbf24'],
-    danger:['rgba(220,38,38,.08)','rgba(220,38,38,.5)','#f87171'],
-    ok:    ['rgba(14,164,114,.05)','rgba(14,164,114,.3)','#34d399'],
-    q:     ['rgba(14,165,233,.05)','rgba(14,165,233,.3)','#7dd3fc']
-  };
+  var cm={info:['rgba(99,102,241,.05)','rgba(99,102,241,.35)','var(--ac2)'],warn:['rgba(217,119,6,.05)','rgba(217,119,6,.35)','#fbbf24'],danger:['rgba(220,38,38,.08)','rgba(220,38,38,.5)','#f87171'],ok:['rgba(5,150,105,.05)','rgba(5,150,105,.3)','#34d399'],q:['rgba(14,165,233,.05)','rgba(14,165,233,.3)','#7dd3fc']};
   var c=cm[type]||cm.info;
-
   var ph=document.getElementById('feedph'); if(ph) ph.remove();
   var el=document.createElement('div');
   el.className='fi';
   el.style.cssText='background:'+c[0]+';border-left-color:'+c[1]+';';
-  el.innerHTML='<p style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:'+c[2]+';margin-bottom:2px;">'+title+'</p>'
-    +'<p style="font-size:10px;color:var(--tx3);line-height:1.55;">'+body+'</p>';
+  el.innerHTML='<p style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:'+c[2]+';margin-bottom:2px;">'+title+'</p><p style="font-size:10px;color:var(--tx3);line-height:1.55;">'+body+'</p>';
   var feed=document.getElementById('feed');
   feed.insertBefore(el,feed.firstChild);
   while(feed.children.length>14) feed.removeChild(feed.lastChild);
   document.getElementById('btnask').disabled=false;
-
-  var now=new Date();
-  var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+  var now=new Date(); var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
   var iph=document.getElementById('insph'); if(iph) iph.remove();
   var ins=document.createElement('div');
   ins.className='fi';
   ins.style.cssText='background:'+c[0]+';border-left-color:'+c[1]+';margin-bottom:5px;';
-  ins.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">'
-    +'<p style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:'+c[2]+';">'+title+'</p>'
-    +'<span style="font-size:7px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums;">'+ts+'</span></div>'
-    +'<p style="font-size:10px;color:var(--tx2);line-height:1.6;">'+body+'</p>';
+  ins.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;"><p style="font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;color:'+c[2]+';">'+title+'</p><span style="font-size:7px;font-weight:700;color:var(--tx3);font-variant-numeric:tabular-nums;">'+ts+'</span></div><p style="font-size:10px;color:var(--tx2);line-height:1.6;">'+body+'</p>';
   var wrap=document.getElementById('ins');
   wrap.insertBefore(ins,wrap.firstChild);
   while(wrap.children.length>12) wrap.removeChild(wrap.lastChild);
@@ -1183,8 +976,7 @@ function addFeed(type, title, body){
 
 async function callAI(prompt, max){
   max=max||1200;
-  var res=await fetch('proxy_ia.php',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt:prompt,max_tokens:max,csrf_token:CSRF})});
+  var res=await fetch('proxy_ia.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompt,max_tokens:max,csrf_token:CSRF})});
   if(!res.ok) throw new Error('HTTP '+res.status);
   var d=await res.json();
   if(d.error) throw new Error(d.error.message||'Erreur API');
@@ -1194,10 +986,7 @@ async function callAI(prompt, max){
 async function autoAI(text, sc, risk){
   var th=document.getElementById('think'); if(th) th.style.display='flex';
   var hc=HIST.length?'\nHistorique:\n'+HIST.map(function(h){return h.date+'('+h.duree+'min): '+h.resume;}).join('\n'):'';
-  var p='Tu es psychologue clinicien superviseur. Analyse EN DIRECT ce verbatim partiel.\nPatient: '+PAT+' | Séance n°'+SESN
-    +'\nRisque: '+risk+'% | Urgence:'+Math.round(sc.u)+' | Détresse:'+Math.round(sc.d)+' | Anxiété:'+Math.round(sc.a)+hc
-    +'\nVerbatim (fin): "'+text.slice(-700)+'"'
-    +'\nJSON uniquement sans markdown:\n{"alerte":null,"observation":"1 phrase clinique","theme":"1 thème à explorer","question":"1 question pour le patient","hypothese":null,"code_cim":"code CIM-11 ou null"}';
+  var p='Tu es psychologue clinicien superviseur. Analyse EN DIRECT ce verbatim partiel.\nPatient: '+PAT+' | Séance n°'+SESN+'\nRisque: '+risk+'% | Urgence:'+Math.round(sc.u)+' | Détresse:'+Math.round(sc.d)+' | Anxiété:'+Math.round(sc.a)+hc+'\nVerbatim (fin): "'+text.slice(-700)+'"\nJSON uniquement sans markdown:\n{"alerte":null,"observation":"1 phrase clinique","theme":"1 thème à explorer","question":"1 question pour le patient","hypothese":null,"code_cim":"code CIM-11 ou null"}';
   try{
     var raw=await callAI(p,450);
     var ai; try{ ai=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim()); }catch(e){ return; }
@@ -1208,10 +997,8 @@ async function autoAI(text, sc, risk){
     if(ai.hypothese){
       var b=document.getElementById('diagb');
       var dp=document.getElementById('diagph'); if(dp) dp.remove();
-      var d=document.createElement('div');
-      d.className='dp fu';
-      d.innerHTML=(ai.code_cim?'<span class="dc">'+ai.code_cim+'</span>':'')
-        +'<p style="font-size:10px;color:#93c5fd;line-height:1.55;">'+ai.hypothese+'</p>';
+      var d=document.createElement('div'); d.className='dp fu';
+      d.innerHTML=(ai.code_cim?'<span class="dc">'+ai.code_cim+'</span>':'')+'<p style="font-size:10px;color:#93c5fd;line-height:1.55;">'+ai.hypothese+'</p>';
       b.insertBefore(d,b.firstChild);
       if(b.children.length>5) b.removeChild(b.lastChild);
     }
@@ -1232,16 +1019,14 @@ async function sendQ(){
   var p='Psychologue clinicien superviseur. Réponds en 4-5 phrases cliniques précises.\nPatient: '+PAT+' | Séance n°'+SESN+'\nVerbatim: "'+text.slice(-500)+'"\nQUESTION: "'+q+'"';
   try{
     var raw=await callAI(p,500);
-    resp.innerHTML='<div class="card2 fu" style="margin-top:5px;">'
-      +'<p class="lbl" style="color:var(--ac2);margin-bottom:4px;">Réponse IA</p>'
-      +'<p style="font-size:10px;color:var(--tx2);line-height:1.6;">'+raw+'</p></div>';
+    resp.innerHTML='<div class="card2 fu" style="margin-top:5px;"><p class="lbl" style="color:var(--ac2);margin-bottom:4px;">Réponse IA</p><p style="font-size:10px;color:var(--tx2);line-height:1.6;">'+raw+'</p></div>';
     addFeed('info','Q: '+q.slice(0,40)+'…',raw.slice(0,110)+'…');
-  }catch(e){
-    resp.innerHTML='<p style="font-size:10px;color:#f87171;margin-top:4px;">Erreur — Réessayez.</p>';
-  }
+  }catch(e){ resp.innerHTML='<p style="font-size:10px;color:#f87171;margin-top:4px;">Erreur — Réessayez.</p>'; }
 }
 
-// ── RAPPORT ───────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// GÉNÉRATION DU RAPPORT — CR médical réel + résumé simple
+// ══════════════════════════════════════════════════════════════════════════════
 async function genReport(){
   var text=document.getElementById('tr').value.trim();
   if(text.length<15){ ntf('ntr','Volume insuffisant pour la synthèse.','wa'); return; }
@@ -1251,50 +1036,64 @@ async function genReport(){
 
   document.getElementById('btngen').disabled=true;
   var body=document.getElementById('rpbody');
-  body.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;opacity:.5;">'
-    +'<div class="dots" style="margin-bottom:10px;"><span></span><span></span><span></span></div>'
-    +'<p class="lbl" style="color:var(--ac2);text-align:center;">Rédaction du compte-rendu clinique en cours…</p></div>';
+  body.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:55px 20px;opacity:.45;">'
+    +'<div class="dots" style="margin-bottom:12px;"><span></span><span></span><span></span></div>'
+    +'<p class="lbl" style="color:var(--ac2);text-align:center;line-height:2;">Rédaction du compte-rendu clinique…</p></div>';
 
   var notes=document.getElementById('notes').value;
-  var hc=HIST.length ? HIST.map(function(h){ return 'Séance '+h.date+' ('+h.duree+'min) : '+h.resume; }).join('\n') : 'Première séance';
+  var hc=HIST.length ? HIST.map(function(h){ return 'Séance '+h.date+' ('+h.duree+'min) : '+h.resume; }).join('\n') : 'Première consultation';
+  var dureeMin = Math.floor(secs/60) || '—';
 
-  var prompt = 'Tu es psychologue clinicien senior. Rédige un compte-rendu clinique confidentiel, au format JSON strict.'
-    +'\nPatient : '+PAT+' | Séance n°'+SESN+' | Date : '+DATED+' | Dr. '+DR
-    +'\nRisque lexical : '+risk+'/100 | Urgence : '+Math.round(sc.u)+' | Détresse : '+Math.round(sc.d)+' | Anxiété : '+Math.round(sc.a)
-    +'\nNotes du praticien : '+(notes||'Aucune')
-    +'\nHistorique :\n'+hc
-    +'\nVerbatim complet :\n"""'+text+'"""'
-    +'\n\nJSON uniquement :'
-    +'\n{'
-    +'\n  "synthese_courte": "2-3 phrases",'
-    +'\n  "presentation_clinique": "5-7 phrases",'
-    +'\n  "contenu_seance": "5-8 phrases",'
-    +'\n  "etat_affectif": "4-6 phrases",'
-    +'\n  "processus_therapeutique": "4-6 phrases",'
-    +'\n  "elements_vigilance": "3-5 phrases",'
-    +'\n  "axes_travail": "4-6 phrases",'
-    +'\n  "hypotheses_diag": ["Diag avec CIM-11"],'
-    +'\n  "objectifs_prochaine": ["Obj 1", "Obj 2"],'
-    +'\n  "plan_therapeutique": "Plan narratif",'
-    +'\n  "recommandations": "Recommandations",'
-    +'\n  "lettre_confrere": "Courrier",'
-    +'\n  "niveau_risque": "faible|modéré|élevé|critique"'
-    +'\n}';
+  // Prompt recentré : VRAI compte-rendu médical, pas une analyse
+  var prompt = 'Tu es psychologue clinicien senior. Rédige un COMPTE-RENDU DE CONSULTATION PSYCHOLOGIQUE complet, au format JSON strict.'
+    +'\n\nINFORMATIONS ADMINISTRATIVES :'
+    +'\n- Patient : '+PAT
+    +'\n- Numéro de séance : '+SESN
+    +'\n- Date : '+DATED
+    +'\n- Praticien : Dr. '+DR
+    +'\n- Durée : '+dureeMin+' minutes'
+    +'\n\nHISTORIQUE :\n'+hc
+    +'\n\nNOTES DU PRATICIEN :\n'+(notes||'Aucune note praticien.')
+    +'\n\nVERBATIM COMPLET DE LA SÉANCE :\n"""'+text+'"""'
+    +'\n\nINSTRUCTIONS :'
+    +'\n- Rédige comme un vrai compte-rendu médical, en prose clinique professionnelle'
+    +'\n- "resume_seance" : résumé clair et concis en 3-4 phrases simples (ce qui s\'est passé pendant la séance, les thèmes abordés, l\'état du patient)'
+    +'\n- "motif_consultation" : motif de la séance en 1-2 phrases'
+    +'\n- "contenu_seance" : description narrative de la séance (5-7 phrases)'
+    +'\n- "observations_cliniques" : observations comportementales et affectives (3-5 phrases)'
+    +'\n- "elements_importants" : éléments cliniques significatifs, signaux à surveiller (3-5 phrases)'
+    +'\n- "plan_suite" : plan de suivi et prochaine séance (3-4 phrases)'
+    +'\n- "hypotheses_diag" : liste de diagnostics différentiels avec codes CIM-11'
+    +'\n- "objectifs_prochaine" : 2-3 objectifs concrets pour la prochaine séance'
+    +'\n- "niveau_risque" : "faible" ou "modéré" ou "élevé" ou "critique"'
+    +'\n\nJSON UNIQUEMENT (pas de markdown) :'
+    +'{"resume_seance":"","motif_consultation":"","contenu_seance":"","observations_cliniques":"","elements_importants":"","plan_suite":"","hypotheses_diag":[],"objectifs_prochaine":[],"niveau_risque":"faible"}';
 
   try{
-    var raw=await callAI(prompt, 3500);
+    var raw=await callAI(prompt, 3000);
     var ai;
     try{ ai=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim()); }
-    catch(e){ throw new Error('Format JSON invalide.'); }
+    catch(e){ throw new Error('Format JSON invalide : '+e.message); }
 
     var snap = {
       risk:risk,
       tRisk:tR.slice(), tResil:tRs.slice(), tDetresse:tD.slice(), tAnxiete:tA.slice(),
       emoPoints:emoP.slice(),
-      radarImg:   (function(){try{return document.getElementById('radarChart').toDataURL('image/png');}catch(e){return null;}})(),
-      timelineImg:(function(){try{return document.getElementById('tlChart').toDataURL('image/png');}catch(e){return null;}})(),
+      radarImg:(function(){try{return document.getElementById('radarChart').toDataURL('image/png');}catch(e){return null;}})(),
+      timelineImg:(function(){try{return document.getElementById('tlChart').toDataURL('image/png');}catch(e){return null;}})()
     };
-    lastRpt={ai:ai, sc:sc, risk:risk, snap:snap, text:text, date:new Date().toLocaleDateString('fr-FR')};
+
+    // Stocker le résumé texte pur pour l'archivage
+    lastRpt = {ai:ai, sc:sc, risk:risk, snap:snap, text:text, date:new Date().toLocaleDateString('fr-FR'), duree:dureeMin};
+    // resume_str = version texte pour la DB
+    lastRpt.resume_str = [
+      'Séance n°'+SESN+' du '+DATED+' — Dr. '+DR,
+      ai.resume_seance||'',
+      ai.motif_consultation||'',
+      'Risque : '+(ai.niveau_risque||'faible'),
+      ai.plan_suite||''
+    ].filter(Boolean).join('\n');
+
     document.getElementById('btnpdf').disabled=false;
     renderRpt(lastRpt);
 
@@ -1303,15 +1102,13 @@ async function genReport(){
       var diagph=document.getElementById('diagph'); if(diagph) diagph.remove();
       diagb.innerHTML='';
       ai.hypotheses_diag.forEach(function(h){
-        var d=document.createElement('div');
-        d.className='dp fu';
+        var d=document.createElement('div'); d.className='dp fu';
         var m=h.match(/([A-Z][A-Z0-9]+\.?[0-9]*)/);
-        d.innerHTML=(m?'<span class="dc">'+m[1]+'</span>':'')
-          +'<p style="font-size:10px;color:#93c5fd;line-height:1.55;">'+h+'</p>';
+        d.innerHTML=(m?'<span class="dc">'+m[1]+'</span>':'')+'<p style="font-size:10px;color:#93c5fd;line-height:1.55;">'+h+'</p>';
         diagb.appendChild(d);
       });
     }
-    addFeed('ok','Bilan généré','Niveau de risque : '+ai.niveau_risque);
+    addFeed('ok','Compte-rendu généré','Niveau de risque : '+(ai.niveau_risque||'—'));
 
   }catch(err){
     body.innerHTML='<div style="padding:40px 20px;text-align:center;">'
@@ -1322,136 +1119,128 @@ async function genReport(){
   }
 }
 
-var rptTlC=null, rptEmoC=null;
-
+// ══════════════════════════════════════════════════════════════════════════════
+// RENDU DU RAPPORT
+// ══════════════════════════════════════════════════════════════════════════════
+var rptTlC=null;
 function renderRpt(lr){
   if(!lr) return;
   var ai=lr.ai, sn=lr.snap||{};
 
   var risqColors={
-    faible:  {bg:'#f0faf5', border:'#a3d9b8', dot:'#1a7a4a', lbl:'#145a38', text:'#1e4a2e'},
-    modéré:  {bg:'#fffbf0', border:'#f5d58a', dot:'#b97a00', lbl:'#7c4a00', text:'#4a3000'},
-    élevé:   {bg:'#fff5f5', border:'#f5a3a3', dot:'#c0392b', lbl:'#7c1a1a', text:'#4a0f0f'},
-    critique:{bg:'#fff0f0', border:'#ff7070', dot:'#ff2040', lbl:'#900000', text:'#500000'}
+    faible:  {bg:'#f0faf5',border:'#a3d9b8',dot:'#059669',lbl:'#065f46',text:'#1e4a2e'},
+    modéré:  {bg:'#fffbf0',border:'#fcd34d',dot:'#d97706',lbl:'#92400e',text:'#4a3000'},
+    élevé:   {bg:'#fff5f5',border:'#fca5a5',dot:'#dc2626',lbl:'#991b1b',text:'#4a0f0f'},
+    critique:{bg:'#fff0f0',border:'#ff6b6b',dot:'#ff1a1a',lbl:'#7f1d1d',text:'#450a0a'}
   };
-  var niv=ai.niveau_risque||'faible';
+  var niv=(ai.niveau_risque||'faible').toLowerCase();
   var rc=risqColors[niv]||risqColors['faible'];
 
   var html='<div class="rpt-wrap">';
 
+  // EN-TÊTE
   html+='<div class="rpt-header">'
     +'<div>'
       +'<p class="rpt-header-title">Compte-Rendu de Consultation Psychologique</p>'
       +'<p class="rpt-header-name">'+escH(PAT)+'</p>'
       +'<p class="rpt-header-meta">'
-        +'Séance n°'+SESN+' &nbsp;·&nbsp; '+escH(DATED)+'&nbsp;·&nbsp; Dr. '+escH(DR)
-        +'<br>Document confidentiel'
+        +'Séance n°'+SESN+'&nbsp;&nbsp;·&nbsp;&nbsp;'+escH(DATED)+'&nbsp;&nbsp;·&nbsp;&nbsp;Dr. '+escH(DR)
+        +(lr.duree&&lr.duree!=='—' ? '&nbsp;&nbsp;·&nbsp;&nbsp;Durée : '+lr.duree+' min' : '')
       +'</p>'
     +'</div>'
-    +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">'
-      +'<span class="rpt-header-badge">'+niv.toUpperCase()+'</span>'
-      +'<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:7.5px;font-weight:700;color:rgba(255,255,255,.4);">PsySpace Pro</span>'
+    +'<div class="rpt-header-right">'
+      +'<span class="rpt-niv-badge">'+niv.charAt(0).toUpperCase()+niv.slice(1)+'</span>'
+      +'<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:8px;font-weight:600;color:rgba(255,255,255,.4);">PsySpace Pro</span>'
     +'</div>'
   +'</div>';
 
   html+='<div class="rpt-body">';
 
-  html+='<div class="rpt-risk-band" style="background:'+rc.bg+';border-color:'+rc.border+';">'
-    +'<div class="rpt-risk-dot" style="background:'+rc.dot+';"></div>'
-    +'<div>'
-      +'<p class="rpt-risk-label" style="color:'+rc.lbl+';">Niveau de risque · '+niv.charAt(0).toUpperCase()+niv.slice(1)+'</p>'
-      +'<p class="rpt-risk-text" style="color:'+rc.text+';">'+escH(ai.synthese_courte||'—')+'</p>'
-    +'</div>'
+  // INFOS RAPIDES
+  html+='<div class="rpt-info-row">'
+    +'<div class="rpt-info-cell"><div class="rpt-info-cell-label">Séance</div><div class="rpt-info-cell-val">N°'+SESN+'</div></div>'
+    +'<div class="rpt-info-cell"><div class="rpt-info-cell-label">Date</div><div class="rpt-info-cell-val">'+escH(DATED)+'</div></div>'
+    +'<div class="rpt-info-cell"><div class="rpt-info-cell-label">Durée</div><div class="rpt-info-cell-val">'+(lr.duree&&lr.duree!=='—'?lr.duree+' min':'—')+'</div></div>'
+    +'<div class="rpt-info-cell" style="border-left:3px solid '+rc.dot+';"><div class="rpt-info-cell-label">Risque</div><div class="rpt-info-cell-val" style="color:'+rc.lbl+';">'+niv.charAt(0).toUpperCase()+niv.slice(1)+'</div></div>'
   +'</div>';
 
-  if(ai.presentation_clinique) html+=rptSec('Présentation clinique',ai.presentation_clinique);
-  if(ai.contenu_seance) html+=rptSec('Contenu de la séance',ai.contenu_seance);
-
-  if(ai.etat_affectif||ai.processus_therapeutique){
-    html+='<div class="rpt-section"><div class="rpt-section-title">État affectif & Processus thérapeutique</div>'
-      +'<div class="rpt-grid2">';
-    if(ai.etat_affectif) html+='<div class="rpt-col-block"><p class="rpt-col-label">État affectif & humeur</p><p class="rpt-prose">'+escH(ai.etat_affectif)+'</p></div>';
-    if(ai.processus_therapeutique) html+='<div class="rpt-col-block"><p class="rpt-col-label">Alliance & processus</p><p class="rpt-prose">'+escH(ai.processus_therapeutique)+'</p></div>';
-    html+='</div></div>';
-  }
-
-  if(sn.tRisk && sn.tRisk.length > 1){
-    html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title">Dynamique émotionnelle · séance</div>'
-      +'<div style="height:70px;position:relative;border-radius:6px;overflow:hidden;background:var(--rp-bg2);border:1px solid var(--rp-border);padding:6px 8px;">'
-        +'<canvas id="rpt-tl"></canvas>'
-      +'</div>'
-      +'<div style="display:flex;justify-content:space-between;margin-top:4px;">';
-    [['#ef4444','Risque'],['#10b981','Résilience'],['#f59e0b','Détresse'],['#8b5cf6','Anxiété']].forEach(function(p){
-      html+='<div style="display:flex;align-items:center;gap:3px;">'
-        +'<span style="width:10px;height:2px;background:'+p[0]+';display:inline-block;border-radius:1px;"></span>'
-        +'<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:7px;font-weight:700;color:var(--rp-tx3);text-transform:uppercase;">'+p[1]+'</span>'
-      +'</div>';
-    });
-    html+='</div></div>';
-  }
-
-  if(ai.elements_vigilance){
-    html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title" style="color:var(--rp-er);">Éléments de vigilance clinique</div>'
-      +'<div class="rpt-vigilance">'
-        +'<p class="rpt-vigilance-label">Points d\'attention</p>'
-        +'<p class="rpt-vigilance-text">'+escH(ai.elements_vigilance)+'</p>'
-      +'</div>'
+  // RÉSUMÉ SIMPLE
+  if(ai.resume_seance){
+    html+='<div class="rpt-resume-box">'
+      +'<div class="rpt-resume-label">Résumé de la séance</div>'
+      +'<p class="rpt-resume-text">'+escH(ai.resume_seance)+'</p>'
     +'</div>';
   }
 
-  if(ai.axes_travail){
+  // BANDE RISQUE
+  html+='<div class="rpt-risk-band" style="background:'+rc.bg+';border-color:'+rc.border+';">'
+    +'<div class="rpt-risk-dot" style="background:'+rc.dot+';"></div>'
+    +'<div>'
+      +'<p class="rpt-risk-label" style="color:'+rc.lbl+';">Niveau de risque — '+niv.charAt(0).toUpperCase()+niv.slice(1)+'</p>'
+      +(ai.motif_consultation?'<p style="font-family:\'Lora\',serif;font-size:12px;color:'+rc.text+';line-height:1.72;">'+escH(ai.motif_consultation)+'</p>':'')
+    +'</div>'
+  +'</div>';
+
+  if(ai.contenu_seance) html+=rptSec('Contenu de la séance',ai.contenu_seance);
+
+  if(ai.observations_cliniques) html+=rptSec('Observations cliniques',ai.observations_cliniques);
+
+  if(ai.elements_importants){
     html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title">Axes de travail thérapeutique</div>'
-      +'<div class="rpt-highlight"><p class="rpt-prose">'+escH(ai.axes_travail)+'</p></div>'
+      +'<div class="rpt-section-title" style="color:#b91c1c;">Éléments importants & points de vigilance</div>'
+      +'<div class="rpt-vigilance">'
+        +'<p class="rpt-vigilance-label">À surveiller</p>'
+        +'<p class="rpt-vigilance-text">'+escH(ai.elements_importants)+'</p>'
+      +'</div>'
     +'</div>';
   }
 
   if(Array.isArray(ai.hypotheses_diag)&&ai.hypotheses_diag.length){
-    html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title">Hypothèses diagnostiques · Classification CIM-11</div>';
+    html+='<div class="rpt-section"><div class="rpt-section-title">Hypothèses diagnostiques · CIM-11</div>';
     ai.hypotheses_diag.forEach(function(h){
       var m=h.match(/([A-Z][A-Z0-9]+\.?[0-9A-Z]*)/);
-      html+='<div class="rpt-diag-row">'
-        +(m?'<span class="rpt-diag-code">'+m[1]+'</span>':'')
-        +'<p class="rpt-diag-text">'+escH(h)+'</p>'
-      +'</div>';
+      html+='<div class="rpt-diag-row">'+(m?'<span class="rpt-diag-code">'+m[1]+'</span>':'')+'<p class="rpt-diag-text">'+escH(h)+'</p></div>';
     });
     html+='</div>';
   }
 
   if(Array.isArray(ai.objectifs_prochaine)&&ai.objectifs_prochaine.length){
-    html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title">Objectifs · Prochaine séance</div>';
+    html+='<div class="rpt-section"><div class="rpt-section-title">Objectifs · Prochaine séance</div>';
     ai.objectifs_prochaine.forEach(function(o,i){
-      html+='<div class="rpt-obj-row"><span class="rpt-obj-num">'+(i+1)+'.</span><p class="rpt-obj-text">'+escH(o)+'</p></div>';
+      html+='<div class="rpt-obj-row"><span class="rpt-obj-num">'+(i+1)+'</span><p style="font-family:\'Lora\',serif;font-size:12px;color:var(--rp-tx2);line-height:1.65;">'+escH(o)+'</p></div>';
     });
     html+='</div>';
   }
 
-  if(ai.plan_therapeutique){
-    html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title">Plan thérapeutique · Prochaines séances</div>'
-      +'<div class="rpt-plan"><p class="rpt-plan-text">'+escH(ai.plan_therapeutique)+'</p></div>'
+  if(ai.plan_suite){
+    html+='<div class="rpt-section"><div class="rpt-section-title">Plan de suivi</div>'
+      +'<div class="rpt-plan"><p class="rpt-plan-text">'+escH(ai.plan_suite)+'</p></div>'
     +'</div>';
   }
 
-  if(ai.recommandations && ai.recommandations!=='null' && ai.recommandations!=='') html+=rptSec('Recommandations & orientations',ai.recommandations);
-  if(ai.lettre_confrere && ai.lettre_confrere!=='null' && ai.lettre_confrere!==''){
+  // TIMELINE dans le rapport
+  if(sn.tRisk && sn.tRisk.length > 1){
     html+='<div class="rpt-section">'
-      +'<div class="rpt-section-title">Courrier de liaison</div>'
-      +'<div class="rpt-letter"><p class="rpt-letter-pre">'+escH(ai.lettre_confrere)+'</p></div>'
-    +'</div>';
+      +'<div class="rpt-section-title">Évolution émotionnelle au cours de la séance</div>'
+      +'<div style="height:68px;position:relative;border-radius:6px;overflow:hidden;background:var(--rp-bg2);border:1px solid var(--rp-border);padding:5px 8px;">'
+        +'<canvas id="rpt-tl"></canvas>'
+      +'</div>'
+      +'<div style="display:flex;gap:14px;margin-top:5px;">';
+    [['#ef4444','Risque'],['#10b981','Résilience'],['#f59e0b','Détresse'],['#8b5cf6','Anxiété']].forEach(function(p){
+      html+='<div style="display:flex;align-items:center;gap:4px;">'
+        +'<span style="width:12px;height:2px;background:'+p[0]+';display:inline-block;border-radius:1px;"></span>'
+        +'<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:8px;font-weight:700;color:var(--rp-tx3);text-transform:uppercase;letter-spacing:.06em;">'+p[1]+'</span>'
+      +'</div>';
+    });
+    html+='</div></div>';
   }
 
   html+='</div>';
 
   html+='<div class="rpt-footer">'
-    +'<p class="rpt-footer-txt">PsySpace Pro · Document confidentiel · Usage clinique exclusif</p>'
+    +'<p class="rpt-footer-txt">PsySpace Pro · Confidentiel · Usage clinique exclusif</p>'
     +'<p class="rpt-footer-txt">Généré le '+new Date().toLocaleDateString('fr-FR')+'</p>'
   +'</div>';
-
   html+='</div>';
 
   document.getElementById('rpbody').innerHTML=html;
@@ -1463,30 +1252,23 @@ function rptSec(title, content){
 }
 function escH(s){
   if(!s) return '';
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;')
-    .replace(/\n/g,'<br>');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\n/g,'<br>');
 }
-
 function renderRptCharts(sn){
   if(!sn) return;
   var tlEl=document.getElementById('rpt-tl');
   if(tlEl && sn.tRisk && sn.tRisk.length>1){
     if(rptTlC) rptTlC.destroy();
     var ctx=tlEl.getContext('2d');
-    function grd(c,c1,c2){var g=c.chart.ctx.createLinearGradient(0,0,0,70);g.addColorStop(0,c1);g.addColorStop(1,c2);return g;}
+    function grd(c,c1,c2){var g=c.chart.ctx.createLinearGradient(0,0,0,68);g.addColorStop(0,c1);g.addColorStop(1,c2);return g;}
     rptTlC=new Chart(ctx,{type:'line',
       data:{labels:sn.tRisk.map(function(_,i){return i;}),datasets:[
-        {label:'Risque',     data:sn.tRisk,    borderColor:'#ef4444',borderWidth:1.5,pointRadius:0,fill:true,tension:.4,backgroundColor:function(c){return grd(c,'rgba(239,68,68,.12)','rgba(239,68,68,0)');}},
-        {label:'Résilience', data:sn.tResil,   borderColor:'#10b981',borderWidth:1.5,pointRadius:0,fill:false,tension:.4},
-        {label:'Détresse',   data:sn.tDetresse,borderColor:'#f59e0b',borderWidth:1.5,pointRadius:0,fill:false,tension:.4,borderDash:[3,3]},
-        {label:'Anxiété',    data:sn.tAnxiete, borderColor:'#8b5cf6',borderWidth:1.5,pointRadius:0,fill:false,tension:.4,borderDash:[2,4]}
+        {label:'Risque',data:sn.tRisk,borderColor:'#ef4444',borderWidth:1.5,pointRadius:0,fill:true,tension:.4,backgroundColor:function(c){return grd(c,'rgba(239,68,68,.12)','rgba(239,68,68,0)');}},
+        {label:'Résilience',data:sn.tResil,borderColor:'#10b981',borderWidth:1.5,pointRadius:0,fill:false,tension:.4},
+        {label:'Détresse',data:sn.tDetresse,borderColor:'#f59e0b',borderWidth:1.5,pointRadius:0,fill:false,tension:.4,borderDash:[3,3]},
+        {label:'Anxiété',data:sn.tAnxiete,borderColor:'#8b5cf6',borderWidth:1.5,pointRadius:0,fill:false,tension:.4,borderDash:[2,4]}
       ]},
-      options:{responsive:true,maintainAspectRatio:false,animation:{duration:500},
-        plugins:{legend:{display:false}},
-        scales:{x:{display:false},y:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(0,0,0,.04)',drawBorder:false},border:{display:false}}}
-      }
+      options:{responsive:true,maintainAspectRatio:false,animation:{duration:500},plugins:{legend:{display:false}},scales:{x:{display:false},y:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(0,0,0,.04)',drawBorder:false},border:{display:false}}}}
     });
   }
 }
@@ -1505,136 +1287,148 @@ function exportPDF(){
   var W=210, M=18, y=M;
 
   function ln(txt, o){
-    o=o||{};
-    var sz=o.sz||9.5, b=o.b||false, it=o.it||false;
-    var c=o.c||[26,40,90], ind=o.in_||0, lh=o.lh||5.8;
-    var font=b?'bold':(it?'italic':'normal');
-    doc.setFontSize(sz);
-    doc.setFont(b?'helvetica':'times', font);
-    doc.setTextColor(c[0],c[1],c[2]);
-    doc.splitTextToSize(String(txt),W-M*2-ind).forEach(function(l){
-      if(y>272){doc.addPage();y=M;}
-      doc.text(l,M+ind,y); y+=lh;
-    });
-    y+=1.2;
+    o=o||{}; var sz=o.sz||9.5, b=o.b||false, it=o.it||false, c=o.c||[26,40,90], ind=o.in_||0, lh=o.lh||5.8;
+    doc.setFontSize(sz); doc.setFont(b?'helvetica':'times', b?'bold':(it?'italic':'normal')); doc.setTextColor(c[0],c[1],c[2]);
+    doc.splitTextToSize(String(txt),W-M*2-ind).forEach(function(l){ if(y>272){doc.addPage();y=M;} doc.text(l,M+ind,y); y+=lh; }); y+=1.2;
   }
   function hr(col){ col=col||[190,198,215]; doc.setDrawColor(col[0],col[1],col[2]);doc.setLineWidth(.1);doc.line(M,y,W-M,y);y+=3.5; }
   function sec(title, txt, titleCol){
-    titleCol=titleCol||[44,58,140];
-    doc.setDrawColor(titleCol[0],titleCol[1],titleCol[2]);
+    titleCol=titleCol||[30,64,175];
     doc.setFillColor(titleCol[0],titleCol[1],titleCol[2]);
-    doc.rect(M,y-1.5,2,8,'F');
-    ln(title.toUpperCase(),{sz:7,b:true,c:titleCol,in_:4,lh:4.5});
-    if(txt) ln(txt,{sz:9.5,c:[55,75,110],in_:4,lh:5.5,it:false});
-    y+=1.5;
-  }
-
-  doc.setFillColor(44,58,140); doc.rect(0,0,W,32,'F');
-  doc.setFillColor(255,255,255); doc.setOpacity(.12); doc.rect(W-40,0,40,32,'F');
-  doc.setOpacity(1);
-  doc.setFontSize(14);doc.setFont('times','bold');doc.setTextColor(255,255,255);
-  doc.text('Compte-Rendu de Consultation',M,12);
-  doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(180,195,230);
-  doc.text('PsySpace Pro · Document confidentiel · Usage clinique exclusif',M,18);
-  doc.setFontSize(8.5);doc.setTextColor(200,210,240);
-  doc.text('Patient : '+PAT+'   ·   Séance n°'+SESN+'   ·   '+lastRpt.date+'   ·   Dr. '+DR,M,24);
-  doc.setFontSize(8);doc.setFont('helvetica','bold');
-  var niv=(lastRpt.ai.niveau_risque||'').toUpperCase();
-  var nc=[44,58,140];
-  if(niv==='FAIBLE') nc=[20,90,56]; else if(niv==='MODÉRÉ') nc=[120,74,0]; else if(niv==='ÉLEVÉ'||niv==='CRITIQUE') nc=[160,30,30];
-  doc.setTextColor(nc[0],nc[1],nc[2]);
-  doc.setFillColor(255,255,255);
-  doc.roundedRect(W-M-26,6,24,10,2,2,'F');
-  doc.text(niv,W-M-14,12.5,{align:'center'});
-  y=40;
-
-  var ai=lastRpt.ai;
-
-  if(ai.synthese_courte){
-    doc.setFillColor(235,240,252);doc.roundedRect(M,y-1.5,W-M*2,14,2,2,'F');
-    ln(ai.synthese_courte,{sz:10.5,c:[26,40,90],lh:5.5,it:true,in_:2});
+    doc.rect(M,y-1.5,2.5,8,'F');
+    ln(title.toUpperCase(),{sz:7,b:true,c:titleCol,in_:5,lh:4.5});
+    if(txt) ln(txt,{sz:9.5,c:[51,65,85],in_:5,lh:5.5});
     y+=2;
   }
 
-  hr();
-  sec('Présentation clinique',ai.presentation_clinique,[44,58,140]);
-  sec('Contenu de la séance',ai.contenu_seance,[44,58,140]);
-  sec('État affectif & humeur',ai.etat_affectif,[140,90,20]);
-  sec('Alliance & processus thérapeutique',ai.processus_therapeutique,[80,44,140]);
+  // HEADER
+  doc.setFillColor(30,64,175); doc.rect(0,0,W,34,'F');
+  doc.setFontSize(15);doc.setFont('times','bold');doc.setTextColor(255,255,255);
+  doc.text('Compte-Rendu de Consultation Psychologique',M,11);
+  doc.setFontSize(9);doc.setFont('helvetica','normal');doc.setTextColor(180,200,240);
+  doc.text('PsySpace Pro · Document confidentiel · Usage clinique exclusif',M,18);
+  doc.setFontSize(9);doc.setTextColor(200,215,245);
+  doc.text('Patient : '+PAT+'   ·   Séance n°'+SESN+'   ·   '+lastRpt.date+'   ·   Dr. '+DR,M,25);
 
-  if(ai.elements_vigilance){
-    doc.setFillColor(255,240,240);doc.roundedRect(M,y-1,W-M*2,4,'F');
-    sec('Éléments de vigilance clinique',ai.elements_vigilance,[160,30,30]);
+  // Niveau de risque badge
+  var niv=(lastRpt.ai.niveau_risque||'faible').toUpperCase();
+  var nc=[30,64,175];
+  if(niv==='MODÉRÉ') nc=[120,74,0]; else if(niv==='ÉLEVÉ'||niv==='CRITIQUE') nc=[160,30,30]; else if(niv==='FAIBLE') nc=[5,120,80];
+  doc.setFillColor(255,255,255);doc.roundedRect(W-M-30,7,28,12,2,2,'F');
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(nc[0],nc[1],nc[2]);
+  doc.text(niv,W-M-16,14.5,{align:'center'});
+  y=42;
+
+  var ai=lastRpt.ai;
+
+  // Résumé simple
+  if(ai.resume_seance){
+    doc.setFillColor(240,245,255);doc.roundedRect(M,y-2,W-M*2,22,3,3,'F');
+    doc.setDrawColor(180,200,240);doc.setLineWidth(.4);doc.roundedRect(M,y-2,W-M*2,22,3,3,'S');
+    doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(30,64,175);
+    doc.text('RÉSUMÉ DE LA SÉANCE',M+4,y+3); y+=6;
+    ln(ai.resume_seance,{sz:10.5,c:[30,50,100],lh:5.5,it:true,in_:3}); y+=4;
   }
 
-  sec('Axes de travail thérapeutique',ai.axes_travail,[20,100,60]);
+  // Infos en ligne
+  doc.setFillColor(248,250,252);doc.rect(M,y-2,W-M*2,10,'F');
+  doc.setFontSize(8.5);doc.setFont('helvetica','bold');doc.setTextColor(70,90,130);
+  doc.text('Date : '+DATED,M+3,y+4);
+  doc.text('Durée : '+(lastRpt.duree&&lastRpt.duree!=='—'?lastRpt.duree+' min':'—'),M+45,y+4);
+  doc.text('Séance : N°'+SESN,M+80,y+4);
+  doc.text('Praticien : Dr. '+DR,M+110,y+4);
+  y+=14; hr();
+
+  sec('Motif & contenu de la séance', (ai.motif_consultation?ai.motif_consultation+'\n\n':'')+(ai.contenu_seance||''), [30,64,175]);
+  sec('Observations cliniques',ai.observations_cliniques,[80,40,140]);
+
+  if(ai.elements_importants){
+    doc.setFillColor(255,245,245);doc.roundedRect(M,y-2,W-M*2,4,'F');
+    sec('Éléments importants & vigilance',ai.elements_importants,[160,30,30]);
+  }
 
   if(Array.isArray(ai.hypotheses_diag)&&ai.hypotheses_diag.length){
-    sec('Hypothèses diagnostiques · CIM-11',null,[44,58,140]);
-    ai.hypotheses_diag.forEach(function(h){ ln('• '+h,{in_:6,sz:9.5,c:[30,60,110]}); });
-    y+=1;
+    sec('Hypothèses diagnostiques · CIM-11',null,[30,64,175]);
+    ai.hypotheses_diag.forEach(function(h){ ln('• '+h,{in_:6,sz:9.5,c:[30,60,110]}); }); y+=1;
   }
   if(Array.isArray(ai.objectifs_prochaine)&&ai.objectifs_prochaine.length){
-    sec('Objectifs · Prochaine séance',null,[20,100,60]);
-    ai.objectifs_prochaine.forEach(function(o,i){ ln((i+1)+'. '+o,{in_:6,sz:9.5,c:[20,80,55]}); });
-    y+=1;
+    sec('Objectifs · Prochaine séance',null,[5,120,80]);
+    ai.objectifs_prochaine.forEach(function(o,i){ ln((i+1)+'. '+o,{in_:6,sz:9.5,c:[5,80,60]}); }); y+=1;
   }
-  if(ai.plan_therapeutique) sec('Plan thérapeutique',ai.plan_therapeutique,[44,58,140]);
-  if(ai.recommandations&&ai.recommandations!=='null') sec('Recommandations',ai.recommandations,[80,44,140]);
-  if(ai.lettre_confrere&&ai.lettre_confrere!=='null'){ hr(); sec('Courrier de liaison',ai.lettre_confrere,[44,58,140]); }
+  if(ai.plan_suite) sec('Plan de suivi', ai.plan_suite,[30,64,175]);
 
   var sn=lastRpt.snap;
   if(sn&&sn.radarImg){
     if(y>220){doc.addPage();y=M;}
-    hr();
-    doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(44,58,140);
-    doc.text('PROFIL PSYCHO-ÉMOTIONNEL',M,y);y+=4;
+    hr(); doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(30,64,175);
+    doc.text('PROFIL PSYCHO-ÉMOTIONNEL (radar)',M,y);y+=4;
     try{ doc.addImage(sn.radarImg,'PNG',M,y,55,55); }catch(e){}
     y+=60;
   }
   if(sn&&sn.timelineImg){
     if(y>220){doc.addPage();y=M;}
-    doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(44,58,140);
-    doc.text('TIMELINE ÉMOTIONNELLE · ÉVOLUTION SÉANCE',M,y);y+=4;
+    doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(30,64,175);
+    doc.text('ÉVOLUTION ÉMOTIONNELLE · SÉANCE',M,y);y+=4;
     try{ doc.addImage(sn.timelineImg,'PNG',M,y,W-M*2,22); y+=26; }catch(e){}
   }
+  var notesVal=document.getElementById('notes').value;
+  if(notesVal){ hr(); sec('Notes du praticien',notesVal,[90,90,90]); }
 
-  var notes=document.getElementById('notes').value;
-  if(notes){ hr(); sec('Notes cliniciennes',notes,[80,80,80]); }
   hr();
-  doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(140,150,170);
+  doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(140,155,175);
   doc.text('PsySpace Pro 2026 · Confidentiel · Usage clinique exclusif',M,289);
   doc.text('Généré le '+lastRpt.date,W-M,289,{align:'right'});
 
   doc.save('CR_'+PAT.replace(/\s+/g,'_')+'_S'+SESN+'_'+lastRpt.date.replace(/\//g,'-')+'.pdf');
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ARCHIVAGE — CORRIGÉ
+// ══════════════════════════════════════════════════════════════════════════════
 async function finalize(){
   var tr=document.getElementById('tr').value.trim();
   if(!tr){ ntf('narch','Aucune transcription à archiver.','wa'); return; }
+
   ovO('Archiver la séance n°'+SESN+' de <strong>'+escH(PAT)+'</strong> ?', async function(){
     ntf('narch','Archivage en cours…','in',0);
-    var fd=new FormData();
-    fd.append('csrf_token',CSRF);
-    fd.append('transcript',tr);
-    fd.append('resume',lastRpt?JSON.stringify(lastRpt.ai):'');
-    fd.append('duree',Math.floor(secs/60));
-    fd.append('emotions',JSON.stringify(emoP));
+
+    // Résumé texte pur (pas JSON) pour la DB
+    var resumeTexte = lastRpt ? lastRpt.resume_str : ('Séance n°'+SESN+' du '+DATED+' — Transcription sans compte-rendu.');
+
+    var fd = new FormData();
+    fd.append('csrf_token', CSRF);
+    fd.append('transcript', tr);
+    fd.append('resume', resumeTexte);                             // ← texte pur, pas JSON
+    fd.append('duree', String(Math.floor(secs/60)));
+    fd.append('emotions', JSON.stringify(emoP));
+
     try{
-      var res=await fetch('save_consultation.php',{method:'POST',body:fd});
+      var res = await fetch('save_consultation.php', {method:'POST', body:fd});
+
       if(!res.ok) throw new Error('HTTP '+res.status);
-      var d=await res.text();
-      if(d.trim()==='success'){
-        ntf('narch','Séance archivée avec succès.','ok',0);
-        setTimeout(function(){ window.location.href='dashboard.php'; },1600);
+
+      var d = await res.text();
+      d = d.trim();
+
+      if(d === 'success'){
+        ntf('narch','Séance archivée avec succès !','ok',0);
+        setTimeout(function(){ window.location.href='dashboard.php'; }, 1800);
+      } else if(d === 'already_saved'){
+        ntf('narch','Cette séance a déjà été archivée.','wa');
+      } else if(d === 'csrf_invalid'){
+        ntf('narch','Erreur de sécurité CSRF. Rechargez la page.','er');
+      } else if(d === 'no_appointment_id'){
+        ntf('narch','Erreur : ID de rendez-vous manquant. Rechargez la page.','er');
       } else {
-        ntf('narch','Erreur serveur : '+d.trim(),'er');
+        ntf('narch','Erreur serveur : '+d,'er');
       }
-    }catch(e){ ntf('narch','Erreur réseau.','er'); }
+    }catch(e){
+      ntf('narch','Erreur réseau : '+e.message,'er');
+    }
   });
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
+// INIT
 drawEmo();
 drawRadar();
 drawTL();
