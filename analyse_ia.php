@@ -20,13 +20,12 @@ if (isset($_SESSION['user_ip'], $_SESSION['user_agent'])) {
     }
 }
 
-// --- 3. CSP NONCE ---
-$nonce = base64_encode(random_bytes(16));
+// --- 3. PARE-FEU CSP (CORRIGÉ POUR AUTORISER LE MICRO ET LES BOUTONS) ---
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
-// unsafe-eval retiré — Chart.js 4.x n'en a pas besoin
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+// On a ajouté 'unsafe-inline' et 'unsafe-eval' pour permettre à Chart.js, jsPDF et tes boutons 'onclick' de fonctionner
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
 
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
@@ -90,9 +89,9 @@ foreach (array_slice($prev_consults, 0, 3) as $pc) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Séance · <?= htmlspecialchars($patient_selected, ENT_QUOTES, 'UTF-8') ?> | PsySpace</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Lora:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" nonce="<?= $nonce ?>"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" nonce="<?= $nonce ?>"></script>
-<style nonce="<?= $nonce ?>">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
 /* ─── RESET & VARIABLES ─────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -740,7 +739,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <!-- ═══════════════════════════════════════════════════════════════════════════
      JAVASCRIPT
      ═══════════════════════════════════════════════════════════════════════ -->
-<script nonce="<?= $nonce ?>">
+<script>
 // ── PHP → JS ──────────────────────────────────────────────────────────────────
 var CSRF  = <?= json_encode($csrf) ?>;
 var PAT   = <?= json_encode($patient_selected) ?>;
@@ -775,7 +774,7 @@ function ntf(id, msg, type, ms) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // LEXIQUE CLINIQUE — détection silencieuse (n'alimente QUE le prompt IA)
-// ══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════���═════════════
 var LEX = {
   u:   { p:40,  w:["suicide","suicider","suicidaire","me suicider","se suicider","mourir","veux mourir","envie de mourir","penser à mourir","mort","me tuer","se tuer","en finir","mettre fin","mettre fin à ma vie","plus envie de vivre","aucun espoir","plus d'espoir","sans espoir","tout est fini","adieu","je disparais","disparaître définitivement","ne plus exister","personne ne me manquera","tout le monde sera mieux sans moi","marre de vivre","j'ai décidé","j'ai un plan","j'ai tout prévu","pendre","me pendre","overdose","avaler des médicaments","sauter","me jeter","défenestrer","couteau","me poignarder","noyade","me noyer","tentative de suicide","j'ai déjà essayé","TS","passage à l'acte","lettre d'adieu","j'ai réglé mes affaires","plus aucun sens","la vie n'a plus de sens","à quoi ça sert","pourquoi continuer","je suis un fardeau","mieux sans moi","condamné","condamnée","impossible de guérir"] },
   am:  { p:28,  w:["automutilation","je me blesse","je me fais du mal","me couper","je me coupe","scarification","cicatrices","cicatrices cachées","brûlures","je me brûle","frapper un mur","me frapper","je cache mes bras","manches longues","lames","je garde des lames","pour ressentir quelque chose","pour ne plus ressentir","ça soulage","seul moyen que j'ai trouvé"] },
@@ -1686,26 +1685,4 @@ async function finalize(){
     fd.append('transcript',tr);
     fd.append('resume',lastRpt?JSON.stringify(lastRpt.ai):'');
     fd.append('duree',Math.floor(secs/60));
-    fd.append('emotions',JSON.stringify(emoP));
-    try{
-      var res=await fetch('save_consultation.php',{method:'POST',body:fd});
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      var d=await res.text();
-      if(d.trim()==='success'){
-        ntf('narch','Séance archivée avec succès.','ok',0);
-        setTimeout(function(){ window.location.href='dashboard.php'; },1600);
-      } else {
-        ntf('narch','Erreur serveur : '+d.trim(),'er');
-      }
-    }catch(e){ ntf('narch','Erreur réseau.','er'); }
-  });
-}
-
-// ── INIT ──────────────────────────────────────────────────────────────────────
-drawEmo();
-drawRadar();
-drawTL();
-drawLg();
-</script>
-</body>
-</html>
+    fd.append
