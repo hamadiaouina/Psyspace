@@ -20,12 +20,12 @@ if (isset($_SESSION['user_ip'], $_SESSION['user_agent'])) {
     }
 }
 
-// --- 3. PARE-FEU CSP (CORRIGÉ POUR AUTORISER LE MICRO ET LES BOUTONS) ---
+// --- 3. PARE-FEU CSP (CORRIGÉ POUR LES CDNs ET SOURCEMAPS) ---
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
-// On a ajouté 'unsafe-inline' et 'unsafe-eval' pour permettre à Chart.js, jsPDF et tes boutons 'onclick' de fonctionner
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+// Ajout de https://cdn.jsdelivr.net et cdnjs dans connect-src pour éviter les erreurs de .map
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
 
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
@@ -221,7 +221,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 @keyframes pls{0%,100%{opacity:1}50%{opacity:.2}}
 @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 
-/* ─── DIAG PILL ───────────────────────────────────────────────────────────── */
+/* ─── DIAG PILL ──���────────────────────────────────────────────────────────── */
 .dp{display:flex;align-items:flex-start;gap:7px;padding:8px 10px;
   border-radius:10px;border:1px solid rgba(14,165,233,.13);background:rgba(14,165,233,.04);margin-bottom:5px;}
 .dc{font-size:8px;font-weight:900;color:#38bdf8;background:rgba(14,165,233,.1);
@@ -460,7 +460,7 @@ html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(
 <!-- ═══ GRID 3 COLONNES ═══ -->
 <div class="g3">
 
-<!-- ══════════════════════════════════════════════════════════ COL GAUCHE -->
+<!-- ════════════════════════��═════════════════════════════════ COL GAUCHE -->
 <div class="col" style="border-right:1px solid var(--b);">
 
   <!-- IA INSIGHTS LIVE -->
@@ -773,8 +773,8 @@ function ntf(id, msg, type, ms) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// LEXIQUE CLINIQUE — détection silencieuse (n'alimente QUE le prompt IA)
-// ════════════════════════════════════════════════════════════════���═════════════
+// LEXIQUE CLINIQUE
+// ══════════════════════════════════════════════════════════════════════════════
 var LEX = {
   u:   { p:40,  w:["suicide","suicider","suicidaire","me suicider","se suicider","mourir","veux mourir","envie de mourir","penser à mourir","mort","me tuer","se tuer","en finir","mettre fin","mettre fin à ma vie","plus envie de vivre","aucun espoir","plus d'espoir","sans espoir","tout est fini","adieu","je disparais","disparaître définitivement","ne plus exister","personne ne me manquera","tout le monde sera mieux sans moi","marre de vivre","j'ai décidé","j'ai un plan","j'ai tout prévu","pendre","me pendre","overdose","avaler des médicaments","sauter","me jeter","défenestrer","couteau","me poignarder","noyade","me noyer","tentative de suicide","j'ai déjà essayé","TS","passage à l'acte","lettre d'adieu","j'ai réglé mes affaires","plus aucun sens","la vie n'a plus de sens","à quoi ça sert","pourquoi continuer","je suis un fardeau","mieux sans moi","condamné","condamnée","impossible de guérir"] },
   am:  { p:28,  w:["automutilation","je me blesse","je me fais du mal","me couper","je me coupe","scarification","cicatrices","cicatrices cachées","brûlures","je me brûle","frapper un mur","me frapper","je cache mes bras","manches longues","lames","je garde des lames","pour ressentir quelque chose","pour ne plus ressentir","ça soulage","seul moyen que j'ai trouvé"] },
@@ -796,7 +796,6 @@ var NEG = ["ne","n'","pas","plus","jamais","aucun","aucune","sans","ni","non","n
 var INT = ["très","vraiment","tellement","trop","extrêmement","profondément","absolument","terriblement","infiniment","énormément","complètement","totalement","intensément","fortement"];
 var ATT = ["un peu","légèrement","parfois","peut-être","vaguement","de temps en temps","par moments","rarement","pas toujours","il m'arrive","ça m'arrive","de temps à autre"];
 
-// ── analyze() — silencieux, alimente uniquement le prompt IA ─────────────────
 function analyze(text) {
   var t = text.toLowerCase();
   var tok = t.split(/\s+/);
@@ -843,17 +842,10 @@ function analyze(text) {
   var prot = Math.abs(sc.po)*0.9 + Math.abs(sc.so)*0.6;
   var risk = Math.round(Math.max(0, Math.min(100, danger - prot)));
 
-  return {
-    sc:sc, risk:risk,
-    alerte_suicidaire:    sc.u > 30,
-    alerte_automutilation:sc.am > 20,
-    alerte_psychose:      sc.ps > 25,
-    alerte_manie:         sc.ma > 20,
-    alerte_dissociation:  sc.di > 15
-  };
+  return { sc:sc, risk:risk };
 }
 
-// ── INPUT → analyse + mise à jour visuels (radar + timeline uniquement) ───────
+// ── MISE À JOUR VISUELS ───────────���───────────────────────────────────────────
 function onTyping(val) {
   var words = val.trim().split(/\s+/).filter(function(w){ return w.length>0; });
   var wc = words.length;
@@ -862,11 +854,9 @@ function onTyping(val) {
   var res = analyze(val);
   var sc = res.sc, risk = res.risk;
 
-  // Met à jour les visuels (radar, timeline) — SANS afficher de scores numériques
   updRadar(sc, risk);
   updTimeline(risk, sc);
 
-  // Met à jour la valence émotionnelle
   var neg=sc.u+sc.d+sc.a, pos=Math.abs(sc.po)+Math.abs(sc.so), sum=neg+pos;
   emoP.push(sum>0 ? Math.max(-1,Math.min(1,(pos-neg)/sum)) : 0);
   if(emoP.length>60) emoP.shift();
@@ -879,7 +869,6 @@ function onTyping(val) {
   }
 }
 
-// ── RADAR ─────────────────────────────────────────────────────────────────────
 function updRadar(sc, risk){
   rD = {
     u:  Math.min(100,Math.round(Math.max(0,sc.u))),
@@ -935,7 +924,6 @@ function drawRadar(){
   });
 }
 
-// ── TIMELINE ──────────────────────────────────────────────────────────────────
 function updTimeline(risk, sc){
   tR.push(risk);
   tRs.push(Math.round(Math.abs(sc.po)+Math.abs(sc.so)));
@@ -985,7 +973,6 @@ function drawTL(){
   });
 }
 
-// ── VALENCE CHART ─────────────────────────────────────────────────────────────
 function drawEmo(){
   var ctx=document.getElementById('emoChart').getContext('2d');
   if(emoC) emoC.destroy();
@@ -1004,7 +991,6 @@ function drawEmo(){
   });
 }
 
-// ── LONGITUDINAL ──────────────────────────────────────────────────────────────
 function drawLg(){
   var el=document.getElementById('lgChart'); if(!el) return;
   var ctx=el.getContext('2d');
@@ -1028,7 +1014,6 @@ function drawLg(){
   });
 }
 
-// ── WAVEFORM ──────────────────────────────────────────────────────────────────
 var wvIv=null;
 function startWave(){
   var bars=document.querySelectorAll('#wv div');
@@ -1044,83 +1029,92 @@ function stopWave(){
   document.querySelectorAll('#wv div').forEach(function(b){b.style.height='3px';b.style.background='var(--su)';});
 }
 
-// ── MICRO ─────────────────────────────────────────────────────────────────────
-(function(){
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){
-    document.getElementById('sttw').style.display='block';
-    var mb=document.getElementById('micbtn');
-    mb.disabled=true; mb.style.opacity='.25'; mb.style.cursor='not-allowed';
-    return;
-  }
+// ── MICROPHONE (CORRIGÉ ET ACCESSIBLE GLOBALEMENT) ────────────────────────────
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-  function makeRecog(){
-    var r=new SR();
-    r.lang='fr-FR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
+function makeRecog(){
+  if(!SR) return null;
+  var r=new SR();
+  r.lang='fr-FR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
 
-    r.onstart=function(){
-      micOn=true;
-      document.getElementById('micbtn').className='mic mic-live';
-      document.getElementById('micsvg').setAttribute('stroke','#fff');
-      document.getElementById('miclbl').textContent='● CAPTURE ACTIVE — Cliquez pour arrêter';
-      document.getElementById('miclbl').style.color='#ef4444';
-      document.getElementById('recdot').style.background='#dc2626';
-      document.getElementById('recdot').classList.add('pulse');
-      document.getElementById('stop').className='chip ce';
-      document.getElementById('stop').textContent='● Enregistrement';
-      startWave();
-      clearInterval(timerIv);
-      timerIv=setInterval(function(){
-        secs++;
-        var m=Math.floor(secs/60).toString().padStart(2,'0');
-        var s=(secs%60).toString().padStart(2,'0');
-        document.getElementById('timer').textContent=m+':'+s;
-        document.getElementById('abar').style.width=(10+Math.random()*55)+'%';
-      },1000);
-    };
+  r.onstart=function(){
+    micOn=true;
+    document.getElementById('micbtn').className='mic mic-live';
+    document.getElementById('micsvg').setAttribute('stroke','#fff');
+    document.getElementById('miclbl').textContent='● CAPTURE ACTIVE — Cliquez pour arrêter';
+    document.getElementById('miclbl').style.color='#ef4444';
+    document.getElementById('recdot').style.background='#dc2626';
+    document.getElementById('recdot').classList.add('pulse');
+    document.getElementById('stop').className='chip ce';
+    document.getElementById('stop').textContent='● Enregistrement';
+    startWave();
+    clearInterval(timerIv);
+    timerIv=setInterval(function(){
+      secs++;
+      var m=Math.floor(secs/60).toString().padStart(2,'0');
+      var s=(secs%60).toString().padStart(2,'0');
+      document.getElementById('timer').textContent=m+':'+s;
+      document.getElementById('abar').style.width=(10+Math.random()*55)+'%';
+    },1000);
+  };
 
-    r.onresult=function(e){
-      var final='';
-      for(var i=e.resultIndex;i<e.results.length;i++){
-        if(e.results[i].isFinal) final+=e.results[i][0].transcript+' ';
-      }
-      if(final){
-        var el=document.getElementById('tr');
-        el.value+=final;
-        el.scrollTop=el.scrollHeight;
-        onTyping(el.value);
-      }
-    };
-
-    r.onerror=function(e){
-      if(e.error==='no-speech') return;
-      if(e.error==='not-allowed'||e.error==='permission-denied'){
-        ntf('ntr','Accès micro refusé. Autorisez le microphone.','er');
-        setMicStopped(); return;
-      }
-    };
-
-    r.onend=function(){
-      if(micOn){ try{ recog.start(); } catch(ex){ setMicStopped(); } }
-    };
-    return r;
-  }
-
-  recog=makeRecog();
-
-  window.toggleMic=function(){
-    if(micOn){
-      micOn=false;
-      try{ recog.stop(); }catch(e){}
-      setMicStopped();
-    } else {
-      try{ recog.abort(); }catch(e){}
-      recog=makeRecog();
-      try{ recog.start(); }
-      catch(e){ ntf('ntr','Impossible de démarrer le micro : '+e.message,'er'); }
+  r.onresult=function(e){
+    var final='';
+    for(var i=e.resultIndex;i<e.results.length;i++){
+      if(e.results[i].isFinal) final+=e.results[i][0].transcript+' ';
+    }
+    if(final){
+      var el=document.getElementById('tr');
+      el.value+=final;
+      el.scrollTop=el.scrollHeight;
+      onTyping(el.value);
     }
   };
-})();
+
+  r.onerror=function(e){
+    if(e.error==='no-speech') return;
+    if(e.error==='not-allowed'||e.error==='permission-denied'){
+      ntf('ntr','Accès micro refusé. Autorisez le microphone.','er');
+      setMicStopped(); return;
+    }
+  };
+
+  r.onend=function(){
+    if(micOn){ try{ recog.start(); } catch(ex){ setMicStopped(); } }
+  };
+  return r;
+}
+
+// Initialisation au chargement de la page
+if(SR){
+  recog=makeRecog();
+} else {
+  // Si pas de micro détecté (Safari ancien, page en HTTP, etc.)
+  setTimeout(function(){
+    var sttw = document.getElementById('sttw');
+    if(sttw) sttw.style.display='block';
+    var mb=document.getElementById('micbtn');
+    if(mb){ mb.disabled=true; mb.style.opacity='.25'; mb.style.cursor='not-allowed'; }
+  }, 500);
+}
+
+// La fonction appelée par le bouton
+function toggleMic(){
+  if(!SR){
+    ntf('ntr','Microphone non supporté sur ce navigateur (utilisez Chrome).','er');
+    return;
+  }
+  if(micOn){
+    micOn=false;
+    try{ recog.stop(); }catch(e){}
+    setMicStopped();
+  } else {
+    try{ recog.abort(); }catch(e){}
+    recog=makeRecog();
+    try{ recog.start(); }
+    catch(e){ ntf('ntr','Impossible de démarrer le micro : '+e.message,'er'); }
+  }
+}
 
 function setMicStopped(){
   micOn=false;
@@ -1149,7 +1143,7 @@ function clearTr(){
   });
 }
 
-// ── FEED ──────────────────────────────────────────────────────────────────────
+// ── FEED & IA ─────────────────────────────────────────────────────────────────
 function addFeed(type, title, body){
   var cm={
     info:  ['rgba(91,95,239,.05)','rgba(91,95,239,.35)','var(--ac2)'],
@@ -1160,7 +1154,6 @@ function addFeed(type, title, body){
   };
   var c=cm[type]||cm.info;
 
-  // Col gauche feed
   var ph=document.getElementById('feedph'); if(ph) ph.remove();
   var el=document.createElement('div');
   el.className='fi';
@@ -1172,7 +1165,6 @@ function addFeed(type, title, body){
   while(feed.children.length>14) feed.removeChild(feed.lastChild);
   document.getElementById('btnask').disabled=false;
 
-  // Col droite insights
   var now=new Date();
   var ts=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
   var iph=document.getElementById('insph'); if(iph) iph.remove();
@@ -1188,7 +1180,6 @@ function addFeed(type, title, body){
   while(wrap.children.length>12) wrap.removeChild(wrap.lastChild);
 }
 
-// ── API ───────────────────────────────────────────────────────────────────────
 async function callAI(prompt, max){
   max=max||1200;
   var res=await fetch('proxy_ia.php',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1199,12 +1190,11 @@ async function callAI(prompt, max){
   return d.choices&&d.choices[0]&&d.choices[0].message ? d.choices[0].message.content : '';
 }
 
-// ── AUTO-IA (silencieuse) ─────────────────────────────────────────────────────
 async function autoAI(text, sc, risk){
   var th=document.getElementById('think'); if(th) th.style.display='flex';
   var hc=HIST.length?'\nHistorique:\n'+HIST.map(function(h){return h.date+'('+h.duree+'min): '+h.resume;}).join('\n'):'';
   var p='Tu es psychologue clinicien superviseur. Analyse EN DIRECT ce verbatim partiel.\nPatient: '+PAT+' | Séance n°'+SESN
-    +'\n[Données contextuelles silencieuses — ne pas afficher à l\'utilisateur] Risque calculé: '+risk+'% | Urgence:'+Math.round(sc.u)+' | Détresse:'+Math.round(sc.d)+' | Anxiété:'+Math.round(sc.a)+hc
+    +'\nRisque: '+risk+'% | Urgence:'+Math.round(sc.u)+' | Détresse:'+Math.round(sc.d)+' | Anxiété:'+Math.round(sc.a)+hc
     +'\nVerbatim (fin): "'+text.slice(-700)+'"'
     +'\nJSON uniquement sans markdown:\n{"alerte":null,"observation":"1 phrase clinique","theme":"1 thème à explorer","question":"1 question pour le patient","hypothese":null,"code_cim":"code CIM-11 ou null"}';
   try{
@@ -1228,7 +1218,6 @@ async function autoAI(text, sc, risk){
   finally{ if(th) th.style.display='none'; }
 }
 
-// ── QUESTION LIBRE ────────────────────────────────────────────────────────────
 function toggleAsk(){
   var box=document.getElementById('askbox');
   box.style.display = box.style.display==='none'?'block':'none';
@@ -1251,9 +1240,7 @@ async function sendQ(){
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// RAPPORT CLINIQUE — style dossier médical imprimable
-// ══════════════════════════════════════════════════════════════════════════════
+// ── RAPPORT ───────────────────────────────────────────────────────────────────
 async function genReport(){
   var text=document.getElementById('tr').value.trim();
   if(text.length<15){ ntf('ntr','Volume insuffisant pour la synthèse.','wa'); return; }
@@ -1270,27 +1257,26 @@ async function genReport(){
   var notes=document.getElementById('notes').value;
   var hc=HIST.length ? HIST.map(function(h){ return 'Séance '+h.date+' ('+h.duree+'min) : '+h.resume; }).join('\n') : 'Première séance';
 
-  var prompt = 'Tu es psychologue clinicien senior (20 ans d\'expérience), expert TCC/ACT/EMDR/thérapies humanistes.'
-    +'\nRédige un compte-rendu clinique confidentiel, professionnel, rédigé comme un vrai dossier médical.'
+  var prompt = 'Tu es psychologue clinicien senior. Rédige un compte-rendu clinique confidentiel, au format JSON strict.'
     +'\nPatient : '+PAT+' | Séance n°'+SESN+' | Date : '+DATED+' | Dr. '+DR
-    +'\n[Données silencieuses pour contexte — ne pas mentionner les chiffres bruts dans le texte] Risque lexical : '+risk+'/100 | Urgence : '+Math.round(sc.u)+' | Détresse : '+Math.round(sc.d)+' | Anxiété : '+Math.round(sc.a)+' | Résilience : '+Math.round(Math.abs(sc.po)+Math.abs(sc.so))
+    +'\nRisque lexical : '+risk+'/100 | Urgence : '+Math.round(sc.u)+' | Détresse : '+Math.round(sc.d)+' | Anxiété : '+Math.round(sc.a)
     +'\nNotes du praticien : '+(notes||'Aucune')
     +'\nHistorique :\n'+hc
     +'\nVerbatim complet :\n"""'+text+'"""'
-    +'\n\nJSON uniquement, sans markdown, sans balises, sans commentaires :'
+    +'\n\nJSON uniquement :'
     +'\n{'
-    +'\n  "synthese_courte": "2-3 phrases résumant la séance de manière clinique et nuancée",'
-    +'\n  "presentation_clinique": "5-7 phrases sur la présentation du patient aujourd\'hui : tenue, contact, psychomotricité, expression, attitude",'
-    +'\n  "contenu_seance": "5-8 phrases sur les thèmes abordés, les matériaux cliniques apportés par le patient, les associations, les récits",'
-    +'\n  "etat_affectif": "4-6 phrases sur l\'humeur observée, les affects exprimés, la régulation émotionnelle, les fluctuations au cours de la séance",'
-    +'\n  "processus_therapeutique": "4-6 phrases sur la qualité de l\'alliance, la dynamique transférentielle, l\'engagement thérapeutique du patient, la résistance éventuelle",'
-    +'\n  "elements_vigilance": "3-5 phrases sur les points de vigilance clinique, les risques identifiés ou absents, ce qui doit être surveillé",'
-    +'\n  "axes_travail": "4-6 phrases sur les axes cliniques prioritaires issus de cette séance",'
-    +'\n  "hypotheses_diag": ["Hypothèse 1 avec code CIM-11", "Hypothèse 2 avec code CIM-11"],'
-    +'\n  "objectifs_prochaine": ["Objectif concret 1", "Objectif concret 2", "Objectif concret 3"],'
-    +'\n  "plan_therapeutique": "Plan narratif pour les 3 à 5 prochaines séances : approche, techniques, jalons",'
-    +'\n  "recommandations": "Orientations éventuelles : psychiatre, médecin, bilan, hospitalisation ou null",'
-    +'\n  "lettre_confrere": "Courrier de liaison formel à un confrère si pertinent, ou null",'
+    +'\n  "synthese_courte": "2-3 phrases",'
+    +'\n  "presentation_clinique": "5-7 phrases",'
+    +'\n  "contenu_seance": "5-8 phrases",'
+    +'\n  "etat_affectif": "4-6 phrases",'
+    +'\n  "processus_therapeutique": "4-6 phrases",'
+    +'\n  "elements_vigilance": "3-5 phrases",'
+    +'\n  "axes_travail": "4-6 phrases",'
+    +'\n  "hypotheses_diag": ["Diag avec CIM-11"],'
+    +'\n  "objectifs_prochaine": ["Obj 1", "Obj 2"],'
+    +'\n  "plan_therapeutique": "Plan narratif",'
+    +'\n  "recommandations": "Recommandations",'
+    +'\n  "lettre_confrere": "Courrier",'
     +'\n  "niveau_risque": "faible|modéré|élevé|critique"'
     +'\n}';
 
@@ -1298,7 +1284,7 @@ async function genReport(){
     var raw=await callAI(prompt, 3500);
     var ai;
     try{ ai=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim()); }
-    catch(e){ throw new Error('Le modèle n\'a pas renvoyé de JSON valide. Réessayez.'); }
+    catch(e){ throw new Error('Format JSON invalide.'); }
 
     var snap = {
       risk:risk,
@@ -1311,7 +1297,6 @@ async function genReport(){
     document.getElementById('btnpdf').disabled=false;
     renderRpt(lastRpt);
 
-    // Mise à jour hypothèses col gauche
     if(Array.isArray(ai.hypotheses_diag)){
       var diagb=document.getElementById('diagb');
       var diagph=document.getElementById('diagph'); if(diagph) diagph.remove();
@@ -1336,7 +1321,6 @@ async function genReport(){
   }
 }
 
-// ── renderRpt — style dossier médical ─────────────────────────────────────────
 var rptTlC=null, rptEmoC=null;
 
 function renderRpt(lr){
@@ -1352,67 +1336,45 @@ function renderRpt(lr){
   var niv=ai.niveau_risque||'faible';
   var rc=risqColors[niv]||risqColors['faible'];
 
-  var hasTimeline = sn.tRisk && sn.tRisk.length > 1;
-  var hasEmo      = sn.emoPoints && sn.emoPoints.length > 1;
-
   var html='<div class="rpt-wrap">';
 
-  // ── EN-TÊTE ──────────────────────────────────────────────────────────────
   html+='<div class="rpt-header">'
     +'<div>'
       +'<p class="rpt-header-title">Compte-Rendu de Consultation Psychologique</p>'
       +'<p class="rpt-header-name">'+escH(PAT)+'</p>'
       +'<p class="rpt-header-meta">'
         +'Séance n°'+SESN+' &nbsp;·&nbsp; '+escH(DATED)+'&nbsp;·&nbsp; Dr. '+escH(DR)
-        +'<br>Durée estimée : '+Math.floor(lr.snap&&lr.snap.dur||secs/60||0)+' min'
-        +' &nbsp;·&nbsp; Document confidentiel'
+        +'<br>Document confidentiel'
       +'</p>'
     +'</div>'
     +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">'
       +'<span class="rpt-header-badge">'+niv.toUpperCase()+'</span>'
-      +'<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:7.5px;font-weight:700;color:rgba(255,255,255,.4);">PsySpace Pro · IA assistée</span>'
+      +'<span style="font-family:\'Plus Jakarta Sans\',sans-serif;font-size:7.5px;font-weight:700;color:rgba(255,255,255,.4);">PsySpace Pro</span>'
     +'</div>'
   +'</div>';
 
-  // ── CORPS ────────────────────────────────────────────────────────────────
   html+='<div class="rpt-body">';
 
-  // NIVEAU DE RISQUE
   html+='<div class="rpt-risk-band" style="background:'+rc.bg+';border-color:'+rc.border+';">'
     +'<div class="rpt-risk-dot" style="background:'+rc.dot+';"></div>'
     +'<div>'
-      +'<p class="rpt-risk-label" style="color:'+rc.lbl+';">Niveau de risque évalué · '+niv.charAt(0).toUpperCase()+niv.slice(1)+'</p>'
+      +'<p class="rpt-risk-label" style="color:'+rc.lbl+';">Niveau de risque · '+niv.charAt(0).toUpperCase()+niv.slice(1)+'</p>'
       +'<p class="rpt-risk-text" style="color:'+rc.text+';">'+escH(ai.synthese_courte||'—')+'</p>'
     +'</div>'
   +'</div>';
 
-  // PRÉSENTATION CLINIQUE
-  if(ai.presentation_clinique){
-    html+=rptSec('Présentation clinique',ai.presentation_clinique);
-  }
+  if(ai.presentation_clinique) html+=rptSec('Présentation clinique',ai.presentation_clinique);
+  if(ai.contenu_seance) html+=rptSec('Contenu de la séance',ai.contenu_seance);
 
-  // CONTENU DE LA SÉANCE
-  if(ai.contenu_seance){
-    html+=rptSec('Contenu de la séance',ai.contenu_seance);
-  }
-
-  // ÉTAT AFFECTIF + PROCESSUS (grille 2 colonnes)
   if(ai.etat_affectif||ai.processus_therapeutique){
     html+='<div class="rpt-section"><div class="rpt-section-title">État affectif & Processus thérapeutique</div>'
       +'<div class="rpt-grid2">';
-    if(ai.etat_affectif){
-      html+='<div class="rpt-col-block"><p class="rpt-col-label">État affectif & humeur</p>'
-        +'<p class="rpt-prose">'+escH(ai.etat_affectif)+'</p></div>';
-    }
-    if(ai.processus_therapeutique){
-      html+='<div class="rpt-col-block"><p class="rpt-col-label">Alliance & processus</p>'
-        +'<p class="rpt-prose">'+escH(ai.processus_therapeutique)+'</p></div>';
-    }
+    if(ai.etat_affectif) html+='<div class="rpt-col-block"><p class="rpt-col-label">État affectif & humeur</p><p class="rpt-prose">'+escH(ai.etat_affectif)+'</p></div>';
+    if(ai.processus_therapeutique) html+='<div class="rpt-col-block"><p class="rpt-col-label">Alliance & processus</p><p class="rpt-prose">'+escH(ai.processus_therapeutique)+'</p></div>';
     html+='</div></div>';
   }
 
-  // TIMELINE ÉMOTIONNELLE (intégrée dans le rapport)
-  if(hasTimeline){
+  if(sn.tRisk && sn.tRisk.length > 1){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title">Dynamique émotionnelle · séance</div>'
       +'<div style="height:70px;position:relative;border-radius:6px;overflow:hidden;background:var(--rp-bg2);border:1px solid var(--rp-border);padding:6px 8px;">'
@@ -1428,7 +1390,6 @@ function renderRpt(lr){
     html+='</div></div>';
   }
 
-  // VIGILANCE
   if(ai.elements_vigilance){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title" style="color:var(--rp-er);">Éléments de vigilance clinique</div>'
@@ -1439,7 +1400,6 @@ function renderRpt(lr){
     +'</div>';
   }
 
-  // AXES DE TRAVAIL
   if(ai.axes_travail){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title">Axes de travail thérapeutique</div>'
@@ -1447,7 +1407,6 @@ function renderRpt(lr){
     +'</div>';
   }
 
-  // HYPOTHÈSES DIAGNOSTIQUES
   if(Array.isArray(ai.hypotheses_diag)&&ai.hypotheses_diag.length){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title">Hypothèses diagnostiques · Classification CIM-11</div>';
@@ -1461,20 +1420,15 @@ function renderRpt(lr){
     html+='</div>';
   }
 
-  // OBJECTIFS PROCHAINE SÉANCE
   if(Array.isArray(ai.objectifs_prochaine)&&ai.objectifs_prochaine.length){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title">Objectifs · Prochaine séance</div>';
     ai.objectifs_prochaine.forEach(function(o,i){
-      html+='<div class="rpt-obj-row">'
-        +'<span class="rpt-obj-num">'+(i+1)+'.</span>'
-        +'<p class="rpt-obj-text">'+escH(o)+'</p>'
-      +'</div>';
+      html+='<div class="rpt-obj-row"><span class="rpt-obj-num">'+(i+1)+'.</span><p class="rpt-obj-text">'+escH(o)+'</p></div>';
     });
     html+='</div>';
   }
 
-  // PLAN THÉRAPEUTIQUE
   if(ai.plan_therapeutique){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title">Plan thérapeutique · Prochaines séances</div>'
@@ -1482,12 +1436,7 @@ function renderRpt(lr){
     +'</div>';
   }
 
-  // RECOMMANDATIONS
-  if(ai.recommandations && ai.recommandations!=='null' && ai.recommandations!==''){
-    html+=rptSec('Recommandations & orientations',ai.recommandations);
-  }
-
-  // COURRIER CONFRÈRE
+  if(ai.recommandations && ai.recommandations!=='null' && ai.recommandations!=='') html+=rptSec('Recommandations & orientations',ai.recommandations);
   if(ai.lettre_confrere && ai.lettre_confrere!=='null' && ai.lettre_confrere!==''){
     html+='<div class="rpt-section">'
       +'<div class="rpt-section-title">Courrier de liaison</div>'
@@ -1495,25 +1444,21 @@ function renderRpt(lr){
     +'</div>';
   }
 
-  html+='</div>'; // /rpt-body
+  html+='</div>';
 
-  // FOOTER
   html+='<div class="rpt-footer">'
     +'<p class="rpt-footer-txt">PsySpace Pro · Document confidentiel · Usage clinique exclusif</p>'
-    +'<p class="rpt-footer-txt">Généré le '+new Date().toLocaleDateString('fr-FR')+' · IA assistée</p>'
+    +'<p class="rpt-footer-txt">Généré le '+new Date().toLocaleDateString('fr-FR')+'</p>'
   +'</div>';
 
-  html+='</div>'; // /rpt-wrap
+  html+='</div>';
 
   document.getElementById('rpbody').innerHTML=html;
   setTimeout(function(){ renderRptCharts(sn); }, 80);
 }
 
 function rptSec(title, content){
-  return '<div class="rpt-section">'
-    +'<div class="rpt-section-title">'+title+'</div>'
-    +'<p class="rpt-prose">'+escH(content)+'</p>'
-  +'</div>';
+  return '<div class="rpt-section"><div class="rpt-section-title">'+title+'</div><p class="rpt-prose">'+escH(content)+'</p></div>';
 }
 function escH(s){
   if(!s) return '';
@@ -1523,7 +1468,6 @@ function escH(s){
     .replace(/\n/g,'<br>');
 }
 
-// ── Charts dans le rapport ────────────────────────────────────────────────────
 function renderRptCharts(sn){
   if(!sn) return;
   var tlEl=document.getElementById('rpt-tl');
@@ -1540,16 +1484,12 @@ function renderRptCharts(sn){
       ]},
       options:{responsive:true,maintainAspectRatio:false,animation:{duration:500},
         plugins:{legend:{display:false}},
-        scales:{
-          x:{display:false},
-          y:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(0,0,0,.04)',drawBorder:false},border:{display:false}}
-        }
+        scales:{x:{display:false},y:{min:0,max:100,ticks:{display:false},grid:{color:'rgba(0,0,0,.04)',drawBorder:false},border:{display:false}}}
       }
     });
   }
 }
 
-// ── LOAD PREV ─────────────────────────────────────────────────────────────────
 function loadPrev(txt){
   ovO('Charger ce résumé dans les notes cliniciennes ?', function(){
     var n=document.getElementById('notes');
@@ -1557,7 +1497,6 @@ function loadPrev(txt){
   });
 }
 
-// ── EXPORT PDF ────────────────────────────────────────────────────────────────
 function exportPDF(){
   if(!lastRpt){ ntf('narch',"Générez d'abord le bilan.",'wa'); return; }
   var j=window.jspdf.jsPDF;
@@ -1589,7 +1528,6 @@ function exportPDF(){
     y+=1.5;
   }
 
-  // Header
   doc.setFillColor(44,58,140); doc.rect(0,0,W,32,'F');
   doc.setFillColor(255,255,255); doc.setOpacity(.12); doc.rect(W-40,0,40,32,'F');
   doc.setOpacity(1);
@@ -1601,7 +1539,7 @@ function exportPDF(){
   doc.text('Patient : '+PAT+'   ·   Séance n°'+SESN+'   ·   '+lastRpt.date+'   ·   Dr. '+DR,M,24);
   doc.setFontSize(8);doc.setFont('helvetica','bold');
   var niv=(lastRpt.ai.niveau_risque||'').toUpperCase();
-  var nc=[44,58,140]; // default bleu
+  var nc=[44,58,140];
   if(niv==='FAIBLE') nc=[20,90,56]; else if(niv==='MODÉRÉ') nc=[120,74,0]; else if(niv==='ÉLEVÉ'||niv==='CRITIQUE') nc=[160,30,30];
   doc.setTextColor(nc[0],nc[1],nc[2]);
   doc.setFillColor(255,255,255);
@@ -1642,12 +1580,8 @@ function exportPDF(){
   }
   if(ai.plan_therapeutique) sec('Plan thérapeutique',ai.plan_therapeutique,[44,58,140]);
   if(ai.recommandations&&ai.recommandations!=='null') sec('Recommandations',ai.recommandations,[80,44,140]);
-  if(ai.lettre_confrere&&ai.lettre_confrere!=='null'){
-    hr();
-    sec('Courrier de liaison',ai.lettre_confrere,[44,58,140]);
-  }
+  if(ai.lettre_confrere&&ai.lettre_confrere!=='null'){ hr(); sec('Courrier de liaison',ai.lettre_confrere,[44,58,140]); }
 
-  // Snapshot radar
   var sn=lastRpt.snap;
   if(sn&&sn.radarImg){
     if(y>220){doc.addPage();y=M;}
@@ -1674,7 +1608,6 @@ function exportPDF(){
   doc.save('CR_'+PAT.replace(/\s+/g,'_')+'_S'+SESN+'_'+lastRpt.date.replace(/\//g,'-')+'.pdf');
 }
 
-// ── ARCHIVER ──────────────────────────────────────────────────────────────────
 async function finalize(){
   var tr=document.getElementById('tr').value.trim();
   if(!tr){ ntf('narch','Aucune transcription à archiver.','wa'); return; }
@@ -1685,4 +1618,26 @@ async function finalize(){
     fd.append('transcript',tr);
     fd.append('resume',lastRpt?JSON.stringify(lastRpt.ai):'');
     fd.append('duree',Math.floor(secs/60));
-    fd.append
+    fd.append('emotions',JSON.stringify(emoP));
+    try{
+      var res=await fetch('save_consultation.php',{method:'POST',body:fd});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      var d=await res.text();
+      if(d.trim()==='success'){
+        ntf('narch','Séance archivée avec succès.','ok',0);
+        setTimeout(function(){ window.location.href='dashboard.php'; },1600);
+      } else {
+        ntf('narch','Erreur serveur : '+d.trim(),'er');
+      }
+    }catch(e){ ntf('narch','Erreur réseau.','er'); }
+  });
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+drawEmo();
+drawRadar();
+drawTL();
+drawLg();
+</script>
+</body>
+</html>
