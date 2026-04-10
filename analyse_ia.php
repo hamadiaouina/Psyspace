@@ -85,6 +85,7 @@ foreach (array_slice($prev_consults, 0, 3) as $pc) {
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<link rel="icon" type="image/png" href="assets/images/logo.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Séance · <?= htmlspecialchars($patient_selected, ENT_QUOTES, 'UTF-8') ?> | PsySpace</title>
