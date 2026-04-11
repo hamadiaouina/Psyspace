@@ -580,9 +580,9 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
     </div>
   </div>
 
-  <!-- COMPTE-RENDU -->
-  <div class="card" style="flex:1;padding:0;overflow:hidden;display:flex;flex-direction:column;">
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border);">
+  <!-- COMPTE-RENDU : en-tête -->
+  <div class="card" style="flex-shrink:0;padding:0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;">
       <div>
         <h2 style="font-size:15px;font-weight:700;color:var(--tx);">Compte-rendu clinique</h2>
         <p style="font-size:11px;color:var(--tx3);margin-top:2px;">Généré par IA · Confidentiel</p>
@@ -592,28 +592,29 @@ html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);colo
         Générer le bilan
       </button>
     </div>
+  </div>
 
-    <div id="report-body" style="flex:1;overflow-y:auto;max-height:calc(100vh - 320px);">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:60px 20px;color:var(--tx3);text-align:center;gap:10px;min-height:200px;">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        <p style="font-size:12px;font-weight:500;">En attente de transcription</p>
-        <p style="font-size:11px;opacity:.6;">Commencez à transcrire, puis cliquez sur « Générer le bilan »</p>
-      </div>
+  <!-- COMPTE-RENDU : corps — s'étend librement, scroll dans la colonne -->
+  <div id="report-body" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--tx3);text-align:center;gap:10px;min-height:180px;">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <p style="font-size:12px;font-weight:500;">En attente de transcription</p>
+      <p style="font-size:11px;opacity:.6;">Commencez à transcrire, puis cliquez sur « Générer le bilan »</p>
     </div>
+  </div>
 
-    <!-- BOUTON ARCHIVER - TRÈS VISIBLE -->
-    <div style="padding:16px 18px;border-top:1px solid var(--border);background:var(--bg);">
-      <div id="arch-notif" style="margin-bottom:10px;min-height:0;"></div>
-      <div style="display:flex;gap:10px;">
-        <button onclick="exportPDF()" id="btn-pdf" disabled class="btn btn-ghost" style="flex:1;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          PDF
-        </button>
-        <button onclick="finalize()" class="btn-archive">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          Archiver la séance
-        </button>
-      </div>
+  <!-- BOUTONS PDF + ARCHIVER — sticky en bas de colonne, toujours visibles -->
+  <div style="position:sticky;bottom:0;z-index:20;background:var(--bg);padding:14px 0 4px;margin-top:4px;">
+    <div id="arch-notif" style="margin-bottom:8px;min-height:0;"></div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="exportPDF()" id="btn-pdf" disabled class="btn btn-ghost" style="flex:0 0 auto;padding:11px 18px;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exporter PDF
+      </button>
+      <button onclick="finalize()" class="btn-archive">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        ✓ Archiver la séance
+      </button>
     </div>
   </div>
 
