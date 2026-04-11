@@ -593,6 +593,7 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
 @media(max-width:1200px){.stat-strip{grid-template-columns:repeat(3,1fr);}}
 @media(max-width:900px){.stat-strip{grid-template-columns:repeat(2,1fr);}.ov-grid{grid-template-columns:1fr;}.sec-grid{grid-template-columns:1fr;}}
 </style>
+<script>window.PSYADMIN_CSRF = "<?= $csrf ?>";</script>
 </head>
 <body>
 <script>(function(){if(localStorage.getItem('psyadmin_dark')==='1')document.documentElement.setAttribute('data-theme','dark');})();</script>
@@ -1427,6 +1428,7 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
     }
   });
 })();
+<script src="admin_realtime.js"></script>
 </script>
 </body>
 </html>
