@@ -1428,7 +1428,7 @@ td.mn{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--tx3);}
     }
   });
 })();
-<script src="admin_realtime.js"></script>
 </script>
+<script src="admin_realtime.js"></script>
 </body>
 </html>
