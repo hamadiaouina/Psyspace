@@ -86,8 +86,8 @@ if ($result && $result->num_rows > 0) {
 
         try {
             $mail = new PHPMailer(true);
-            $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
-            $smtp_pass = getenv('SMTP_PASS') ?: ''; 
+            $smtp_user = getenv('SMTP_USER');
+            $smtp_pass = getenv('SMTP_PASS'); 
 
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';

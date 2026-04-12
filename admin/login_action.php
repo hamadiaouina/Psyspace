@@ -46,7 +46,7 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 // --- 4. PRÉPARATION DE L'EMAIL ---
-$smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
+$smtp_user = getenv('SMTP_USER');
 $smtp_pass = getenv('SMTP_PASS') ?: '';
 
 $mail = new PHPMailer(true);

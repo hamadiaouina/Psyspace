@@ -61,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['send_invite_email']))
         if (filter_var($target_email, FILTER_VALIDATE_EMAIL)) {
             try {
                 $mail = new PHPMailer(true);
-                $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
-                $smtp_pass = getenv('SMTP_PASS') ?: ''; 
+                $smtp_user = getenv('SMTP_USER');
+                $smtp_pass = getenv('SMTP_PASS');
 
                 $mail->isSMTP();
                 $mail->Host       = 'smtp.gmail.com';

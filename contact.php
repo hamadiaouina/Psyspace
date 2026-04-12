@@ -43,8 +43,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     else {
         $mail = new PHPMailer(true);
         try {
-            $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
-            $smtp_pass = getenv('SMTP_PASS') ?: '';
+            $smtp_user = getenv('SMTP_USER');
+            $smtp_pass = getenv('SMTP_PASS');
 
             $mail->isSMTP();
             $mail->Host       = 'smtp.gmail.com';
@@ -267,7 +267,7 @@ include "header.php";
                                 </div>
                                 <div>
                                     <p class="text-xs text-slate-400 font-medium uppercase tracking-wider mb-0.5">Email</p>
-                                    <p class="text-sm font-semibold text-slate-700">psyspace.all@gmail.com</p>
+                                    <p class="text-sm font-semibold text-slate-700">psyspace.me@gmail.com</p>
                                 </div>
                             </div>
                         </div>

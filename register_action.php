@@ -145,7 +145,7 @@ try {
     // --- 9. ENVOI DU MAIL OTP ---
     $mail = new PHPMailer(true);
     
-    $smtp_user = getenv('SMTP_USER') ?: 'psyspace.all@gmail.com';
+    $smtp_user = getenv('SMTP_USER') ;
     $smtp_pass = getenv('SMTP_PASS') ?: ''; 
 
     $mail->isSMTP();

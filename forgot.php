@@ -63,17 +63,18 @@ if (isset($_POST['reset-request'])) {
             try {
                 // Attention: Évite de laisser ton mot de passe Gmail en dur !
                 // Utilise getenv() si possible sur ton serveur de production.
-                $smtp_pass = getenv('SMTP_PASS') ?: 'lszg gkpz ylbg ypdt'; 
+$smtp_pass = getenv('SMTP_PASS');
+$smtp_user = getenv('SMTP_USER');
 
                 $mail->isSMTP();
                 $mail->Host       = 'smtp.gmail.com';
                 $mail->SMTPAuth   = true;
-                $mail->Username   = 'psyspace.all@gmail.com';
-                $mail->Password   = $smtp_pass; 
+$mail->Username   = $smtp_user;
+$mail->Password   = $smtp_pass;
                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
                 $mail->Port       = 587;
 
-                $mail->setFrom('psyspace.all@gmail.com', 'Sécurité PsySpace');
+$mail->setFrom($smtp_user, 'Sécurité PsySpace');
                 $mail->addAddress($email);
 
                 $mail->isHTML(true);
