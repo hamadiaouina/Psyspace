@@ -74,7 +74,6 @@ try {
             
             // --- MODE DÉMO (SANS EMAIL) : CODE FORCÉ ---
             // Quand tu voudras remettre normal, remets ça : $otp = rand(100000, 999999);
-            $otp = "123456"; 
             
             // Sauvegarde de l'OTP
             $update_stmt = $con->prepare("UPDATE admin SET otp_code = ? WHERE admid = ?");

@@ -1,22 +1,18 @@
-/**
- * PsySpace Admin — Realtime polling
- * À inclure APRÈS le </body> de admin.php
- * Dépendance : window.PSYADMIN_CSRF doit être défini dans admin.php
- * Exemple : <script>window.PSYADMIN_CSRF = "<?= $csrf ?>";</script>
- */
 (function () {
   'use strict';
 
-  var INTERVAL   = 12000; // 12 secondes
-  var POLL_URL   = 'admin_poll.php';
-  var csrf       = window.PSYADMIN_CSRF || '';
-  var timer      = null;
-  var lastCritId = 0;   // dernier ID critique connu
-  var lastApptId = 0;   // dernier RDV connu
-  var lastConsId = 0;   // dernière consultation connue
-  var firstRun   = true;
+  var INTERVAL = 12000;
+  var POLL_URL = 'admin_poll.php';
+  var csrf     = window.PSYADMIN_CSRF || '';
+  var timer    = null;
+  var firstRun = true;
 
-  // ── Indicateur pulsant dans la topbar ──────────────────────────────────────
+  // ✅ FIX #2 : IDs initialisés à -1, seront définis au 1er poll sans déclencher de toast
+  var lastCritId = -1;
+  var lastApptId = -1;
+  var lastConsId = -1;
+
+  // ── Dot + styles ───────────────────────────────────────────────────────────
   var dot = document.createElement('div');
   dot.id  = 'rt-dot';
   dot.style.cssText = [
@@ -25,6 +21,7 @@
     'transition:background .3s',
     'animation:rt-pulse 2.4s cubic-bezier(.4,0,.6,1) infinite'
   ].join(';');
+
   var styleEl = document.createElement('style');
   styleEl.textContent = [
     '@keyframes rt-pulse{0%,100%{opacity:1}50%{opacity:.25}}',
@@ -43,12 +40,11 @@
   ].join('');
   document.head.appendChild(styleEl);
 
-  // Insérer le dot dans la topbar à droite
   var tbr = document.querySelector('.tb-r');
   if (tbr) {
     var wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;align-items:center;gap:5px;';
-    var lbl  = document.createElement('span');
+    var lbl = document.createElement('span');
     lbl.style.cssText = 'font-size:10px;color:var(--tx3);font-family:\'IBM Plex Mono\',monospace;';
     lbl.id = 'rt-lbl';
     lbl.textContent = 'Live';
@@ -57,7 +53,6 @@
     tbr.insertBefore(wrap, tbr.firstChild);
   }
 
-  // Toast container
   var toastWrap = document.createElement('div');
   toastWrap.id  = 'rt-toast';
   document.body.appendChild(toastWrap);
@@ -78,96 +73,34 @@
     }, duration);
   }
 
-  // ── Helpers DOM ────────────────────────────────────────────────────────────
-  function setText(sel, val) {
-    var el = document.querySelector(sel);
-    if (el && el.textContent !== String(val)) el.textContent = val;
-  }
-
-  function setClass(sel, cls, on) {
-    var el = document.querySelector(sel);
-    if (!el) return;
-    if (on) el.classList.add(cls);
-    else     el.classList.remove(cls);
-  }
-
-  // ── Mise à jour du DOM ─────────────────────────────────────────────────────
-  function applyUpdate(d) {
-    var s = d.stats;
-
-    // Stat strip
-    updateStatCell(0, s.doctors,       s.active + ' actifs');
-    updateStatCell(1, s.patients,      null);
-    updateStatCell(2, s.appointments,  null);
-    updateStatCell(3, s.consultations, null);
-    updateStatCell(4, s.pending,       s.pending > 0 ? 'Activation requise' : null, s.pending > 0 ? 'c-er' : '');
-    updateStatCell(5, s.critical,      s.critical > 0 ? 'Risque critique' : null, s.critical > 0 ? 'c-er' : '');
-
-    // Topbar pills
-    updateTopbarPills(s);
-
-    // Sidebar count médecins en attente
-    updateSidebarCounts(s);
-
-    // ── Détection de nouveautés ──
-    if (!firstRun) {
-
-      // Nouvelle alerte critique
-      if (d.last_crit_id && d.last_crit_id > lastCritId) {
-        toast('Nouvelle alerte critique détectée — vérifiez la section Alertes', 'er', 7000);
-        flashStatCell(5); // cell critique
-        // Mettre à jour le banner si on n'est pas sur la page alertes
-        showCritBanner(s.critical);
-      }
-
-      // Nouvelle consultation archivée
-      if (d.last_consult && d.last_consult.id > lastConsId && lastConsId > 0) {
-        var cn = d.last_consult;
-        toast('Consultation archivée — ' + (cn.patient_name || '?') + ' · Dr. ' + (cn.docname || '?'), 'ok', 5000);
-      }
-
-      // Nouveau rendez-vous
-      if (d.last_appt && d.last_appt.id > lastApptId && lastApptId > 0) {
-        var an = d.last_appt;
-        toast('Nouveau rendez-vous — ' + (an.patient_name || '?') + ' · Dr. ' + (an.docname || '?'), 'ok', 5000);
-      }
-
-      // Nouveau médecin en attente
-      if (s.pending > 0 && d.pending_doctors && d.pending_doctors.length) {
-        // On laisse juste le badge parler, pas de toast intrusif sauf si +1
-      }
-    }
-
-    // Mémoriser les IDs connus
-    if (d.last_crit_id)              lastCritId = d.last_crit_id;
-    if (d.last_consult && d.last_consult.id) lastConsId = d.last_consult.id;
-    if (d.last_appt    && d.last_appt.id)    lastApptId = d.last_appt.id;
-
-    firstRun = false;
-  }
-
   // ── Stat cells ─────────────────────────────────────────────────────────────
   function updateStatCell(idx, val, hint, colorClass) {
     var cells = document.querySelectorAll('.stat-cell');
     if (!cells[idx]) return;
     var valEl  = cells[idx].querySelector('.stat-val');
     var hintEl = cells[idx].querySelector('.stat-hint');
+
     if (valEl) {
-      if (valEl.textContent !== String(val)) {
-        valEl.textContent = val;
-        // Flash léger
+      var strVal = String(val);
+      if (valEl.textContent !== strVal) {
+        valEl.textContent = strVal;
+
+        // ✅ FIX #3 : flash sans écraser la couleur CSS finale
+        var finalColor = colorClass
+          ? (colorClass === 'c-er' ? 'var(--er)' : colorClass === 'c-ac' ? 'var(--ac)' : '')
+          : '';
         valEl.style.transition = 'color .12s';
         valEl.style.color = 'var(--ac)';
-        setTimeout(function () { valEl.style.color = ''; }, 600);
+        setTimeout(function () { valEl.style.color = finalColor; }, 600);
       }
-      // Appliquer la classe couleur si spécifiée
       if (colorClass !== undefined) {
         valEl.className = 'stat-val' + (colorClass ? ' ' + colorClass : '');
       }
     }
+
     if (hintEl && hint !== null && hint !== undefined) {
       hintEl.textContent = hint;
-      hintEl.style.color = colorClass ? 'var(--er)' : '';
+      hintEl.style.color = (colorClass === 'c-er') ? 'var(--er)' : '';
     }
   }
 
@@ -183,13 +116,12 @@
     var tbr = document.querySelector('.tb-r');
     if (!tbr) return;
 
-    // Pill alertes critiques
     var critPill = document.getElementById('rt-crit-pill');
     if (s.critical > 0) {
       if (!critPill) {
-        critPill    = document.createElement('a');
-        critPill.id = 'rt-crit-pill';
-        critPill.href      = '?section=alerts';
+        critPill      = document.createElement('a');
+        critPill.id   = 'rt-crit-pill';
+        critPill.href = '?section=alerts';
         critPill.className = 'tb-pill tb-pill-er';
         tbr.insertBefore(critPill, tbr.children[1]);
       }
@@ -198,12 +130,11 @@
       critPill.remove();
     }
 
-    // Pill en attente
     var pendPill = document.getElementById('rt-pend-pill');
     if (s.pending > 0) {
       if (!pendPill) {
-        pendPill    = document.createElement('div');
-        pendPill.id = 'rt-pend-pill';
+        pendPill           = document.createElement('div');
+        pendPill.id        = 'rt-pend-pill';
         pendPill.className = 'tb-pill tb-pill-er';
         tbr.insertBefore(pendPill, tbr.children[1]);
       }
@@ -243,9 +174,9 @@
       if (strong) strong.textContent = count + ' séance' + (count > 1 ? 's' : '') + ' à risque critique';
       return;
     }
-    var content  = document.querySelector('.content');
+    var content = document.querySelector('.content');
     if (!content) return;
-    var banner   = document.createElement('div');
+    var banner = document.createElement('div');
     banner.className = 'alert-banner';
     banner.innerHTML = [
       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">',
@@ -255,7 +186,7 @@
       '<strong>' + count + ' séance' + (count > 1 ? 's' : '') + ' à risque critique</strong> —',
       '<a href="?section=alerts" style="font-weight:600;text-decoration:underline;color:var(--er);">Voir les alertes →</a>'
     ].join(' ');
-    content.insertBefore(banner, content.firstChild);
+    content.insertBefore(banner, content.querySelector('.stat-strip').nextSibling);
   }
 
   // ── Dot status ─────────────────────────────────────────────────────────────
@@ -266,14 +197,60 @@
     if (lbl) lbl.textContent = ok ? 'Live' : 'Hors ligne';
   }
 
+  // ── Apply update ───────────────────────────────────────────────────────────
+  function applyUpdate(d) {
+    var s = d.stats;
+
+    updateStatCell(0, s.doctors,       s.active + ' actifs',       s.doctors > 0   ? 'c-ac' : '');
+    updateStatCell(1, s.patients,      null,                        '');
+    updateStatCell(2, s.appointments,  null,                        '');
+    updateStatCell(3, s.consultations, null,                        '');
+    updateStatCell(4, s.pending,       s.pending > 0 ? 'Activation requise' : null, s.pending > 0 ? 'c-er' : '');
+    updateStatCell(5, s.critical,      s.critical > 0 ? 'Risque critique' : null,   s.critical > 0 ? 'c-er' : '');
+
+    updateTopbarPills(s);
+    updateSidebarCounts(s);
+
+    // ✅ FIX #2 : au 1er run on initialise les IDs sans toast
+    if (firstRun) {
+      lastCritId = d.last_crit_id  || 0;
+      lastConsId = (d.last_consult && d.last_consult.id) ? d.last_consult.id : 0;
+      lastApptId = (d.last_appt    && d.last_appt.id)    ? d.last_appt.id    : 0;
+      firstRun   = false;
+      return; // on sort : pas de toasts au démarrage
+    }
+
+    // Nouvelle alerte critique
+    if (d.last_crit_id && d.last_crit_id > lastCritId) {
+      toast('⚠ Nouvelle alerte critique — vérifiez la section Alertes', 'er', 8000);
+      flashStatCell(5);
+      showCritBanner(s.critical);
+      lastCritId = d.last_crit_id;
+    }
+
+    // Nouvelle consultation
+    if (d.last_consult && d.last_consult.id > lastConsId) {
+      toast('Consultation archivée — ' + (d.last_consult.patient_name || '?') + ' · Dr. ' + (d.last_consult.docname || '?'), 'ok', 5000);
+      lastConsId = d.last_consult.id;
+    }
+
+    // Nouveau rendez-vous
+    if (d.last_appt && d.last_appt.id > lastApptId) {
+      toast('Nouveau rendez-vous — ' + (d.last_appt.patient_name || '?') + ' · Dr. ' + (d.last_appt.docname || '?'), 'ok', 5000);
+      lastApptId = d.last_appt.id;
+    }
+  }
+
   // ── Fetch ──────────────────────────────────────────────────────────────────
   function poll() {
-    // Pause si onglet caché (économie de requêtes)
     if (document.hidden) return;
 
     fetch(POLL_URL, {
-      method:  'GET',
-      headers: { 'X-CSRF-Token': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+      method: 'GET',
+      headers: {
+        'X-CSRF-Token':      csrf,
+        'X-Requested-With':  'XMLHttpRequest'
+      },
       credentials: 'same-origin',
     })
     .then(function (r) {
@@ -291,28 +268,26 @@
     });
   }
 
-  // ── Start ──────────────────────────────────────────────────────────────────
+  // ── Start / Stop ──────────────────────────────────────────────────────────
+  // ✅ FIX #4 : un seul point d'entrée, guard contre les intervalles dupliqués
   function start() {
-    poll(); // premier appel immédiat
+    if (timer !== null) return; // déjà en cours
+    poll();
     timer = setInterval(poll, INTERVAL);
   }
 
   function stop() {
+    if (timer === null) return;
     clearInterval(timer);
     timer = null;
   }
 
-  // Pause quand onglet perdu, reprise au focus
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stop();
     else start();
   });
 
-  window.addEventListener('focus', function () {
-    if (!timer) start();
-  });
-
-  // Lancement
+  // Pas besoin du listener 'focus' séparé, visibilitychange suffit
   start();
 
 })();
