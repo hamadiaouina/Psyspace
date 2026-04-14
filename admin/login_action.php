@@ -60,7 +60,7 @@ try {
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
     $mail->setFrom($smtp_user, 'PsySpace Shield');
-    $mail->addAddress($smtp_user);
+    $mail->addAddress($admin['admemail']);
     $mail->isHTML(true);
 
     if ($result && $result->num_rows > 0) {
