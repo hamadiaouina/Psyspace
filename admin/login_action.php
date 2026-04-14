@@ -32,7 +32,7 @@ if ($_SESSION['admin_attempts'] >= 3) {
 
 if (!isset($con)) { $con = $conn ?? null; }
 
-// Récupération des données et de l'IP de l'attaquant/utilisateur
+// Récupération des données et de l'IP
 $email_attempt = trim($_POST['email'] ?? '');
 $password_attempt = trim($_POST['password'] ?? '');
 $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'IP Inconnue';
@@ -60,7 +60,7 @@ try {
     $mail->Port       = 587;
     $mail->CharSet    = 'UTF-8';
     $mail->setFrom($smtp_user, 'PsySpace Shield');
-    $mail->addAddress($smtp_user); // C'est TOI qui reçois l'email
+    $mail->addAddress($smtp_user);
     $mail->isHTML(true);
 
     if ($result && $result->num_rows > 0) {
@@ -70,12 +70,12 @@ try {
             // ==========================================
             // SCÉNARIO 1 : SUCCÈS (Bon email, bon MDP)
             // ==========================================
-            $_SESSION['admin_attempts'] = 0; // Reset des tentatives
-            
-            // --- MODE DÉMO (SANS EMAIL) : CODE FORCÉ ---
-            // Quand tu voudras remettre normal, remets ça : $otp = rand(100000, 999999);
-            
-            // Sauvegarde de l'OTP
+            $_SESSION['admin_attempts'] = 0;
+
+            // Génération de l'OTP
+            $otp = rand(100000, 999999);
+
+            // Sauvegarde de l'OTP en base
             $update_stmt = $con->prepare("UPDATE admin SET otp_code = ? WHERE admid = ?");
             $update_stmt->bind_param("si", $otp, $admin['admid']);
             $update_stmt->execute();
@@ -88,16 +88,13 @@ try {
                 <hr>
                 <p>Connexion réussie le <b>$date_heure</b></p>
                 <p>IP : <b>$ip</b></p>
+                <p>Navigateur : <b>$user_agent</b></p>
             </div>";
-            
-            // --- MODE DÉMO (SANS EMAIL) : EMAIL DÉSACTIVÉ ---
-            // Quand tu voudras remettre normal, enlève les // ci-dessous :
-            // $mail->send();
-            
+
+            $mail->send();
+
             $_SESSION['temp_admin_id'] = $admin['admid'];
-            
-            // ⚠️ Attention : Ton code pointe vers verify_otp.php (vérifie bien que ton fichier s'appelle comme ça, ou change pour verify.php)
-            header("Location: verify_otp.php"); 
+            header("Location: verify_otp.php");
             exit();
 
         } else {
@@ -105,17 +102,20 @@ try {
             // SCÉNARIO 2 : ÉCHEC (Bon email, Mauvais MDP)
             // ==========================================
             $_SESSION['admin_attempts']++;
-            
+
             $mail->Subject = "⚠️ ALERTE : Mauvais mot de passe Admin";
             $mail->Body    = "
             <div style='border:2px solid #ef4444; padding:20px; border-radius:10px; font-family:sans-serif;'>
                 <h2 style='color:#ef4444;'>Tentative de connexion échouée</h2>
                 <p>Quelqu'un a essayé de se connecter à un compte admin existant avec un mauvais mot de passe.</p>
+                <hr>
+                <p>Date : <b>$date_heure</b></p>
+                <p>IP : <b>$ip</b></p>
+                <p>Navigateur : <b>$user_agent</b></p>
             </div>";
-            
-            // --- MODE DÉMO (SANS EMAIL) : EMAIL DÉSACTIVÉ ---
-            // $mail->send();
-            
+
+            $mail->send();
+
             header("Location: login.php?error=wrongpw");
             exit();
         }
@@ -129,17 +129,20 @@ try {
         $mail->Body    = "
         <div style='border:2px solid #f97316; padding:20px; border-radius:10px; font-family:sans-serif;'>
             <h2 style='color:#f97316;'>Alerte Intrusion Admin</h2>
-            <p>Un utilisateur a tenté d'accéder au panel admin avec une adresse email qui n'existe pas dans la base.</p>
+            <p>Un utilisateur a tenté d'accéder au panel admin avec une adresse email inconnue.</p>
+            <hr>
+            <p>Email tenté : <b>$email_attempt</b></p>
+            <p>Date : <b>$date_heure</b></p>
+            <p>IP : <b>$ip</b></p>
+            <p>Navigateur : <b>$user_agent</b></p>
         </div>";
-        
-        // --- MODE DÉMO (SANS EMAIL) : EMAIL DÉSACTIVÉ ---
-        // $mail->send();
-        
+
+        $mail->send();
+
         header("Location: login.php?error=noaccount");
         exit();
     }
 } catch (Exception $e) {
-    // Si PHPMailer plante tout de même, on redirige vers la page de vérification car en mode démo on s'en fiche
     if (isset($_SESSION['temp_admin_id'])) {
         header("Location: verify_otp.php");
     } else {
