@@ -11,6 +11,12 @@ if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER[
 session_start();
 require_once __DIR__ . "/../connection.php"; 
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+require __DIR__ . '/../vendor/PHPMailer/src/Exception.php';
+require __DIR__ . '/../vendor/PHPMailer/src/PHPMailer.php';
+require __DIR__ . '/../vendor/PHPMailer/src/SMTP.php';
+
 if (!isset($con)) { $con = $conn ?? null; }
 
 // --- 2. SÉCURITÉ : VÉRIFICATION DU BADGE INVISIBLE ---
@@ -26,14 +32,45 @@ if (!isset($_SESSION['temp_admin_id'])) {
     exit();
 }
 
-$admin_id = $_SESSION['temp_admin_id'];
+$admin_id    = $_SESSION['temp_admin_id'];
+$alert_email = "psyspace.all@gmail.com";
+$ip          = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'IP Inconnue';
+$date_heure  = date('d/m/Y à H:i:s');
+$user_agent  = $_SERVER['HTTP_USER_AGENT'] ?? 'Inconnu';
+
+// --- FONCTION : Envoyer un email ---
+function sendAlert(string $to, string $subject, string $body): bool {
+    $smtp_user = getenv('SMTP_USER');
+    $smtp_pass = getenv('SMTP_PASS') ?: '';
+
+    $mail = new PHPMailer(true);
+    try {
+        $mail->isSMTP();
+        $mail->Host       = 'smtp.gmail.com';
+        $mail->SMTPAuth   = true;
+        $mail->Username   = $smtp_user;
+        $mail->Password   = $smtp_pass;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->Port       = 587;
+        $mail->CharSet    = 'UTF-8';
+        $mail->setFrom($smtp_user, 'PsySpace Shield');
+        $mail->addAddress($to);
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body    = $body;
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
 
 // --- 4. GESTION DES TENTATIVES OTP ---
 if (!isset($_SESSION['otp_attempts'])) {
     $_SESSION['otp_attempts'] = 0;
 }
 
-// Blocage immédiat si on recharge la page après 3 tentatives
+// Blocage immédiat si déjà 3 tentatives
 if ($_SESSION['otp_attempts'] >= 3) {
     $stmt_lock = $con->prepare("UPDATE admin SET otp_code = NULL WHERE admid = ?");
     $stmt_lock->bind_param("i", $admin_id);
@@ -75,18 +112,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $update_stmt->bind_param("i", $admin_id);
             $update_stmt->execute();
 
-            // 🛡️ SÉCURITÉ CRITIQUE : Anti-fixation de session
             session_regenerate_id(true);
 
-            // ON ACTIVE LA SESSION FINALE
-            $_SESSION['admin_id'] = $admin['admid']; 
+            $_SESSION['admin_id']   = $admin['admid']; 
             $_SESSION['admin_name'] = $admin['admname'];
-            $_SESSION['role'] = 'admin';
-            
-            // Renouvellement du jeton CSRF post-login
+            $_SESSION['role']       = 'admin';
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
             
-            // Nettoyage des variables temporaires
             unset($_SESSION['temp_admin_id']);
             unset($_SESSION['otp_attempts']);
 
@@ -94,20 +126,52 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             exit();
             
         } else {
-            // ❌ MAUVAIS CODE
+            // ❌ MAUVAIS CODE OTP
             $_SESSION['otp_attempts']++;
             $restant = 3 - $_SESSION['otp_attempts'];
             
             if ($restant <= 0) {
-                // BLOCAGE DÉFINITIF
+                // BLOCAGE DÉFINITIF + ALERTE EMAIL
                 $stmt_lock = $con->prepare("UPDATE admin SET otp_code = NULL WHERE admid = ?");
                 $stmt_lock->bind_param("i", $admin_id);
                 $stmt_lock->execute();
 
+                sendAlert(
+                    $alert_email,
+                    "🚨 BLOCAGE : 3 mauvais codes OTP Admin",
+                    "
+                    <div style='border:2px solid #dc2626; padding:20px; border-radius:10px; font-family:sans-serif;'>
+                        <h2 style='color:#dc2626;'>🔴 Accès Bloqué — 3 codes OTP incorrects</h2>
+                        <p>Quelqu'un a entré 3 codes OTP incorrects. L'accès a été automatiquement bloqué.</p>
+                        <hr style='margin:15px 0;'>
+                        <p>📅 Date : <b>$date_heure</b></p>
+                        <p>🌐 IP : <b>$ip</b></p>
+                        <p>🖥️ Navigateur : <b>$user_agent</b></p>
+                    </div>"
+                );
+
                 session_destroy();
                 header("Location: ../index.php?error=security_lock");
                 exit();
+
             } else {
+                // ALERTE EMAIL : mauvais OTP mais pas encore bloqué
+                sendAlert(
+                    $alert_email,
+                    "⚠️ ALERTE : Mauvais code OTP Admin (tentative {$_SESSION['otp_attempts']}/3)",
+                    "
+                    <div style='border:2px solid #f97316; padding:20px; border-radius:10px; font-family:sans-serif;'>
+                        <h2 style='color:#f97316;'>🔢 Code OTP incorrect</h2>
+                        <p>Un code OTP invalide a été saisi lors de la vérification 2FA.</p>
+                        <hr style='margin:15px 0;'>
+                        <p>📅 Date : <b>$date_heure</b></p>
+                        <p>🌐 IP : <b>$ip</b></p>
+                        <p>🖥️ Navigateur : <b>$user_agent</b></p>
+                        <hr style='margin:15px 0;'>
+                        <p style='color:#f97316; font-size:12px;'>Tentative <b>{$_SESSION['otp_attempts']}/3</b> — Il reste <b>$restant</b> essai(s) avant blocage.</p>
+                    </div>"
+                );
+
                 $error = "Code incorrect. Il vous reste $restant tentative(s) avant le blocage de sécurité.";
             }
         }
@@ -144,7 +208,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 } 
             }
         };
-        // Auto Dark Mode
         if (localStorage.getItem('psyadmin_dark') === '1' || (!('psyadmin_dark' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         }
@@ -159,7 +222,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <body class="flex items-center justify-center min-h-screen bg-slate-50 dark:bg-dark_bg text-slate-900 dark:text-slate-200 transition-colors duration-300 p-4">
 
     <div class="w-full max-w-[400px]">
-        <!-- Header Gateway -->
         <div class="text-center mb-8">
             <div class="inline-flex items-center justify-center w-14 h-14 bg-white dark:bg-dark_surface border border-slate-200 dark:border-dark_border rounded-xl shadow-sm mb-5 relative">
                 <div class="absolute inset-0 border border-brand/30 rounded-xl animate-pulse"></div>
@@ -169,16 +231,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <p class="text-[11px] uppercase tracking-[0.15em] font-mono text-slate-500 dark:text-slate-400 mt-2">Vérification d'identité</p>
         </div>
 
-        <!-- Box Verify -->
         <div class="bg-white dark:bg-dark_surface rounded-xl shadow-2xl dark:shadow-none border border-slate-200 dark:border-dark_border p-8 glow relative overflow-hidden">
-            <!-- Ligne supérieure de décoration -->
             <div class="absolute top-0 left-0 w-full h-1 bg-brand"></div>
+
+            <?php if (isset($_GET['warn']) && $_GET['warn'] === 'mailfail'): ?>
+                <div class="mb-6 p-4 bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/20 rounded-lg text-[13px] text-yellow-700 dark:text-yellow-400 flex items-start gap-3">
+                    <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span class="font-medium leading-tight">L'envoi de l'email a échoué. Vérifiez votre configuration SMTP.</span>
+                </div>
+            <?php endif; ?>
 
             <p class="text-[13px] text-slate-500 dark:text-slate-400 text-center mb-6 leading-relaxed">
                 Un code de sécurité à 6 chiffres a été envoyé à votre adresse e-mail. Veuillez le saisir ci-dessous.
             </p>
 
-            <!-- Affichage des erreurs -->
             <?php if($error): ?>
                 <div class="mb-6 p-4 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg text-[13px] text-red-600 dark:text-red-400 flex items-start gap-3">
                     <svg class="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -187,7 +253,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <?php endif; ?>
 
             <form method="POST" class="space-y-6">
-                <!-- SÉCURITÉ : JETON CSRF -->
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') ?>">
                 
                 <div>
@@ -206,7 +271,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
             </form>
         </div>
-        
     </div>
 
 </body>
