@@ -21,13 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
-// --- 2. SÉCURITÉ : CSRF ---
-if (!hash_equals($_SESSION['csrf_token'] ?? '', $_POST['csrf_token'] ?? '')) {
-    header("Location: login.php?error=csrf");
-    exit();
-}
-
-// --- 3. ANTI BRUTE-FORCE ---
+// --- 2. SÉCURITÉ : COMPTEUR DE TENTATIVES ANTI BRUTE-FORCE ---
 if (!isset($_SESSION['admin_attempts'])) {
     $_SESSION['admin_attempts'] = 0;
 }
@@ -38,144 +32,121 @@ if ($_SESSION['admin_attempts'] >= 3) {
 
 if (!isset($con)) { $con = $conn ?? null; }
 
-// Récupération des données
-$email_attempt  = trim($_POST['email'] ?? '');
+// Récupération des données et de l'IP
+$email_attempt = trim($_POST['email'] ?? '');
 $password_attempt = trim($_POST['password'] ?? '');
-$ip             = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'IP Inconnue';
-$date_heure     = date('d/m/Y à H:i:s');
-$user_agent     = $_SERVER['HTTP_USER_AGENT'] ?? 'Inconnu';
+$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'IP Inconnue';
+$date_heure = date('d/m/Y à H:i:s');
+$user_agent = $_SERVER['HTTP_USER_AGENT'] ?? 'Inconnu';
 
-// Adresse de réception des alertes (TON adresse fixe)
-$alert_email = "psyspace.all@gmail.com";
-
-// --- FONCTION : Envoyer un email ---
-function sendAlert(string $to, string $subject, string $body): bool {
-    global $alert_email;
-    $smtp_user = getenv('SMTP_USER');
-    $smtp_pass = getenv('SMTP_PASS') ?: '';
-
-    $mail = new PHPMailer(true);
-    try {
-        $mail->isSMTP();
-        $mail->Host       = 'smtp.gmail.com';
-        $mail->SMTPAuth   = true;
-        $mail->Username   = $smtp_user;
-        $mail->Password   = $smtp_pass;
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-        $mail->Port       = 587;
-        $mail->CharSet    = 'UTF-8';
-        $mail->setFrom($smtp_user, 'PsySpace Shield');
-        $mail->addAddress($to);
-        $mail->isHTML(true);
-        $mail->Subject = $subject;
-        $mail->Body    = $body;
-        $mail->send();
-        return true;
-    } catch (Exception $e) {
-        return false;
-    }
-}
-
-// --- 4. REQUÊTE PRÉPARÉE ---
+// --- 3. REQUÊTE PRÉPARÉE ---
 $stmt = $con->prepare("SELECT * FROM admin WHERE admemail = ? LIMIT 1");
 $stmt->bind_param("s", $email_attempt);
 $stmt->execute();
 $result = $stmt->get_result();
 
-// ============================================================
-// SCÉNARIO A : EMAIL INCONNU
-// ============================================================
-if (!$result || $result->num_rows === 0) {
-    $_SESSION['admin_attempts']++;
+// --- 4. PRÉPARATION DE L'EMAIL ---
+$smtp_user = getenv('SMTP_USER');
+$smtp_pass = getenv('SMTP_PASS') ?: '';
 
-    sendAlert(
-        $alert_email,
-        "🚨 INTRUSION : Tentative avec Email Inconnu",
-        "
+$mail = new PHPMailer(true);
+try {
+    $mail->isSMTP();
+    $mail->Host       = 'smtp.gmail.com';
+    $mail->SMTPAuth   = true;
+    $mail->Username   = $smtp_user;
+    $mail->Password   = $smtp_pass;
+    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->Port       = 587;
+    $mail->CharSet    = 'UTF-8';
+    $mail->setFrom($smtp_user, 'PsySpace Shield');
+    $mail->addAddress($admin['admemail']);
+    $mail->isHTML(true);
+
+    if ($result && $result->num_rows > 0) {
+        $admin = $result->fetch_assoc();
+
+        if (password_verify($password_attempt, $admin['admpassword'])) {
+            // ==========================================
+            // SCÉNARIO 1 : SUCCÈS (Bon email, bon MDP)
+            // ==========================================
+            $_SESSION['admin_attempts'] = 0;
+
+            // Génération de l'OTP
+            $otp = rand(100000, 999999);
+
+            // Sauvegarde de l'OTP en base
+            $update_stmt = $con->prepare("UPDATE admin SET otp_code = ? WHERE admid = ?");
+            $update_stmt->bind_param("si", $otp, $admin['admid']);
+            $update_stmt->execute();
+
+            $mail->Subject = "🔑 Code de vérification Admin - $otp";
+            $mail->Body    = "
+            <div style='border:2px solid #4f46e5; padding:20px; border-radius:10px; font-family:sans-serif;'>
+                <h2 style='color:#4f46e5; text-align:center;'>Code d'accès Admin</h2>
+                <div style='font-size:30px; text-align:center; font-weight:bold; padding:15px; background:#f3f4f6;'>$otp</div>
+                <hr>
+                <p>Connexion réussie le <b>$date_heure</b></p>
+                <p>IP : <b>$ip</b></p>
+                <p>Navigateur : <b>$user_agent</b></p>
+            </div>";
+
+            $mail->send();
+
+            $_SESSION['temp_admin_id'] = $admin['admid'];
+            header("Location: verify_otp.php");
+            exit();
+
+        } else {
+            // ==========================================
+            // SCÉNARIO 2 : ÉCHEC (Bon email, Mauvais MDP)
+            // ==========================================
+            $_SESSION['admin_attempts']++;
+
+            $mail->Subject = "⚠️ ALERTE : Mauvais mot de passe Admin";
+            $mail->Body    = "
+            <div style='border:2px solid #ef4444; padding:20px; border-radius:10px; font-family:sans-serif;'>
+                <h2 style='color:#ef4444;'>Tentative de connexion échouée</h2>
+                <p>Quelqu'un a essayé de se connecter à un compte admin existant avec un mauvais mot de passe.</p>
+                <hr>
+                <p>Date : <b>$date_heure</b></p>
+                <p>IP : <b>$ip</b></p>
+                <p>Navigateur : <b>$user_agent</b></p>
+            </div>";
+
+            $mail->send();
+
+            header("Location: login.php?error=wrongpw");
+            exit();
+        }
+    } else {
+        // ==========================================
+        // SCÉNARIO 3 : ÉCHEC (Email Inconnu)
+        // ==========================================
+        $_SESSION['admin_attempts']++;
+
+        $mail->Subject = "🚨 INTRUSION : Tentative avec Email Inconnu";
+        $mail->Body    = "
         <div style='border:2px solid #f97316; padding:20px; border-radius:10px; font-family:sans-serif;'>
-            <h2 style='color:#f97316;'>⚠️ Alerte Intrusion Admin</h2>
-            <p>Tentative de connexion au panel admin avec une adresse email <b>inconnue</b>.</p>
-            <hr style='margin:15px 0;'>
-            <p>📧 Email tenté : <b>$email_attempt</b></p>
-            <p>📅 Date : <b>$date_heure</b></p>
-            <p>🌐 IP : <b>$ip</b></p>
-            <p>🖥️ Navigateur : <b>$user_agent</b></p>
-            <hr style='margin:15px 0;'>
-            <p style='color:#f97316; font-size:12px;'>Tentative n°{$_SESSION['admin_attempts']}/3</p>
-        </div>"
-    );
+            <h2 style='color:#f97316;'>Alerte Intrusion Admin</h2>
+            <p>Un utilisateur a tenté d'accéder au panel admin avec une adresse email inconnue.</p>
+            <hr>
+            <p>Email tenté : <b>$email_attempt</b></p>
+            <p>Date : <b>$date_heure</b></p>
+            <p>IP : <b>$ip</b></p>
+            <p>Navigateur : <b>$user_agent</b></p>
+        </div>";
 
-    header("Location: login.php?error=noaccount");
+        $mail->send();
+
+        header("Location: login.php?error=noaccount");
+        exit();
+    }
+} catch (Exception $e) {
+    if (isset($_SESSION['temp_admin_id'])) {
+        header("Location: verify_otp.php");
+    } else {
+        header("Location: login.php?error=mailfail");
+    }
     exit();
 }
-
-// ============================================================
-// EMAIL TROUVÉ : on récupère l'admin
-// ============================================================
-$admin = $result->fetch_assoc();
-
-// ============================================================
-// SCÉNARIO B : BON EMAIL, MAUVAIS MOT DE PASSE
-// ============================================================
-if (!password_verify($password_attempt, $admin['admpassword'])) {
-    $_SESSION['admin_attempts']++;
-
-    sendAlert(
-        $alert_email,
-        "⚠️ ALERTE : Mauvais mot de passe Admin",
-        "
-        <div style='border:2px solid #ef4444; padding:20px; border-radius:10px; font-family:sans-serif;'>
-            <h2 style='color:#ef4444;'>🔐 Tentative avec mauvais mot de passe</h2>
-            <p>Quelqu'un connaît l'email admin mais a entré un <b>mauvais mot de passe</b>.</p>
-            <hr style='margin:15px 0;'>
-            <p>📧 Email ciblé : <b>{$admin['admemail']}</b></p>
-            <p>📅 Date : <b>$date_heure</b></p>
-            <p>🌐 IP : <b>$ip</b></p>
-            <p>🖥️ Navigateur : <b>$user_agent</b></p>
-            <hr style='margin:15px 0;'>
-            <p style='color:#ef4444; font-size:12px;'>Tentative n°{$_SESSION['admin_attempts']}/3</p>
-        </div>"
-    );
-
-    header("Location: login.php?error=wrongpw");
-    exit();
-}
-
-// ============================================================
-// SCÉNARIO C : BON EMAIL + BON MDP → Envoi OTP
-// ============================================================
-$_SESSION['admin_attempts'] = 0;
-
-$otp = rand(100000, 999999);
-
-$update_stmt = $con->prepare("UPDATE admin SET otp_code = ? WHERE admid = ?");
-$update_stmt->bind_param("si", $otp, $admin['admid']);
-$update_stmt->execute();
-
-$sent = sendAlert(
-    $alert_email,
-    "🔑 Code de vérification Admin — $otp",
-    "
-    <div style='border:2px solid #4f46e5; padding:20px; border-radius:10px; font-family:sans-serif;'>
-        <h2 style='color:#4f46e5; text-align:center;'>Code d'accès Admin</h2>
-        <div style='font-size:36px; text-align:center; font-weight:bold; padding:20px; background:#f3f4f6; border-radius:8px; letter-spacing:10px;'>$otp</div>
-        <hr style='margin:15px 0;'>
-        <p>✅ Connexion réussie le <b>$date_heure</b></p>
-        <p>🌐 IP : <b>$ip</b></p>
-        <p>🖥️ Navigateur : <b>$user_agent</b></p>
-        <hr style='margin:15px 0;'>
-        <p style='color:#6b7280; font-size:11px;'>Ce code expire à la prochaine tentative.</p>
-    </div>"
-);
-
-if (!$sent) {
-    // L'email a échoué mais on laisse quand même passer (OTP en base)
-    // Tu peux changer ce comportement si tu veux bloquer
-    $_SESSION['temp_admin_id'] = $admin['admid'];
-    header("Location: verify_otp.php?warn=mailfail");
-    exit();
-}
-
-$_SESSION['temp_admin_id'] = $admin['admid'];
-header("Location: verify_otp.php");
-exit();
