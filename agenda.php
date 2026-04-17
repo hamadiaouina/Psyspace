@@ -85,8 +85,7 @@ $today_c  = count(array_filter($appointments, fn($a)=>date('Y-m-d',strtotime($a[
 <html lang="fr" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agenda | PsySpace</title>
     
     <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>

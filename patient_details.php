@@ -114,8 +114,7 @@ if (!empty($data['emotion_data']) && $data['emotion_data'] !== '[]') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>PsySpace · Rapport de séance</title>
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    
+<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" nonce="<?= $nonce ?>"></script>
     <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

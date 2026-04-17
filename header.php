@@ -122,8 +122,7 @@ ob_start(function($buffer) {
     <meta name="theme-color" content="#4f46e5">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    <title>PsySpace | Espace Thérapeutique</title>
+<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    <title>PsySpace | Espace Thérapeutique</title>
 
     <script src="assets/js/tailwind.min.js" nonce="<?= $nonce ?>"></script>
 

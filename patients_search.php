@@ -180,8 +180,7 @@ foreach($patients as $p) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Patients | PsySpace</title>
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    
+<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    
     <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     

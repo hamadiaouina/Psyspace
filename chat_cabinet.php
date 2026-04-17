@@ -120,8 +120,7 @@ $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Liaison Secrétariat | PsySpace</title>
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    
+<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    
     <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     

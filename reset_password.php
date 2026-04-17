@@ -61,8 +61,7 @@ if (isset($_POST['update-password']) && $show_form) {
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <link rel="icon" type="image/png" href="assets/images/logo.png">
-    <meta charset="UTF-8">
+<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nouveau mot de passe | PsySpace</title>
     <script src="https://cdn.tailwindcss.com"></script>
