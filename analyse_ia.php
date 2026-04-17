@@ -1,7 +1,6 @@
 <?php
 // ════════════════════════════════════════════════════════════════
-//  PsySpace · analyse_ia.php  — Séance IA v2
-//  Sécurité, chargement des données, préparation contexte IA
+//  PsySpace · analyse_ia.php  — Séance IA v3
 // ════════════════════════════════════════════════════════════════
 
 ini_set('session.cookie_httponly', '1');
@@ -27,13 +26,11 @@ header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-i
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
-// ── Validation paramètres ────────────────────────────────────
 $appointment_id = (int)($_GET['id'] ?? 0);
 if (!$appointment_id) { header("Location: dashboard.php"); exit(); }
 $doctor_id  = (int)$_SESSION['id'];
 $nom_docteur = $_SESSION['nom'] ?? 'Docteur';
 
-// ── Vérification ownership du RDV ───────────────────────────
 $stmt = $conn->prepare("SELECT patient_id, patient_name, app_date FROM appointments WHERE id=? AND doctor_id=? LIMIT 1");
 $stmt->bind_param("ii", $appointment_id, $doctor_id);
 $stmt->execute();
@@ -45,7 +42,6 @@ $patient_id       = (int)$rAppt['patient_id'];
 $patient_selected = trim($rAppt['patient_name']);
 $appt_date        = $rAppt['app_date'] ? date('d/m/Y', strtotime($rAppt['app_date'])) : date('d/m/Y');
 
-// ── Données du médecin ───────────────────────────────────────
 $stmt = $conn->prepare("SELECT * FROM doctor WHERE docid=? LIMIT 1");
 $stmt->bind_param("i", $doctor_id); $stmt->execute();
 $doc = $stmt->get_result()->fetch_assoc(); $stmt->close();
@@ -57,7 +53,6 @@ $doc_tel       = $doc['tel']       ?? '';
 $doc_rpps      = $doc['rpps']      ?? '';
 $doc_fullname  = trim($doc_prenom . ' ' . $doc_nom_db);
 
-// ── Données complètes du patient ────────────────────────────
 $pat = [];
 if ($patient_id) {
     $stmt = $conn->prepare("SELECT * FROM patients WHERE id=? LIMIT 1");
@@ -74,7 +69,7 @@ $pat_antecedents= $pat['pantecedents']  ?? null;
 $pat_traitement = $pat['ptraitement']   ?? null;
 $pat_notes_admin= $pat['pnotes_admin']  ?? null;
 
-// ── Historique consultations (6 dernières) ──────────────────
+// Historique consultations (6 dernières)
 $prev_consults = [];
 $stmt2 = $conn->prepare(
     "SELECT id, date_consultation, resume_ia, duree_minutes,
@@ -91,8 +86,9 @@ while ($row2 = $res2->fetch_assoc()) $prev_consults[] = $row2;
 $stmt2->close();
 
 $session_num = count($prev_consults) + 1;
+$is_followup = $session_num > 1; // C'est une séance de suivi (pas la 1ère)
 
-// ── Objectifs en cours (non atteints) ───────────────────────
+// Objectifs en cours (non atteints)
 $goals_open = [];
 $stmtG = $conn->prepare(
     "SELECT id, goal_text, created_at FROM consultation_goals
@@ -107,14 +103,13 @@ if ($stmtG) {
     $stmtG->close();
 }
 
-// ── CSRF ─────────────────────────────────────────────────────
 if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 $csrf = $_SESSION['csrf_token'];
 $_SESSION['pending_appointment_id'] = $appointment_id;
 $_SESSION['pending_patient_name']   = $patient_selected;
 $_SESSION['pending_doctor_id']      = $doctor_id;
 
-// ── Historique pour l'IA (3 dernières séances) ───────────────
+// Historique pour l'IA (3 dernières séances)
 $history_for_ai = [];
 foreach (array_slice($prev_consults, 0, 3) as $pc) {
     $emotions_str = '';
@@ -138,7 +133,6 @@ foreach (array_slice($prev_consults, 0, 3) as $pc) {
     ];
 }
 
-// ── Calcul tendance risque inter-séances ─────────────────────
 $risque_tendance = 'stable';
 if (count($prev_consults) >= 2) {
     $map = ['faible'=>1,'modéré'=>2,'élevé'=>3,'critique'=>4];
@@ -148,13 +142,11 @@ if (count($prev_consults) >= 2) {
     elseif ($r1 < $r2) $risque_tendance = 'baisse';
 }
 
-// ── Données précédentes pour "évolution" ─────────────────────
 $last_plan = $prev_consults[0]['plan_therapeutique'] ?? null;
 $last_obj  = $prev_consults[0]['objectifs_suivants'] ?? null;
 $last_emo  = $prev_consults[0]['emotions_plutchik']  ?? null;
 $last_emo_arr = $last_emo ? json_decode($last_emo, true) : null;
 
-// ── Préfixe initial patient ───────────────────────────────────
 $pat_initials = mb_strtoupper(mb_substr($patient_selected, 0, 1, 'UTF-8'), 'UTF-8');
 if (strpos($patient_selected, ' ') !== false) {
     $parts = explode(' ', $patient_selected);
@@ -172,74 +164,36 @@ if (strpos($patient_selected, ' ') !== false) {
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-/* ═══════════════════════════════════════════════════════════
-   RESET & TOKENS
-═══════════════════════════════════════════════════════════ */
 *{box-sizing:border-box;margin:0;padding:0;}
 :root{
-  --bg:       #F2EFE9;
-  --bg2:      #FFFFFF;
-  --bg3:      #EAE7E1;
-  --bg4:      #F7F5F2;
-  --border:   #D9D4CC;
-  --border2:  #E8E4DE;
-  --tx:       #1C1916;
-  --tx2:      #4A4540;
-  --tx3:      #8C867E;
-  --tx4:      #B8B2AA;
-  --ink:      #0F3460;
-  --ink2:     #1A237E;
-  --ink-bg:   #EEF2FF;
-  --teal:     #00796B;
-  --teal-bg:  #E0F2F1;
-  --amber:    #C77700;
-  --amber-bg: #FFF8E1;
-  --rose:     #B71C1C;
-  --rose-bg:  #FFF3F3;
-  --violet:   #6A1B9A;
-  --violet-bg:#F3E5F5;
-  --ok:       #1B6B3A;
-  --ok-bg:    #EDFAF3;
-  --sidebar:  #1C1916;
-  --sh1:      0 1px 4px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
-  --sh2:      0 2px 8px rgba(0,0,0,.08), 0 8px 32px rgba(0,0,0,.08);
-  --r:        14px;
-  --r2:       9px;
-  --r3:       6px;
+  --bg:#F2EFE9;--bg2:#FFFFFF;--bg3:#EAE7E1;--bg4:#F7F5F2;
+  --border:#D9D4CC;--border2:#E8E4DE;
+  --tx:#1C1916;--tx2:#4A4540;--tx3:#8C867E;--tx4:#B8B2AA;
+  --ink:#0F3460;--ink2:#1A237E;--ink-bg:#EEF2FF;
+  --teal:#00796B;--teal-bg:#E0F2F1;
+  --amber:#C77700;--amber-bg:#FFF8E1;
+  --rose:#B71C1C;--rose-bg:#FFF3F3;
+  --violet:#6A1B9A;--violet-bg:#F3E5F5;
+  --ok:#1B6B3A;--ok-bg:#EDFAF3;
+  --sh1:0 1px 4px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.06);
+  --sh2:0 2px 8px rgba(0,0,0,.08),0 8px 32px rgba(0,0,0,.08);
+  --r:14px;--r2:9px;--r3:6px;
 }
 [data-theme="dark"]{
-  --bg:       #12100E;
-  --bg2:      #1C1916;
-  --bg3:      #252220;
-  --bg4:      #1C1916;
-  --border:   #2C2926;
-  --border2:  #252220;
-  --tx:       #EDE9E3;
-  --tx2:      #9A948C;
-  --tx3:      #5A5550;
-  --tx4:      #3A3530;
-  --ink:      #7B9FFF;
-  --ink2:     #A8C0FF;
-  --ink-bg:   rgba(123,159,255,.09);
-  --teal:     #4DB6AC;
-  --teal-bg:  rgba(77,182,172,.09);
-  --amber:    #FFB300;
-  --amber-bg: rgba(255,179,0,.08);
-  --rose:     #EF5350;
-  --rose-bg:  rgba(239,83,80,.08);
-  --violet:   #CE93D8;
-  --violet-bg:rgba(206,147,216,.08);
-  --ok:       #4CAF82;
-  --ok-bg:    rgba(76,175,130,.09);
-  --sh1:      0 1px 4px rgba(0,0,0,.25);
-  --sh2:      0 4px 24px rgba(0,0,0,.35);
+  --bg:#12100E;--bg2:#1C1916;--bg3:#252220;--bg4:#1C1916;
+  --border:#2C2926;--border2:#252220;
+  --tx:#EDE9E3;--tx2:#9A948C;--tx3:#5A5550;--tx4:#3A3530;
+  --ink:#7B9FFF;--ink2:#A8C0FF;--ink-bg:rgba(123,159,255,.09);
+  --teal:#4DB6AC;--teal-bg:rgba(77,182,172,.09);
+  --amber:#FFB300;--amber-bg:rgba(255,179,0,.08);
+  --rose:#EF5350;--rose-bg:rgba(239,83,80,.08);
+  --violet:#CE93D8;--violet-bg:rgba(206,147,216,.08);
+  --ok:#4CAF82;--ok-bg:rgba(76,175,130,.09);
+  --sh1:0 1px 4px rgba(0,0,0,.25);
+  --sh2:0 4px 24px rgba(0,0,0,.35);
 }
-
-/* ── BASE ─────────────────────────────────────────────── */
 html,body{height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);transition:background .3s,color .3s;}
 body{overflow:hidden;}
-
-/* ── LAYOUT ───────────────────────────────────────────── */
 .app{display:grid;grid-template-rows:56px 1fr;height:100vh;}
 .main{display:grid;grid-template-columns:290px 1fr 320px;height:calc(100vh - 56px);overflow:hidden;}
 .col{overflow-y:auto;padding:18px 14px;display:flex;flex-direction:column;gap:12px;}
@@ -247,60 +201,26 @@ body{overflow:hidden;}
 .col::-webkit-scrollbar-track{background:transparent;}
 .col::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 
-/* ── TOPBAR ──────────────────────────────────────────── */
-.topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 20px;background:var(--bg2);
-  border-bottom:1px solid var(--border);box-shadow:var(--sh1);
-  position:relative;z-index:100;
-}
+/* TOPBAR */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);box-shadow:var(--sh1);position:relative;z-index:100;}
 .topbar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:linear-gradient(90deg,var(--ink) 0%,transparent 50%);}
 .topbar-left{display:flex;align-items:center;gap:12px;}
-.back-btn{
-  display:flex;align-items:center;gap:5px;color:var(--tx3);font-size:12px;font-weight:600;
-  text-decoration:none;padding:5px 11px;border-radius:var(--r3);border:1px solid var(--border);
-  background:var(--bg3);transition:all .18s;letter-spacing:.01em;
-}
+.back-btn{display:flex;align-items:center;gap:5px;color:var(--tx3);font-size:12px;font-weight:600;text-decoration:none;padding:5px 11px;border-radius:var(--r3);border:1px solid var(--border);background:var(--bg3);transition:all .18s;letter-spacing:.01em;}
 .back-btn:hover{color:var(--tx);border-color:var(--ink);background:var(--ink-bg);}
 .sep{width:1px;height:22px;background:var(--border);}
-
-/* Patient badge */
 .pat-badge{display:flex;align-items:center;gap:10px;}
-.pat-ava{
-  width:36px;height:36px;border-radius:10px;
-  background:var(--ink-bg);border:2px solid var(--ink);
-  display:flex;align-items:center;justify-content:center;
-  font-family:'Fraunces',serif;font-size:14px;font-weight:700;color:var(--ink);
-  letter-spacing:-.02em;
-}
-.pat-name{font-size:14px;font-weight:700;color:var(--tx);letter-spacing:-.01em;}
+.pat-ava{width:36px;height:36px;border-radius:10px;background:var(--ink-bg);border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:14px;font-weight:700;color:var(--ink);}
+.pat-name{font-size:14px;font-weight:700;color:var(--tx);}
 .pat-meta{font-size:10.5px;color:var(--tx3);margin-top:1px;}
-
-/* Right controls */
 .topbar-right{display:flex;align-items:center;gap:8px;}
-.timer-pill{
-  display:flex;align-items:center;gap:7px;padding:5px 13px;
-  border-radius:99px;border:1px solid var(--border);background:var(--bg3);
-}
+.timer-pill{display:flex;align-items:center;gap:7px;padding:5px 13px;border-radius:99px;border:1px solid var(--border);background:var(--bg3);}
 .t-dot{width:7px;height:7px;border-radius:50%;background:var(--tx4);transition:background .3s;}
 .t-dot.live{background:#E53935;animation:pulse-dot 1.4s ease-in-out infinite;}
 .t-txt{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;color:var(--tx);letter-spacing:.08em;}
 @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
-
-.ctrl-btn{
-  width:36px;height:36px;border-radius:var(--r3);border:1px solid var(--border);
-  background:var(--bg3);color:var(--tx3);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;font-size:15px;
-  transition:all .18s;
-}
+.ctrl-btn{width:36px;height:36px;border-radius:var(--r3);border:1px solid var(--border);background:var(--bg3);color:var(--tx3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:all .18s;}
 .ctrl-btn:hover{color:var(--tx);border-color:var(--ink);background:var(--ink-bg);}
-
-/* Status chip */
-.chip{
-  display:inline-flex;align-items:center;gap:4px;
-  padding:3px 9px;border-radius:99px;font-size:9.5px;font-weight:700;
-  text-transform:uppercase;letter-spacing:.09em;border:1px solid;
-}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:99px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;border:1px solid;}
 .c-idle{background:var(--bg3);color:var(--tx3);border-color:var(--border);}
 .c-live{background:var(--rose-bg);color:var(--rose);border-color:rgba(183,28,28,.25);}
 .c-ok{background:var(--ok-bg);color:var(--ok);border-color:rgba(27,107,58,.25);}
@@ -309,185 +229,114 @@ body{overflow:hidden;}
 .c-crit{background:var(--rose-bg);color:var(--rose);border-color:rgba(183,28,28,.35);animation:blink-crit 1.2s ease-in-out infinite;}
 @keyframes blink-crit{0%,100%{opacity:1}50%{opacity:.5}}
 
-/* ── CARDS ───────────────────────────────────────────── */
-.card{
-  background:var(--bg2);border:1px solid var(--border);
-  border-radius:var(--r);padding:15px;box-shadow:var(--sh1);
-}
-.card-hd{
-  font-size:10px;font-weight:800;text-transform:uppercase;
-  letter-spacing:.14em;color:var(--tx3);
-  margin-bottom:11px;display:flex;align-items:center;gap:7px;
-}
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:15px;box-shadow:var(--sh1);}
+.card-hd{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--tx3);margin-bottom:11px;display:flex;align-items:center;gap:7px;}
 .hd-dot{width:5px;height:5px;border-radius:50%;background:var(--ink);flex-shrink:0;}
 
-/* ── PATIENT PROFILE CARD ─────────────────────────────── */
-.prof-ava{
-  width:52px;height:52px;border-radius:14px;
-  background:var(--ink-bg);border:2px solid var(--ink);
-  display:flex;align-items:center;justify-content:center;
-  font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:var(--ink);
-  letter-spacing:-.02em;flex-shrink:0;
-}
+/* PROFIL */
+.prof-ava{width:52px;height:52px;border-radius:14px;background:var(--ink-bg);border:2px solid var(--ink);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:var(--ink);flex-shrink:0;}
 .prof-name{font-family:'Fraunces',serif;font-size:17px;font-weight:700;color:var(--tx);letter-spacing:-.02em;line-height:1.2;}
 .prof-sub{font-size:11px;color:var(--tx3);margin-top:3px;line-height:1.6;}
 .prof-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;}
-.ptag{
-  font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;
-  border:1px solid var(--border);background:var(--bg3);color:var(--tx2);
-}
-
-/* Suivi inter-séances */
-.inter-strip{
-  display:flex;align-items:stretch;gap:0;
-  border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;
-  background:var(--bg3);margin-top:4px;
-}
-.inter-cell{
-  flex:1;padding:10px 12px;text-align:center;border-right:1px solid var(--border);
-}
+.ptag{font-size:10px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--border);background:var(--bg3);color:var(--tx2);}
+.inter-strip{display:flex;align-items:stretch;gap:0;border:1px solid var(--border);border-radius:var(--r2);overflow:hidden;background:var(--bg3);margin-top:4px;}
+.inter-cell{flex:1;padding:10px 12px;text-align:center;border-right:1px solid var(--border);}
 .inter-cell:last-child{border-right:none;}
 .inter-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--tx3);margin-bottom:4px;}
 .inter-val{font-family:'Fraunces',serif;font-size:20px;font-weight:700;color:var(--tx);line-height:1;}
 .inter-sub{font-size:9px;color:var(--tx3);margin-top:2px;}
 
-/* ── TEXTAREA & INPUTS ───────────────────────────────── */
-.ta{
-  width:100%;background:var(--bg3);border:1.5px solid var(--border);color:var(--tx);
-  border-radius:var(--r2);resize:none;outline:none;padding:12px;
-  font-family:'DM Sans',sans-serif;font-size:13.5px;line-height:1.8;
-  transition:border-color .2s,box-shadow .2s;
-}
+/* INPUTS */
+.ta{width:100%;background:var(--bg3);border:1.5px solid var(--border);color:var(--tx);border-radius:var(--r2);resize:none;outline:none;padding:12px;font-family:'DM Sans',sans-serif;font-size:13.5px;line-height:1.8;transition:border-color .2s,box-shadow .2s;}
 .ta:focus{border-color:var(--ink);box-shadow:0 0 0 3px var(--ink-bg);}
 .ta::placeholder{color:var(--tx4);font-style:italic;font-size:13px;}
-.ta-plan{
-  width:100%;background:var(--teal-bg);border:1.5px solid rgba(0,121,107,.25);color:var(--tx);
-  border-radius:var(--r2);resize:none;outline:none;padding:12px;
-  font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.75;transition:border-color .2s;
-}
+.ta-plan{width:100%;background:var(--teal-bg);border:1.5px solid rgba(0,121,107,.25);color:var(--tx);border-radius:var(--r2);resize:none;outline:none;padding:12px;font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.75;transition:border-color .2s;}
 .ta-plan:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-bg);}
 .ta-plan::placeholder{color:var(--tx4);font-style:italic;}
-.ta-notes{
-  width:100%;background:var(--amber-bg);border:1.5px solid rgba(199,119,0,.2);color:var(--tx);
-  border-radius:var(--r2);resize:none;outline:none;padding:12px;
-  font-family:'DM Sans',sans-serif;font-size:13px;line-height:1.75;transition:border-color .2s;
-}
-.ta-notes:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-bg);}
-.ta-notes::placeholder{color:var(--tx4);font-style:italic;}
 
-/* ── BUTTONS ─────────────────────────────────────────── */
-.btn{
-  font-size:11.5px;font-weight:700;border-radius:var(--r2);padding:8px 16px;
-  border:none;cursor:pointer;transition:all .18s;
-  display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  font-family:'DM Sans',sans-serif;letter-spacing:.01em;
+/* NOTES PRATICIEN — GRANDE VERSION */
+.ta-notes-big{
+  width:100%;
+  background:var(--amber-bg);
+  border:2px solid rgba(199,119,0,.3);
+  color:var(--tx);
+  border-radius:var(--r2);
+  resize:vertical;
+  outline:none;
+  padding:16px;
+  font-family:'DM Sans',sans-serif;
+  font-size:14px;
+  line-height:1.85;
+  transition:border-color .2s,box-shadow .2s;
+  min-height:160px;
 }
+.ta-notes-big:focus{border-color:var(--amber);box-shadow:0 0 0 4px var(--amber-bg);}
+.ta-notes-big::placeholder{color:var(--tx4);font-style:italic;}
+
+/* BUTTONS */
+.btn{font-size:11.5px;font-weight:700;border-radius:var(--r2);padding:8px 16px;border:none;cursor:pointer;transition:all .18s;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:'DM Sans',sans-serif;letter-spacing:.01em;}
 .btn-ink{background:var(--ink);color:#fff;box-shadow:0 2px 8px rgba(15,52,96,.3);}
-.btn-ink:hover{background:var(--ink2);box-shadow:0 4px 16px rgba(15,52,96,.4);}
+.btn-ink:hover{background:var(--ink2);}
 .btn-ink:disabled{background:var(--border);color:var(--tx3);box-shadow:none;cursor:not-allowed;}
 .btn-teal{background:var(--teal);color:#fff;}
 .btn-teal:hover{filter:brightness(1.1);}
 .btn-ghost{background:var(--bg3);color:var(--tx2);border:1.5px solid var(--border);}
 .btn-ghost:hover{border-color:var(--ink);color:var(--ink);}
 .btn-danger{background:var(--rose-bg);color:var(--rose);border:1.5px solid rgba(183,28,28,.2);}
-.btn-archive{
-  background:var(--ok);color:#fff;font-size:13px;font-weight:700;
-  padding:13px 24px;border-radius:var(--r);border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  transition:all .2s;box-shadow:0 3px 14px rgba(27,107,58,.35);width:100%;
-  font-family:'DM Sans',sans-serif;letter-spacing:.01em;
-}
+.btn-archive{background:var(--ok);color:#fff;font-size:13px;font-weight:700;padding:13px 24px;border-radius:var(--r);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;box-shadow:0 3px 14px rgba(27,107,58,.35);width:100%;font-family:'DM Sans',sans-serif;}
 .btn-archive:hover{filter:brightness(1.08);box-shadow:0 5px 22px rgba(27,107,58,.5);transform:translateY(-1px);}
-.btn-archive:active{transform:none;}
 
 /* MIC */
-.mic-btn{
-  width:50px;height:50px;border-radius:50%;border:2px solid var(--border);
-  background:var(--bg3);color:var(--tx3);cursor:pointer;
-  display:flex;align-items:center;justify-content:center;transition:all .22s;flex-shrink:0;
-}
-.mic-btn.idle{border-color:var(--border);}
+.mic-btn{width:50px;height:50px;border-radius:50%;border:2px solid var(--border);background:var(--bg3);color:var(--tx3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .22s;flex-shrink:0;}
 .mic-btn.live{background:#E53935;border-color:#E53935;color:#fff;animation:mic-ring 1.4s ease-out infinite;}
 .mic-btn.done{background:var(--ok-bg);border-color:var(--ok);color:var(--ok);}
 @keyframes mic-ring{0%{box-shadow:0 0 0 0 rgba(229,57,53,.45)}70%{box-shadow:0 0 0 16px rgba(229,57,53,0)}100%{box-shadow:0 0 0 0 rgba(229,57,53,0)}}
 
-/* ── INSIGHTS ─────────────────────────────────────────── */
-.ins-item{
-  padding:10px 12px;border-radius:var(--r2);margin-bottom:6px;
-  border-left:3px solid;animation:slideIn .25s ease forwards;
-}
-.i-info{background:var(--ink-bg);border-left-color:var(--ink);}
-.i-warn{background:var(--amber-bg);border-left-color:var(--amber);}
-.i-ok{background:var(--ok-bg);border-left-color:var(--ok);}
-.i-er{background:var(--rose-bg);border-left-color:var(--rose);}
-.ins-ttl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;margin-bottom:3px;}
-.ins-body{font-size:11.5px;line-height:1.55;color:var(--tx2);}
-@keyframes slideIn{from{opacity:0;transform:translateX(6px)}to{opacity:1;transform:none}}
-
-/* ── TOAST ───────────────────────────────────────────── */
-.toast{
-  padding:8px 13px;border-radius:var(--r2);font-size:11.5px;font-weight:600;
-  display:flex;align-items:center;gap:7px;border:1px solid;
-}
+/* TOAST */
+.toast{padding:8px 13px;border-radius:var(--r2);font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:7px;border:1px solid;}
 .t-ok{background:var(--ok-bg);color:var(--ok);border-color:rgba(27,107,58,.25);}
 .t-er{background:var(--rose-bg);color:var(--rose);border-color:rgba(183,28,28,.25);}
 .t-wa{background:var(--amber-bg);color:var(--amber);border-color:rgba(199,119,0,.25);}
 .t-in{background:var(--ink-bg);color:var(--ink);border-color:rgba(15,52,96,.2);}
 
-/* ── WORD COUNT BAR ───────────────────────────────────── */
+/* WORD COUNT BAR */
 .wc-bar{height:2px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:5px;}
 .wc-fill{height:2px;background:var(--ink);border-radius:2px;transition:width .4s;}
 
-/* ── OVERLAY ─────────────────────────────────────────── */
-.overlay{
-  position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(10px);
-  z-index:9999;display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity .22s;
-}
+/* OVERLAY */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(10px);z-index:9999;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s;}
 .overlay.open{opacity:1;pointer-events:all;}
-.ov-box{
-  background:var(--bg2);border:1px solid var(--border);border-radius:18px;
-  padding:28px;max-width:420px;width:calc(100% - 32px);
-  box-shadow:var(--sh2);transform:scale(.95);transition:transform .22s;
-}
+.ov-box{background:var(--bg2);border:1px solid var(--border);border-radius:18px;padding:28px;max-width:420px;width:calc(100% - 32px);box-shadow:var(--sh2);transform:scale(.95);transition:transform .22s;}
 .overlay.open .ov-box{transform:scale(1);}
-.ov-title{font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:var(--tx);margin-bottom:6px;letter-spacing:-.02em;}
+.ov-title{font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:var(--tx);margin-bottom:6px;}
 .ov-msg{font-size:13px;color:var(--tx2);line-height:1.7;margin-bottom:22px;}
 
-/* ── HISTORY ITEMS ───────────────────────────────────── */
-.hist-item{
-  display:flex;align-items:center;gap:9px;padding:9px 11px;
-  border-radius:var(--r2);border:1px solid var(--border2);
-  background:var(--bg3);cursor:pointer;transition:all .18s;
-}
-.hist-item:hover{border-color:var(--ink);background:var(--ink-bg);}
+/* HISTORY */
+.evo-bar{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--border2);}
+.evo-bar:last-child{border-bottom:none;}
+.evo-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);width:65px;flex-shrink:0;}
+.evo-risk-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.evo-txt{font-size:11px;color:var(--tx2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.evo-dur{font-size:10px;color:var(--tx4);}
 
-/* ── DOTS LOADER ──────────────────────────────────────── */
-.dots span{
-  display:inline-block;width:5px;height:5px;border-radius:50%;
-  background:var(--ink);margin:0 2px;animation:db 1.2s ease-in-out infinite;
-}
+/* DOTS LOADER */
+.dots span{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--ink);margin:0 2px;animation:db 1.2s ease-in-out infinite;}
 .dots span:nth-child(2){animation-delay:.2s}
 .dots span:nth-child(3){animation-delay:.4s}
 @keyframes db{0%,80%,100%{transform:scale(.35);opacity:.25}40%{transform:scale(1);opacity:1}}
 
-/* ── WAVEFORM ─────────────────────────────────────────── */
+/* WAVEFORM */
 .wv-bar{width:3px;height:3px;border-radius:2px;background:var(--border);transition:height .1s,background .15s;}
 
-/* ── GOALS LIST ───────────────────────────────────────── */
-.goal-item{
-  display:flex;align-items:flex-start;gap:8px;padding:8px 10px;
-  border-radius:var(--r3);border:1px solid var(--border2);background:var(--bg4);
-  margin-bottom:5px;
-}
-.goal-cb{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border);
-  background:var(--bg);cursor:pointer;flex-shrink:0;margin-top:1px;
-  display:flex;align-items:center;justify-content:center;transition:all .18s;}
+/* GOALS */
+.goal-item{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:var(--r3);border:1px solid var(--border2);background:var(--bg4);margin-bottom:5px;}
+.goal-cb{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border);background:var(--bg);cursor:pointer;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:all .18s;}
 .goal-cb.done{background:var(--ok);border-color:var(--ok);}
 .goal-txt{font-size:11.5px;line-height:1.6;color:var(--tx2);}
 .goal-txt.done{text-decoration:line-through;opacity:.5;}
 
-/* ── REPORT STYLES ────────────────────────────────────── */
+/* RAPPORT */
 .rpt-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
 .rpt-head{background:linear-gradient(135deg,#0F3460 0%,#1A237E 60%,#283593 100%);padding:26px 26px 22px;}
 .rpt-head-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.22em;color:rgba(255,255,255,.4);margin-bottom:8px;}
@@ -499,55 +348,25 @@ body{overflow:hidden;}
 .rpt-doc-band{background:rgba(0,0,0,.2);padding:11px 26px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(255,255,255,.08);}
 .rpt-doc-name{font-size:13px;font-weight:700;color:#fff;}
 .rpt-doc-sub{font-size:10px;color:rgba(255,255,255,.4);margin-top:1px;}
-
-.rpt-risk-badge{
-  display:inline-flex;align-items:center;gap:5px;
-  font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
-  padding:5px 12px;border-radius:99px;border:1.5px solid rgba(255,255,255,.3);
-  color:#fff;
-}
-
+.rpt-risk-badge{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;padding:5px 12px;border-radius:99px;border:1.5px solid rgba(255,255,255,.3);color:#fff;}
 .rpt-body{padding:22px 26px;}
 .rpt-section{margin-bottom:20px;}
-.rpt-sec-lbl{
-  font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;
-  color:var(--ink);padding-bottom:8px;margin-bottom:12px;
-  border-bottom:1.5px solid var(--ink-bg);
-  display:flex;align-items:center;gap:8px;
-}
-[data-theme="dark"] .rpt-sec-lbl{color:var(--ink);border-bottom-color:rgba(123,159,255,.15);}
+.rpt-sec-lbl{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:var(--ink);padding-bottom:8px;margin-bottom:12px;border-bottom:1.5px solid var(--ink-bg);display:flex;align-items:center;gap:8px;}
 .rpt-sec-lbl::before{content:'';width:3px;height:12px;background:var(--ink);border-radius:2px;flex-shrink:0;}
-
 .rpt-prose{font-size:13px;line-height:1.9;color:var(--tx2);}
-.rpt-summary-box{
-  background:var(--ink-bg);border:1px solid rgba(15,52,96,.15);
-  border-left:4px solid var(--ink);
-  border-radius:0 var(--r2) var(--r2) 0;padding:15px 17px;margin-bottom:18px;
-}
+.rpt-summary-box{background:var(--ink-bg);border:1px solid rgba(15,52,96,.15);border-left:4px solid var(--ink);border-radius:0 var(--r2) var(--r2) 0;padding:15px 17px;margin-bottom:18px;}
 .rpt-summary-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:var(--ink);margin-bottom:7px;}
 .rpt-summary-txt{font-family:'Fraunces',serif;font-size:14px;line-height:1.9;color:var(--ink2);font-style:italic;}
-
-.rpt-evolution-box{
-  background:var(--teal-bg);border:1px solid rgba(0,121,107,.18);
-  border-left:4px solid var(--teal);
-  border-radius:0 var(--r2) var(--r2) 0;padding:14px 16px;margin-bottom:16px;
-}
+.rpt-evolution-box{background:var(--teal-bg);border:1px solid rgba(0,121,107,.18);border-left:4px solid var(--teal);border-radius:0 var(--r2) var(--r2) 0;padding:14px 16px;margin-bottom:16px;}
 .rpt-evolution-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:var(--teal);margin-bottom:6px;}
 .rpt-evolution-txt{font-size:13px;line-height:1.75;color:var(--tx2);}
-
-.rpt-vigil-box{
-  background:var(--rose-bg);border:1px solid rgba(183,28,28,.18);
-  border-left:4px solid var(--rose);
-  border-radius:0 var(--r2) var(--r2) 0;padding:14px 16px;
-}
+.rpt-vigil-box{background:var(--rose-bg);border:1px solid rgba(183,28,28,.18);border-left:4px solid var(--rose);border-radius:0 var(--r2) var(--r2) 0;padding:14px 16px;}
 .rpt-vigil-lbl{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:var(--rose);margin-bottom:6px;}
 .rpt-vigil-txt{font-size:13px;line-height:1.75;color:var(--tx2);}
-
 .rpt-diag-row{display:flex;align-items:flex-start;gap:11px;padding:9px 0;border-bottom:1px solid var(--border2);}
 .rpt-diag-row:last-child{border-bottom:none;}
-.rpt-diag-code{font-size:9px;font-weight:800;background:var(--ink);color:#fff;padding:3px 8px;border-radius:4px;flex-shrink:0;margin-top:2px;letter-spacing:.05em;}
+.rpt-diag-code{font-size:9px;font-weight:800;background:var(--ink);color:#fff;padding:3px 8px;border-radius:4px;flex-shrink:0;margin-top:2px;}
 .rpt-diag-txt{font-size:13px;color:var(--tx2);line-height:1.6;}
-
 .rpt-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 .rpt-ib{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:12px 14px;}
 .rpt-ib-lbl{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:var(--tx3);margin-bottom:5px;}
@@ -555,72 +374,62 @@ body{overflow:hidden;}
 .rpt-obj-row{display:flex;align-items:flex-start;gap:9px;padding:5px 0;}
 .rpt-obj-n{font-size:11px;font-weight:800;color:var(--teal);width:20px;flex-shrink:0;text-align:center;margin-top:2px;}
 .rpt-obj-t{font-size:12.5px;line-height:1.65;color:var(--tx2);}
-
 .rpt-sig{border-top:1px solid var(--border);padding:16px 26px;display:flex;justify-content:space-between;align-items:center;background:var(--bg3);}
 .rpt-sig-sub{font-size:11px;color:var(--tx3);}
 .rpt-sig-name{font-size:13px;font-weight:700;color:var(--tx);margin-top:2px;}
 
-/* ── PLUTCHIK EMOTIONS CHART ──────────────────────────── */
-.emo-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:4px;}
-.emo-cell{
-  border-radius:var(--r3);padding:8px 6px;text-align:center;
-  border:1px solid transparent;cursor:pointer;transition:all .2s;
-  position:relative;overflow:hidden;
+/* ═══ ÉMOTIONS 6 — PLUTCHIK REDESIGN ═══ */
+.emo-6-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
+.emo-6-cell{
+  border-radius:var(--r2);padding:14px 10px;text-align:center;
+  border:1.5px solid transparent;cursor:pointer;
+  transition:all .25s;position:relative;overflow:hidden;
 }
-.emo-cell:hover{transform:translateY(-2px);box-shadow:var(--sh1);}
-.emo-icon{font-size:18px;line-height:1;margin-bottom:4px;}
-.emo-name{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);margin-bottom:4px;}
-.emo-pct{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600;color:var(--tx);line-height:1;}
-.emo-bar{height:3px;border-radius:2px;margin-top:4px;transition:width .5s ease;}
-.emo-fill-bar{height:100%;border-radius:2px;}
-
-/* ── LEXIQUE MODAL ─────────────────────────────────────── */
-.lex-modal{
-  position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);
-  z-index:9998;display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity .22s;
+.emo-6-cell:hover{transform:translateY(-3px);box-shadow:var(--sh2);}
+.emo-6-icon{font-size:26px;line-height:1;margin-bottom:6px;}
+.emo-6-name{
+  font-size:10px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.08em;margin-bottom:8px;
 }
-.lex-modal.open{opacity:1;pointer-events:all;}
-.lex-box{
-  background:var(--bg2);border:1px solid var(--border);border-radius:18px;
-  padding:26px;max-width:500px;width:calc(100% - 32px);
-  box-shadow:var(--sh2);transform:scale(.95);transition:transform .22s;max-height:80vh;overflow-y:auto;
+.emo-6-pct{
+  font-family:'Fraunces',serif;font-size:28px;font-weight:700;
+  line-height:1;margin-bottom:6px;
 }
-.lex-modal.open .lex-box{transform:scale(1);}
-.lex-title{font-family:'Fraunces',serif;font-size:20px;font-weight:700;letter-spacing:-.02em;margin-bottom:4px;}
-.lex-sub{font-size:12px;color:var(--tx3);margin-bottom:16px;}
-.lex-word{
-  display:inline-block;margin:3px;padding:3px 10px;border-radius:99px;
-  font-size:11.5px;font-weight:600;border:1px solid;cursor:default;
+.emo-6-bar-track{height:4px;border-radius:3px;background:rgba(0,0,0,.1);overflow:hidden;}
+.emo-6-bar-fill{height:100%;border-radius:3px;transition:width .6s ease;}
+/* Chip état */
+.emo-6-chip{
+  display:inline-block;margin-top:6px;padding:2px 8px;
+  border-radius:99px;font-size:9px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.07em;
 }
 
-/* ── PLAN THÉRAPEUTIQUE ───────────────────────────────── */
+/* PLAN SECTION */
 .plan-section{background:var(--teal-bg);border:1px solid rgba(0,121,107,.2);border-radius:var(--r);padding:15px;}
 .plan-hd{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--teal);margin-bottom:10px;display:flex;align-items:center;gap:7px;}
 
-/* ── EVOLUTION INTER-SÉANCES ──────────────────────────── */
-.evo-bar{
-  display:flex;align-items:center;gap:8px;padding:8px 0;
-  border-bottom:1px solid var(--border2);
-}
-.evo-bar:last-child{border-bottom:none;}
-.evo-date{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--tx3);width:65px;flex-shrink:0;}
-.evo-risk-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.evo-txt{font-size:11px;color:var(--tx2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.evo-dur{font-size:10px;color:var(--tx4);}
-
-/* ── MIC AUDIO BAR ─────────────────────────────────────── */
+/* AUDIO */
 .audio-vis{height:3px;background:var(--border);border-radius:2px;overflow:hidden;flex:1;}
 .audio-fill{height:3px;background:var(--ink);border-radius:2px;transition:width .1s;}
-
-/* ── DIVIDER ───────────────────────────────────────────── */
 .divider{height:1px;background:var(--border);margin:2px 0;}
+
+/* LEXIQUE MODAL */
+.lex-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(12px);z-index:9998;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .22s;}
+.lex-modal.open{opacity:1;pointer-events:all;}
+.lex-box{background:var(--bg2);border:1px solid var(--border);border-radius:18px;padding:26px;max-width:500px;width:calc(100% - 32px);box-shadow:var(--sh2);transform:scale(.95);transition:transform .22s;max-height:80vh;overflow-y:auto;}
+.lex-modal.open .lex-box{transform:scale(1);}
+.lex-title{font-family:'Fraunces',serif;font-size:20px;font-weight:700;margin-bottom:4px;}
+.lex-sub{font-size:12px;color:var(--tx3);margin-bottom:16px;}
+.lex-word{display:inline-block;margin:3px;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:600;border:1px solid;cursor:default;}
+
+/* TIMELINE EMO */
+.tl-chip-ok{background:var(--ok-bg);color:var(--ok);border-color:rgba(27,107,58,.25);}
 </style>
 </head>
 <body>
 <div class="app">
 
-<!-- ═══════════════════ TOPBAR ═══════════════════════════ -->
+<!-- TOPBAR -->
 <div class="topbar">
   <div class="topbar-left">
     <a href="dashboard.php" class="back-btn">
@@ -652,10 +461,10 @@ body{overflow:hidden;}
   </div>
 </div>
 
-<!-- ═══════════════════ MAIN ═══════════════════════════════ -->
+<!-- MAIN -->
 <div class="main">
 
-<!-- ═══ COLONNE GAUCHE ══════════════════════════════════════ -->
+<!-- ═══ COLONNE GAUCHE ═══ -->
 <div class="col" style="border-right:1px solid var(--border);">
 
   <!-- Profil Patient -->
@@ -688,7 +497,6 @@ body{overflow:hidden;}
       </div>
     </div>
 
-    <!-- Stats inter-séances -->
     <div class="inter-strip">
       <div class="inter-cell">
         <div class="inter-lbl">Séance</div>
@@ -731,41 +539,15 @@ body{overflow:hidden;}
     <?php endif; ?>
   </div>
 
-  <!-- IA Insights Live -->
-  <div class="card" style="flex:1;min-height:0;">
-    <div class="card-hd">
-      <span class="hd-dot" style="background:var(--ink)"></span>
-      Insights IA · Live
-      <div id="ai-loader" style="display:none;margin-left:auto;"><div class="dots"><span></span><span></span><span></span></div></div>
-      <button id="btn-ask" onclick="toggleAsk()" class="btn btn-ghost" style="margin-left:auto;padding:4px 9px;font-size:10px;" disabled>✦ Question</button>
-    </div>
-    <div id="feed" style="max-height:200px;overflow-y:auto;">
-      <div id="feed-ph" style="padding:24px 0;text-align:center;color:var(--tx4);">
-        <p style="font-size:11px;line-height:2.2;">Démarrez la capture vocale<br>L'IA analysera en continu</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Question libre -->
-  <div id="ask-box" style="display:none;">
-    <div class="card" style="padding:12px;">
-      <textarea id="ask-in" rows="2" class="ta" style="font-size:12px;padding:9px;margin-bottom:8px;" placeholder="Ex : Signes de dissociation ? Approche ACT ?"></textarea>
-      <div style="display:flex;gap:6px;">
-        <button onclick="sendQ()" class="btn btn-ink" style="flex:1;font-size:11px;">Demander</button>
-        <button onclick="toggleAsk()" class="btn btn-ghost" style="padding:7px 11px;font-size:11px;">✕</button>
-      </div>
-      <div id="ask-resp" style="margin-top:8px;"></div>
-    </div>
-  </div>
-
-  <!-- Notes praticien -->
+  <!-- NOTES PRATICIEN — mise en valeur -->
   <div class="card">
     <div class="card-hd">
       <span class="hd-dot" style="background:var(--amber)"></span>
-      Notes praticien
-      <span class="chip c-idle" style="font-size:9px;margin-left:auto;">Privé</span>
+      Notes du praticien
+      <span class="chip c-warn" style="font-size:9px;margin-left:auto;">Privé · Non archivé</span>
     </div>
-    <textarea id="notes" class="ta-notes" rows="4" placeholder="Observations cliniques, impressions, hypothèses, contretransfert…"></textarea>
+    <textarea id="notes" class="ta-notes-big" rows="7"
+      placeholder="Vos observations cliniques, impressions, hypothèses, contre-transfert, éléments non verbaux…&#10;&#10;Ces notes restent confidentielles et ne sont pas incluses dans l'archive patient."></textarea>
   </div>
 
   <!-- Historique séances -->
@@ -776,22 +558,20 @@ body{overflow:hidden;}
       Fil de continuité
       <span class="chip c-ok" style="font-size:9px;margin-left:auto;"><?= count($prev_consults) ?> séances</span>
     </div>
-    <div>
-      <?php
-      $risk_colors = ['faible'=>'#1B6B3A','modéré'=>'#C77700','élevé'=>'#B71C1C','critique'=>'#7B1FA2'];
-      foreach($prev_consults as $i=>$pc):
-        $rc = $risk_colors[$pc['niveau_risque'] ?? 'faible'] ?? '#8C867E';
-      ?>
-      <div class="evo-bar">
-        <span class="evo-date"><?= date('d/m/Y', strtotime($pc['date_consultation'])) ?></span>
-        <span class="evo-risk-dot" style="background:<?= $rc ?>;" title="Risque : <?= $pc['niveau_risque'] ?? 'faible' ?>"></span>
-        <span class="evo-txt"><?= htmlspecialchars(mb_substr(strip_tags($pc['resume_ia']??''),0,60,'UTF-8')) ?>…</span>
-        <span class="evo-dur"><?= $pc['duree_minutes'] ?>min</span>
-        <button onclick="loadPrev(<?= json_encode(strip_tags($pc['resume_ia']??'')) ?>,<?= json_encode($pc['plan_therapeutique']??'') ?>)"
-          class="btn btn-ghost" style="padding:3px 7px;font-size:10px;flex-shrink:0;">→</button>
-      </div>
-      <?php endforeach; ?>
+    <?php
+    $risk_colors = ['faible'=>'#1B6B3A','modéré'=>'#C77700','élevé'=>'#B71C1C','critique'=>'#7B1FA2'];
+    foreach($prev_consults as $pc):
+      $rc = $risk_colors[$pc['niveau_risque'] ?? 'faible'] ?? '#8C867E';
+    ?>
+    <div class="evo-bar">
+      <span class="evo-date"><?= date('d/m/Y', strtotime($pc['date_consultation'])) ?></span>
+      <span class="evo-risk-dot" style="background:<?= $rc ?>;" title="Risque : <?= $pc['niveau_risque'] ?? 'faible' ?>"></span>
+      <span class="evo-txt"><?= htmlspecialchars(mb_substr(strip_tags($pc['resume_ia']??''),0,60,'UTF-8')) ?>…</span>
+      <span class="evo-dur"><?= $pc['duree_minutes'] ?>min</span>
+      <button onclick="loadPrev(<?= json_encode(strip_tags($pc['resume_ia']??'')) ?>,<?= json_encode($pc['plan_therapeutique']??'') ?>)"
+        class="btn btn-ghost" style="padding:3px 7px;font-size:10px;flex-shrink:0;">→</button>
     </div>
+    <?php endforeach; ?>
   </div>
   <?php endif; ?>
 
@@ -816,7 +596,7 @@ body{overflow:hidden;}
 
 </div><!-- /col gauche -->
 
-<!-- ═══ COLONNE CENTRE ═══════════════════════════════════════ -->
+<!-- ═══ COLONNE CENTRE ═══ -->
 <div class="col" style="padding:18px 18px;">
 
   <!-- TRANSCRIPTION -->
@@ -846,10 +626,6 @@ body{overflow:hidden;}
         <p id="mic-label" style="font-size:11px;font-weight:600;color:var(--tx3);margin-bottom:4px;">Microphone inactif — Cliquez pour démarrer</p>
         <div class="audio-vis"><div class="audio-fill" id="audio-fill" style="width:0%;"></div></div>
       </div>
-      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;flex-shrink:0;">
-        <input type="checkbox" id="auto-ai" checked style="accent-color:var(--ink);width:13px;height:13px;">
-        <span style="font-size:11px;font-weight:600;color:var(--tx3);">Auto-IA</span>
-      </label>
       <button onclick="clearTranscript()" class="btn btn-danger" style="padding:6px 11px;font-size:11px;flex-shrink:0;">✕</button>
     </div>
     <div id="stt-warning" style="display:none;margin-top:9px;padding:9px 13px;border-radius:var(--r2);background:var(--amber-bg);border:1px solid rgba(199,119,0,.25);">
@@ -857,13 +633,23 @@ body{overflow:hidden;}
     </div>
   </div>
 
-  <!-- PLAN THÉRAPEUTIQUE (section dédiée) -->
+  <!-- PLAN THÉRAPEUTIQUE — affiché seulement si séance de suivi (>=2) -->
+  <?php if($is_followup): ?>
   <div class="plan-section">
     <div class="plan-hd">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      Plan thérapeutique · Saisi ou dicté
+      Plan thérapeutique · Séance n°<?= $session_num ?>
+      <?php if($last_plan): ?>
+      <span class="chip" style="background:var(--teal-bg);color:var(--teal);border-color:rgba(0,121,107,.25);font-size:9px;margin-left:4px;">Reprise séance précédente</span>
+      <?php endif; ?>
       <button onclick="dictPlan()" class="btn" style="margin-left:auto;padding:4px 10px;font-size:10px;background:var(--teal);color:#fff;">🎤 Dicter</button>
     </div>
+    <?php if($last_plan): ?>
+    <div style="padding:10px 12px;border-radius:var(--r2);background:rgba(0,121,107,.06);border:1px dashed rgba(0,121,107,.3);margin-bottom:10px;">
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);margin-bottom:5px;">Plan de la séance précédente</div>
+      <p style="font-size:12px;color:var(--tx2);line-height:1.65;font-style:italic;"><?= htmlspecialchars(mb_substr($last_plan,0,300,'UTF-8')) ?><?= strlen($last_plan)>300?'…':'' ?></p>
+    </div>
+    <?php endif; ?>
     <textarea id="plan-field" class="ta-plan" rows="3"
       placeholder="Objectifs thérapeutiques, techniques envisagées, orientations, fréquence des séances…"><?= htmlspecialchars($last_plan ?? '') ?></textarea>
     <div id="plan-notif" style="margin-top:6px;min-height:22px;"></div>
@@ -875,8 +661,9 @@ body{overflow:hidden;}
       <button onclick="aiPlan()" class="btn btn-ghost" style="flex:1;font-size:11px;">✦ Suggérer via IA</button>
     </div>
   </div>
+  <?php endif; ?>
 
-  <!-- COMPTE-RENDU : header -->
+  <!-- COMPTE-RENDU -->
   <div class="card" style="flex-shrink:0;padding:0;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;">
       <div>
@@ -890,7 +677,6 @@ body{overflow:hidden;}
     </div>
   </div>
 
-  <!-- COMPTE-RENDU : body -->
   <div id="report-body" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh1);">
     <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;color:var(--tx4);text-align:center;gap:10px;min-height:160px;">
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".3"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -915,33 +701,22 @@ body{overflow:hidden;}
 
 </div><!-- /col centre -->
 
-<!-- ═══ COLONNE DROITE ═══════════════════════════════════════ -->
+<!-- ═══ COLONNE DROITE ═══ -->
 <div class="col" style="border-left:1px solid var(--border);">
 
-  <!-- ÉMOTIONS PLUTCHIK — 8 émotions avec drill-down -->
+  <!-- ÉMOTIONS 6 — PLUTCHIK REDESIGNÉ -->
   <div class="card">
     <div class="card-hd">
       <span class="hd-dot" style="background:var(--amber)"></span>
-      Émotions · Plutchik
+      Émotions détectées
       <span id="emo-chip" class="chip c-idle" style="font-size:9px;margin-left:auto;">En attente</span>
     </div>
-    <div class="emo-grid" id="emo-grid">
-      <!-- Rendu par JS -->
-    </div>
-    <div id="emo-donut-wrap" style="height:130px;position:relative;margin-top:10px;">
+    <div class="emo-6-grid" id="emo-grid"></div>
+    <!-- Donut chart -->
+    <div id="emo-donut-wrap" style="height:130px;position:relative;margin-top:12px;">
       <canvas id="emoDonut"></canvas>
     </div>
-    <p style="font-size:10px;color:var(--tx4);text-align:center;margin-top:5px;">Cliquez sur une émotion pour voir le lexique détecté</p>
-  </div>
-
-  <!-- RADAR CLINIQUE -->
-  <div class="card">
-    <div class="card-hd">
-      <span class="hd-dot"></span>
-      Profil clinique
-      <span id="radar-chip" class="chip c-idle" style="font-size:9px;margin-left:auto;">En attente</span>
-    </div>
-    <div style="height:170px;position:relative;"><canvas id="radarChart"></canvas></div>
+    <p style="font-size:10px;color:var(--tx4);text-align:center;margin-top:5px;">Cliquez sur une émotion pour voir les mots détectés</p>
   </div>
 
   <!-- TIMELINE ÉMOTIONNELLE -->
@@ -985,7 +760,7 @@ body{overflow:hidden;}
 </div><!-- /main -->
 </div><!-- /app -->
 
-<!-- ═══ OVERLAY CONFIRMATION ═══════════════════════════════ -->
+<!-- OVERLAY CONFIRMATION -->
 <div id="overlay" class="overlay" onclick="if(event.target===this)closeOv()">
   <div class="ov-box">
     <div class="ov-title" id="ov-title"></div>
@@ -997,7 +772,7 @@ body{overflow:hidden;}
   </div>
 </div>
 
-<!-- ═══ LEXIQUE MODAL ══════════════════════════════════════ -->
+<!-- LEXIQUE MODAL -->
 <div id="lex-modal" class="lex-modal" onclick="if(event.target===this)closeLex()">
   <div class="lex-box">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
@@ -1036,40 +811,75 @@ var PAT_TRAITEMENT = <?= json_encode($pat_traitement) ?>;
 var LAST_EMO = <?= json_encode($last_emo_arr) ?>;
 var RISQUE_TENDANCE = <?= json_encode($risque_tendance) ?>;
 var GOALS_OPEN = <?= json_encode(array_map(fn($g)=>['id'=>$g['id'],'text'=>$g['goal_text']], $goals_open)) ?>;
+var IS_FOLLOWUP = <?= json_encode($is_followup) ?>;
 
-/* ── ÉTAT GLOBAL ────────────────────────────────────────── */
+/* ── ÉTAT GLOBAL ── */
 var micOn = false, recog = null, timerIv = null, secs = 0;
 var lastReport = null, lastAutoText = '';
-var emoC, radC, tlC, polC, donutC;
-var emoPoints = [0], tlRisk = [], tlResil = [], tlAnx = [], tlDetresse = [];
-var radarData = {detresse:0, anxiete:0, resilience:0, social:0, lien:0};
-var detectedWords = {}; // {emotion: [words found]}
-
-/* ── PLUTCHIK 8 ÉMOTIONS ────────────────────────────────── */
-var PLUT = {
-  joie:         {icon:'😊', color:'#FBC02D', bg:'#FFFDE7', border:'#F9A825',
-    lex:['heureux','heureuse','joie','bonheur','content','bien','sourire','rire','haha','fantastique','génial','super','top','cool','merveilleux','enchanté','ravi','épanoui','fier','réussi','gratitude','légèreté']},
-  tristesse:    {icon:'😢', color:'#1565C0', bg:'#E3F2FD', border:'#0D47A1',
-    lex:['triste','tristesse','déprimé','déprimée','dépression','pleur','larme','désespoir','vide','souffrance','effondré','brisé','perdu','abandonné','seul','solitude','deuil','rupture','chagrin','mélancolie','abattu','cafard']},
-  peur:         {icon:'😰', color:'#6A1B9A', bg:'#F3E5F5', border:'#4A148C',
-    lex:['peur','anxieux','anxieuse','anxiété','angoisse','stress','panique','terreur','crainte','phob','cauchemar','insomnie','tremble','terrif','effroi','appréhension','inquiet','inquiète','hypervigilance','menace','danger']},
-  colere:       {icon:'😡', color:'#B71C1C', bg:'#FFEBEE', border:'#7F0000',
-    lex:['colère','furieux','furie','rage','énervé','énervée','irrité','frustré','frustration','agressif','agressivité','haine','crier','violence','injustice','révolté','exaspéré','hostile','conflit','dispute','rancœur']},
-  surprise:     {icon:'😲', color:'#00796B', bg:'#E0F2F1', border:'#004D40',
-    lex:['surpris','surprise','choc','inattendu','bizarre','étrange','incroyable','soudain','brutal','stupéfait','stupéfaction','imprévu','déconcerté','abasourdi','sidéré','ahuri','insolite']},
-  degout:       {icon:'🤢', color:'#558B2F', bg:'#F1F8E9', border:'#33691E',
-    lex:['dégoût','dégoûté','nauséeux','écœurant','répugnant','insupportable','horrible','abominable','honte','honteux','rejet','mépris','nausée','répulsion','dépréciation']},
-  anticipation: {icon:'🎯', color:'#E65100', bg:'#FFF3E0', border:'#BF360C',
-    lex:['anticipe','espoir','attente','projet','envie','motivation','objectif','futur','demain','bientôt','prépare','prévois','impatient','hâte','désir','aspiration','ambition','envisage','planifie']},
-  confiance:    {icon:'💪', color:'#1B5E20', bg:'#E8F5E9', border:'#1B5E20',
-    lex:['confiance','sécurité','serein','calme','paisible','stable','ancré','fort','capable','résilient','ressource','soutien','appui','lien','attachement','accepte','apaisé','soulagé','capable','autonome']}
-};
-
-var emoValues = {joie:0, tristesse:0, peur:0, colere:0, surprise:0, degout:0, anticipation:0, confiance:0};
-var PLUT_KEYS = Object.keys(PLUT);
+var tlC, polC, donutC;
+var emoPoints = [0], tlRisk = [], tlResil = [], tlAnx = [];
 
 /* ═══════════════════════════════════════════════════════════
-   INITIALISATION THÈME
+   6 ÉMOTIONS PLUTCHIK SEULEMENT
+═══════════════════════════════════════════════════════════ */
+var PLUT6 = {
+  tristesse: {
+    icon:'😢', label:'Tristesse',
+    color:'#1565C0', colorLight:'#E3F2FD', border:'#0D47A1',
+    textOnBg:'#1565C0',
+    lex:['triste','tristesse','déprimé','déprimée','dépression','pleur','larme','désespoir','vide','souffrance',
+         'effondré','brisé','perdu','abandonné','seul','solitude','deuil','rupture','chagrin','mélancolie',
+         'abattu','cafard','épuisé','vide','mort','noir','sombre']
+  },
+  joie: {
+    icon:'😊', label:'Joie',
+    color:'#E65100', colorLight:'#FFF3E0', border:'#BF360C',
+    textOnBg:'#E65100',
+    lex:['heureux','heureuse','joie','bonheur','content','bien','sourire','rire','fantastique','génial',
+         'super','top','merveilleux','enchanté','ravi','épanoui','fier','gratitude','légèreté','haha',
+         'rigole','plaisir','amusant','drôle','bien-être']
+  },
+  surprise: {
+    icon:'😲', label:'Surprise',
+    color:'#00796B', colorLight:'#E0F2F1', border:'#004D40',
+    textOnBg:'#00796B',
+    lex:['surpris','surprise','choc','inattendu','bizarre','étrange','incroyable','soudain','brutal',
+         'stupéfait','stupéfaction','imprévu','déconcerté','abasourdi','sidéré','ahuri','insolite',
+         'wow','incroyable','tellement','pas prévu']
+  },
+  degout: {
+    icon:'🤢', label:'Dégoût',
+    color:'#558B2F', colorLight:'#F1F8E9', border:'#33691E',
+    textOnBg:'#558B2F',
+    lex:['dégoût','dégoûté','nauséeux','écœurant','répugnant','insupportable','horrible','abominable',
+         'honte','honteux','rejet','mépris','nausée','répulsion','dépréciation','abject','immonde',
+         'horreur','dégueulasse','écœuré']
+  },
+  colere: {
+    icon:'😡', label:'Colère',
+    color:'#B71C1C', colorLight:'#FFEBEE', border:'#7F0000',
+    textOnBg:'#B71C1C',
+    lex:['colère','furieux','furie','rage','énervé','énervée','irrité','frustré','frustration','agressif',
+         'agressivité','haine','crier','violence','injustice','révolté','exaspéré','hostile','conflit',
+         'dispute','rancœur','marre','ras-le-bol','excédé','fâché']
+  },
+  peur: {
+    icon:'😰', label:'Peur',
+    color:'#6A1B9A', colorLight:'#F3E5F5', border:'#4A148C',
+    textOnBg:'#6A1B9A',
+    lex:['peur','anxieux','anxieuse','anxiété','angoisse','stress','panique','terreur','crainte','phob',
+         'cauchemar','insomnie','tremble','terrif','effroi','appréhension','inquiet','inquiète',
+         'hypervigilance','menace','danger','effrayé','affolé','paralysé','redoute']
+  }
+};
+
+var EMO6_KEYS = Object.keys(PLUT6);
+var emoValues6 = {};
+EMO6_KEYS.forEach(function(k){ emoValues6[k] = 0; });
+var detectedWords6 = {};
+
+/* ═══════════════════════════════════════════════════════════
+   THÈME
 ═══════════════════════════════════════════════════════════ */
 (function(){
   var t = localStorage.getItem('psyspace-theme') || 'light';
@@ -1086,7 +896,7 @@ document.getElementById('theme-btn').addEventListener('click', function(){
 });
 
 /* ═══════════════════════════════════════════════════════════
-   OVERLAY / NOTIFICATIONS
+   OVERLAY / NOTIF
 ═══════════════════════════════════════════════════════════ */
 function openOv(title, msg, cb) {
   document.getElementById('ov-title').innerHTML = title;
@@ -1095,17 +905,16 @@ function openOv(title, msg, cb) {
   document.getElementById('ov-yes').onclick = function(){ closeOv(); cb(); };
 }
 function closeOv(){ document.getElementById('overlay').classList.remove('open'); }
-
 function ntf(id, msg, type, ms) {
-  if(ms === undefined) ms = 4000;
-  var z = document.getElementById(id); if(!z) return;
-  var ic = {ok:'✓',er:'✕',wa:'⚠',in:'ℹ'};
-  z.innerHTML = '<div class="toast t-'+type+'"><span>'+(ic[type]||'ℹ')+'</span><span>'+msg+'</span></div>';
+  if(ms===undefined) ms=4000;
+  var z=document.getElementById(id); if(!z) return;
+  var ic={ok:'✓',er:'✕',wa:'⚠',in:'ℹ'};
+  z.innerHTML='<div class="toast t-'+type+'"><span>'+(ic[type]||'ℹ')+'</span><span>'+msg+'</span></div>';
   if(ms>0) setTimeout(function(){ if(z) z.innerHTML=''; }, ms);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   LEXIQUE & ANALYSE
+   ANALYSE TEXTE
 ═══════════════════════════════════════════════════════════ */
 var LEX_CLI = {
   detresse: ["triste","tristesse","déprimé","déprimée","dépression","désespoir","vide","souffrance","honte","coupable","inutile","seul","abandonné","deuil","rupture","pleurer","larmes","effondré","brisé","épuisé"],
@@ -1117,36 +926,33 @@ var LEX_CLI = {
 var LEX_URGENCE = ["suicide","mourir","en finir","me tuer","plus vivre","automutilation","me blesser","me couper","overdose","sauter","pendre","ne veux plus vivre"];
 
 function analyzeText(text) {
-  var t = text.toLowerCase();
-  var scores = {detresse:0,anxiete:0,resilience:0,social:0,lien:0};
+  var t=text.toLowerCase(); var scores={detresse:0,anxiete:0,resilience:0,social:0,lien:0};
   Object.keys(LEX_CLI).forEach(function(cat){
     LEX_CLI[cat].forEach(function(w){
-      var re = new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
-      var m = t.match(re); if(m) scores[cat] += m.length;
+      var re=new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
+      var m=t.match(re); if(m) scores[cat]+=m.length;
     });
   });
   return scores;
 }
 
-function analyzePlutchik(text) {
-  var t = text.toLowerCase();
-  var scores = {};
-  var foundWords = {};
-  PLUT_KEYS.forEach(function(emo){
-    scores[emo] = 0;
-    foundWords[emo] = [];
-    PLUT[emo].lex.forEach(function(w){
-      var re = new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
-      var m = t.match(re);
-      if(m){ scores[emo] += m.length; foundWords[emo].push({w:w, n:m.length}); }
+function analyzePlutchik6(text) {
+  var t=text.toLowerCase();
+  var scores={}, found={};
+  EMO6_KEYS.forEach(function(emo){
+    scores[emo]=0; found[emo]=[];
+    PLUT6[emo].lex.forEach(function(w){
+      var re=new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
+      var m=t.match(re);
+      if(m){ scores[emo]+=m.length; found[emo].push({w:w,n:m.length}); }
     });
   });
-  detectedWords = foundWords;
+  detectedWords6=found;
   return scores;
 }
 
 function checkUrgence(text) {
-  var t = text.toLowerCase();
+  var t=text.toLowerCase();
   return LEX_URGENCE.some(function(p){ return t.includes(p); });
 }
 
@@ -1154,112 +960,129 @@ function checkUrgence(text) {
    ON TYPING
 ═══════════════════════════════════════════════════════════ */
 function onTyping(val) {
-  var words = val.trim().split(/\s+/).filter(function(w){ return w.length>0; });
-  var wc = words.length;
-  document.getElementById('word-count').textContent = wc+(wc>1?' mots':' mot');
-  document.getElementById('wc-fill').style.width = Math.min(100, wc/5)+'%';
+  var words=val.trim().split(/\s+/).filter(function(w){ return w.length>0; });
+  var wc=words.length;
+  document.getElementById('word-count').textContent=wc+(wc>1?' mots':' mot');
+  document.getElementById('wc-fill').style.width=Math.min(100,wc/5)+'%';
 
-  if(checkUrgence(val)) {
+  if(checkUrgence(val)){
     addInsight('er','⚠ ALERTE URGENCE','Propos pouvant indiquer un risque vital détectés. Évaluation immédiate requise.');
-    document.getElementById('rec-status').textContent = '⚠ ALERTE';
-    document.getElementById('rec-status').className = 'chip c-crit';
+    document.getElementById('rec-status').textContent='⚠ ALERTE';
+    document.getElementById('rec-status').className='chip c-crit';
   }
 
-  var sc = analyzeText(val);
-  var plut = analyzePlutchik(val);
+  var sc=analyzeText(val);
+  var plut=analyzePlutchik6(val);
 
-  // Normalisation Plutchik en pourcentage
-  var maxP = Math.max(1, Math.max.apply(null, PLUT_KEYS.map(function(k){ return plut[k]; })));
-  PLUT_KEYS.forEach(function(k){ emoValues[k] = Math.round(Math.min(100, (plut[k]/maxP)*100)); });
+  // Normalisation en pourcentage (0-100) basée sur occurrences réelles
+  var maxRaw=Math.max(1, Math.max.apply(null, EMO6_KEYS.map(function(k){ return plut[k]; })));
+  EMO6_KEYS.forEach(function(k){
+    // Formule réaliste : plus sensible aux faibles occurrences
+    var raw=plut[k];
+    emoValues6[k]=raw===0?0:Math.min(100, Math.round(10+((raw/maxRaw)*90)));
+  });
+  // Les émotions non détectées restent à 0
+  EMO6_KEYS.forEach(function(k){ if(plut[k]===0) emoValues6[k]=0; });
 
-  updateRadar(sc);
+  updateEmo6Grid();
+  drawDonut6();
   updateTimeline(sc);
-  updatePluTchikGrid();
-  drawDonut();
 
-  var neg = sc.detresse + sc.anxiete, pos = sc.resilience + sc.social + sc.lien;
-  var total = neg + pos;
-  emoPoints.push(total>0 ? Math.max(-1,Math.min(1,(pos-neg)/total)) : 0);
-  if(emoPoints.length > 60) emoPoints.shift();
+  var neg=sc.detresse+sc.anxiete, pos=sc.resilience+sc.social+sc.lien;
+  var total=neg+pos;
+  emoPoints.push(total>0?Math.max(-1,Math.min(1,(pos-neg)/total)):0);
+  if(emoPoints.length>60) emoPoints.shift();
   drawPol();
 
-  if(wc > 8) document.getElementById('btn-generate').disabled = false;
-
-  if(document.getElementById('auto-ai').checked && wc>0 && wc%30===0 && val!==lastAutoText){
-    lastAutoText = val; runAutoAI(val, sc, plut);
-  }
+  if(wc>8) document.getElementById('btn-generate').disabled=false;
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GRILLE ÉMOTIONS PLUTCHIK
+   GRILLE 6 ÉMOTIONS
 ═══════════════════════════════════════════════════════════ */
-function updatePluTchikGrid() {
-  var g = document.getElementById('emo-grid');
-  g.innerHTML = '';
-  PLUT_KEYS.forEach(function(emo){
-    var p = PLUT[emo];
-    var v = emoValues[emo];
-    var cell = document.createElement('div');
-    cell.className = 'emo-cell';
-    cell.style.background = p.bg;
-    cell.style.borderColor = v > 20 ? p.border : 'var(--border)';
-    cell.style.opacity = v < 5 ? '0.45' : '1';
-    cell.innerHTML =
-      '<div class="emo-icon">'+p.icon+'</div>'+
-      '<div class="emo-name">'+capitalize(emo)+'</div>'+
-      '<div class="emo-pct" style="color:'+p.color+';">'+v+'%</div>'+
-      '<div class="emo-bar"><div class="emo-fill-bar" style="width:'+v+'%;background:'+p.color+';"></div></div>';
-    cell.onclick = function(){ openLex(emo); };
-    cell.title = 'Voir le lexique · '+capitalize(emo);
+function updateEmo6Grid() {
+  var g=document.getElementById('emo-grid');
+  g.innerHTML='';
+
+  // Trier par valeur décroissante pour mettre en avant les dominantes
+  var sorted=[...EMO6_KEYS].sort(function(a,b){ return emoValues6[b]-emoValues6[a]; });
+
+  sorted.forEach(function(emo){
+    var p=PLUT6[emo];
+    var v=emoValues6[emo];
+    var isDominant=v>=50;
+    var isActive=v>0;
+
+    var cell=document.createElement('div');
+    cell.className='emo-6-cell';
+    cell.style.background=isActive?p.colorLight:'var(--bg3)';
+    cell.style.borderColor=isDominant?p.border:(isActive?p.border+'88':'var(--border)');
+    cell.style.borderWidth=isDominant?'2.5px':'1.5px';
+    cell.style.opacity=isActive?'1':'0.45';
+    cell.style.transform=isDominant?'scale(1.02)':'scale(1)';
+
+    // Badge état
+    var badgeLabel='', badgeBg='', badgeColor='';
+    if(v>=75){ badgeLabel='Dominant'; badgeBg=p.color; badgeColor='#fff'; }
+    else if(v>=40){ badgeLabel='Présent'; badgeBg=p.colorLight; badgeColor=p.color; }
+    else if(v>0){ badgeLabel='Trace'; badgeBg='var(--bg3)'; badgeColor='var(--tx3)'; }
+
+    cell.innerHTML=
+      '<div class="emo-6-icon">'+p.icon+'</div>'+
+      '<div class="emo-6-name" style="color:'+(isActive?p.textOnBg:'var(--tx3)')+';">'+p.label+'</div>'+
+      '<div class="emo-6-pct" style="color:'+(isActive?p.color:'var(--tx4)')+';">'+(isActive?v+'%':'—')+'</div>'+
+      '<div class="emo-6-bar-track"><div class="emo-6-bar-fill" style="width:'+v+'%;background:'+p.color+';"></div></div>'+
+      (badgeLabel?'<div class="emo-6-chip" style="background:'+badgeBg+';color:'+badgeColor+';">'+badgeLabel+'</div>':'');
+
+    cell.onclick=function(){ if(isActive) openLex6(emo); };
+    cell.title=isActive?('Cliquez — '+p.label+' : '+v+' %'):p.label+' : non détecté';
     g.appendChild(cell);
   });
-  document.getElementById('emo-chip').textContent = 'Actif';
-  document.getElementById('emo-chip').className = 'chip c-ok';
-}
 
-function capitalize(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+  document.getElementById('emo-chip').textContent='Actif';
+  document.getElementById('emo-chip').className='chip c-ok';
+}
 
 /* ═══════════════════════════════════════════════════════════
    LEXIQUE MODAL
 ═══════════════════════════════════════════════════════════ */
-function openLex(emo) {
-  var p = PLUT[emo];
-  var found = detectedWords[emo] || [];
-  document.getElementById('lex-title').innerHTML = p.icon+' '+capitalize(emo);
-  document.getElementById('lex-title').style.color = p.color;
-  document.getElementById('lex-sub').textContent = found.length > 0
-    ? found.reduce(function(a,b){return a+b.n;},0)+' occurrence(s) détectée(s) dans le verbatim'
-    : 'Aucune occurrence détectée dans le verbatim actuel';
+function openLex6(emo) {
+  var p=PLUT6[emo];
+  var found=detectedWords6[emo]||[];
+  document.getElementById('lex-title').innerHTML=p.icon+' '+p.label;
+  document.getElementById('lex-title').style.color=p.color;
+  var totalOcc=found.reduce(function(a,b){return a+b.n;},0);
+  document.getElementById('lex-sub').textContent=totalOcc>0
+    ?totalOcc+' occurrence(s) détectée(s) dans le verbatim'
+    :'Aucune occurrence détectée';
 
-  var wordsHtml = '';
+  var wordsHtml='';
   p.lex.forEach(function(w){
-    var hit = found.find(function(f){ return f.w===w; });
-    wordsHtml += '<span class="lex-word" style="background:'+(hit?p.bg:'var(--bg3)')+';\
+    var hit=found.find(function(f){ return f.w===w; });
+    wordsHtml+='<span class="lex-word" style="background:'+(hit?p.colorLight:'var(--bg3)')+';\
       border-color:'+(hit?p.border:'var(--border)')+';\
       color:'+(hit?p.color:'var(--tx3)')+';\
       font-weight:'+(hit?'800':'500')+';">'
       +(hit?'✓ ':'')+w+(hit?' ×'+hit.n:'')+'</span>';
   });
-  document.getElementById('lex-words').innerHTML = wordsHtml;
+  document.getElementById('lex-words').innerHTML=wordsHtml;
 
-  // Extraits du verbatim
-  var tr = document.getElementById('transcript').value;
-  var extraits = '';
-  if(found.length > 0 && tr) {
-    var sentences = tr.split(/[.!?]+/).filter(function(s){ return s.trim().length > 10; });
-    var matchSentences = sentences.filter(function(s){
+  var tr=document.getElementById('transcript').value;
+  var extraits='';
+  if(found.length>0&&tr){
+    var sentences=tr.split(/[.!?]+/).filter(function(s){ return s.trim().length>10; });
+    var matchSentences=sentences.filter(function(s){
       return found.some(function(f){ return s.toLowerCase().includes(f.w); });
     }).slice(0,3);
-    if(matchSentences.length > 0) {
-      extraits = '<div style="margin-top:12px;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--tx3);margin-bottom:8px;">Extraits du verbatim</div>';
+    if(matchSentences.length>0){
+      extraits='<div style="margin-top:12px;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--tx3);margin-bottom:8px;">Extraits du verbatim</div>';
       matchSentences.forEach(function(s){
-        extraits += '<div style="padding:9px 12px;border-radius:var(--r2);background:var(--bg3);border-left:3px solid '+p.color+';margin-bottom:6px;font-size:12px;line-height:1.65;color:var(--tx2);font-style:italic;">«&nbsp;'+escH(s.trim())+'&nbsp;»</div>';
+        extraits+='<div style="padding:9px 12px;border-radius:var(--r2);background:var(--bg3);border-left:3px solid '+p.color+';margin-bottom:6px;font-size:12px;line-height:1.65;color:var(--tx2);font-style:italic;">«&nbsp;'+escH(s.trim())+'&nbsp;»</div>';
       });
-      extraits += '</div>';
+      extraits+='</div>';
     }
   }
-  document.getElementById('lex-extract').innerHTML = extraits;
-
+  document.getElementById('lex-extract').innerHTML=extraits;
   document.getElementById('lex-modal').classList.add('open');
 }
 function closeLex(){ document.getElementById('lex-modal').classList.remove('open'); }
@@ -1270,70 +1093,43 @@ function closeLex(){ document.getElementById('lex-modal').classList.remove('open
 function isDark(){ return document.documentElement.getAttribute('data-theme')==='dark'; }
 function gc(a){ return isDark()?'rgba(237,233,227,'+a+')':'rgba(28,25,22,'+a+')'; }
 
-function drawDonut() {
-  var ctx = document.getElementById('emoDonut').getContext('2d');
+function drawDonut6() {
+  var ctx=document.getElementById('emoDonut').getContext('2d');
   if(donutC) donutC.destroy();
-  var vals = PLUT_KEYS.map(function(k){ return emoValues[k]; });
-  var total = vals.reduce(function(a,b){return a+b;},0);
-  if(total === 0) return;
-  donutC = new Chart(ctx, {
+  var vals=EMO6_KEYS.map(function(k){ return emoValues6[k]; });
+  var total=vals.reduce(function(a,b){return a+b;},0);
+  if(total===0){ donutC=null; return; }
+  donutC=new Chart(ctx,{
     type:'doughnut',
     data:{
-      labels: PLUT_KEYS.map(capitalize),
+      labels:EMO6_KEYS.map(function(k){ return PLUT6[k].label; }),
       datasets:[{
-        data: vals,
-        backgroundColor: PLUT_KEYS.map(function(k){ return PLUT[k].color; }),
-        borderColor: PLUT_KEYS.map(function(k){ return PLUT[k].bg; }),
-        borderWidth: 3,
-        hoverOffset: 6
+        data:vals,
+        backgroundColor:EMO6_KEYS.map(function(k){ return PLUT6[k].color; }),
+        borderColor:EMO6_KEYS.map(function(k){ return PLUT6[k].colorLight; }),
+        borderWidth:3,hoverOffset:8
       }]
     },
     options:{
-      responsive:true, maintainAspectRatio:false,
-      cutout:'65%',
+      responsive:true,maintainAspectRatio:false,cutout:'62%',
       plugins:{
         legend:{display:false},
         tooltip:{
           backgroundColor:'rgba(28,25,22,.95)',padding:10,cornerRadius:8,
           titleFont:{family:'DM Sans',size:10,weight:'700'},
           bodyFont:{family:'DM Sans',size:11},
-          callbacks:{
-            label:function(ctx){ return ' '+ctx.label+' : '+ctx.raw+'%'; }
-          }
+          callbacks:{label:function(ctx){ return ' '+ctx.label+' : '+ctx.raw+'%'; }}
         }
       }
     }
   });
 }
 
-function drawRadar() {
-  var ctx = document.getElementById('radarChart').getContext('2d');
-  if(radC) radC.destroy();
-  radC = new Chart(ctx, {
-    type:'radar',
-    data:{
-      labels:['Détresse','Anxiété','Résilience','Social','Lien'],
-      datasets:[{
-        data:[radarData.detresse,radarData.anxiete,radarData.resilience,radarData.social,radarData.lien],
-        borderColor:'rgba(15,52,96,.7)',backgroundColor:'rgba(15,52,96,.07)',
-        borderWidth:1.5,
-        pointBackgroundColor:['#B71C1C','#6A1B9A','#1B6B3A','#00796B','#0F3460'],
-        pointBorderColor:'transparent',pointRadius:4
-      }]
-    },
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:{duration:400},
-      plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,25,22,.95)',padding:9,cornerRadius:8,titleFont:{family:'DM Sans',size:9,weight:'700'},bodyFont:{family:'DM Sans',size:10}}},
-      scales:{r:{min:0,max:100,ticks:{display:false},grid:{color:gc(.07)},angleLines:{color:gc(.06)},pointLabels:{color:gc(.5),font:{family:'DM Sans',size:9,weight:'600'}}}}
-    }
-  });
-}
-
 function drawTL() {
-  var ctx = document.getElementById('tlChart').getContext('2d');
+  var ctx=document.getElementById('tlChart').getContext('2d');
   if(tlC) tlC.destroy();
   function grd(c,c1,c2){ var g=c.chart.ctx.createLinearGradient(0,0,0,75); g.addColorStop(0,c1); g.addColorStop(1,c2); return g; }
-  tlC = new Chart(ctx, {
+  tlC=new Chart(ctx,{
     type:'line',
     data:{
       labels:tlRisk.map(function(_,i){return i;}),
@@ -1344,23 +1140,20 @@ function drawTL() {
         {label:'Anxiété',data:tlAnx,borderColor:'#6A1B9A',borderWidth:1.5,pointRadius:0,fill:false,tension:.42,borderDash:[3,3]}
       ]
     },
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:false,
-      plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(28,25,22,.95)',padding:8,cornerRadius:7,titleFont:{family:'DM Sans',size:8,weight:'700'},bodyFont:{family:'DM Sans',size:9}}},
-      scales:{x:{display:false},y:{min:0,max:100,ticks:{display:false},grid:{color:gc(.05)},border:{display:false}}}
-    }
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false}},
+      scales:{x:{display:false},y:{min:0,max:100,ticks:{display:false},grid:{color:gc(.05)},border:{display:false}}}}
   });
 }
 
 function drawPol() {
-  var ctx = document.getElementById('polChart').getContext('2d');
+  var ctx=document.getElementById('polChart').getContext('2d');
   if(polC) polC.destroy();
-  var last = emoPoints[emoPoints.length-1]||0;
-  var lc = last>0.1?'#1B6B3A':(last<-0.2?'#C77700':'#0F3460');
-  polC = new Chart(ctx, {
+  var last=emoPoints[emoPoints.length-1]||0;
+  var lc=last>0.1?'#1B6B3A':(last<-0.2?'#C77700':'#0F3460');
+  polC=new Chart(ctx,{
     type:'line',
-    data:{
-      labels:emoPoints.map(function(_,i){return i;}),
+    data:{labels:emoPoints.map(function(_,i){return i;}),
       datasets:[{data:emoPoints,borderColor:lc,borderWidth:1.5,pointRadius:0,fill:true,tension:.4,
         backgroundColor:function(c){
           var g=c.chart.ctx.createLinearGradient(0,0,0,50);
@@ -1369,25 +1162,10 @@ function drawPol() {
         }
       }]
     },
-    options:{
-      responsive:true,maintainAspectRatio:false,animation:false,
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
       plugins:{legend:{display:false}},
-      scales:{x:{display:false},y:{min:-1.2,max:1.2,ticks:{display:false},grid:{color:gc(.04)},border:{display:false}}}
-    }
+      scales:{x:{display:false},y:{min:-1.2,max:1.2,ticks:{display:false},grid:{color:gc(.04)},border:{display:false}}}}
   });
-}
-
-function updateRadar(sc) {
-  radarData = {
-    detresse:   Math.min(100, sc.detresse*14),
-    anxiete:    Math.min(100, sc.anxiete*14),
-    resilience: Math.min(100, sc.resilience*14),
-    social:     Math.min(100, sc.social*14),
-    lien:       Math.min(100, sc.lien*14)
-  };
-  drawRadar();
-  document.getElementById('radar-chip').textContent = 'Actif';
-  document.getElementById('radar-chip').className = 'chip c-ok';
 }
 
 function updateTimeline(sc) {
@@ -1400,368 +1178,314 @@ function updateTimeline(sc) {
     var n=tlRisk.length;
     var diff=((tlRisk[n-1]+tlRisk[n-2])/2)-((tlRisk[n-3]+tlRisk[n-4])/2);
     var chip=document.getElementById('tl-chip'), lbl=document.getElementById('tl-label');
-    if(diff>8){ chip.textContent='↑ Tension'; chip.className='chip c-live'; lbl.textContent='Montée du niveau de détresse'; }
-    else if(diff<-8){ chip.textContent='↓ Apaisement'; chip.className='chip c-ok'; lbl.textContent='Stabilisation progressive'; }
-    else{ chip.textContent='→ Stable'; chip.className='chip c-idle'; lbl.textContent='Régularité du discours'; }
+    if(diff>8){chip.textContent='↑ Tension';chip.className='chip c-live';lbl.textContent='Montée du niveau de détresse';}
+    else if(diff<-8){chip.textContent='↓ Apaisement';chip.className='chip c-ok';lbl.textContent='Stabilisation progressive';}
+    else{chip.textContent='→ Stable';chip.className='chip c-idle';lbl.textContent='Régularité du discours';}
   }
 }
 
-function drawAll() {
-  drawRadar(); drawTL(); drawPol(); drawDonut();
+function drawAll() { drawTL(); drawPol(); drawDonut6(); }
+
+/* ═══════════════════════════════════════════════════════════
+   INSIGHTS SÉMANTIQUES (colonne droite seulement)
+═══════════════════════════════════════════════════════════ */
+function addInsight(type, title, body) {
+  var sem=document.getElementById('sem-ph'); if(sem) sem.remove();
+  var cls={info:'i-info',warn:'i-warn',ok:'i-ok',er:'i-er'};
+  var col={info:'var(--ink)',warn:'var(--amber)',ok:'var(--ok)',er:'var(--rose)'};
+  var wrap=document.getElementById('semantic'); if(!wrap) return;
+  var el=document.createElement('div');
+  el.style.cssText='padding:10px 12px;border-radius:var(--r2);margin-bottom:6px;border-left:3px solid;animation:slideIn .25s ease forwards;';
+  var colorMap={info:'var(--ink-bg)',warn:'var(--amber-bg)',ok:'var(--ok-bg)',er:'var(--rose-bg)'};
+  var bColorMap={info:'var(--ink)',warn:'var(--amber)',ok:'var(--ok)',er:'var(--rose)'};
+  el.style.background=colorMap[type]||'var(--ink-bg)';
+  el.style.borderLeftColor=bColorMap[type]||'var(--ink)';
+  var tstr=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
+    +'<span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:'+(col[type]||'var(--ink)')+';">'+title+'</span>'
+    +'<span style="font-size:9px;color:var(--tx3);">'+tstr+'</span></div>'
+    +'<p style="font-size:11.5px;line-height:1.55;color:var(--tx2);">'+escH(body)+'</p>';
+  wrap.insertBefore(el,wrap.firstChild);
+  while(wrap.children.length>12) wrap.removeChild(wrap.lastChild);
 }
 
 /* ═══════════════════════════════════════════════════════════
    CALL IA
 ═══════════════════════════════════════════════════════════ */
 async function callAI(prompt, max) {
-  max = max||1500;
-  var res = await fetch('proxy_ia.php',{
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({prompt:prompt, max_tokens:max, csrf_token:CSRF})
+  max=max||1500;
+  var res=await fetch('proxy_ia.php',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({prompt:prompt,max_tokens:max,csrf_token:CSRF})
   });
   if(!res.ok) throw new Error('HTTP '+res.status);
-  var d = await res.json();
+  var d=await res.json();
   if(d.error) throw new Error(d.error.message||'Erreur API');
-  return d.choices&&d.choices[0]&&d.choices[0].message ? d.choices[0].message.content : '';
+  return d.choices&&d.choices[0]&&d.choices[0].message?d.choices[0].message.content:'';
 }
 
 /* ═══════════════════════════════════════════════════════════
-   AUTO-IA INSIGHTS
-═══════════════════════════════════════════════════════════ */
-async function runAutoAI(text, sc, plut) {
-  var loader = document.getElementById('ai-loader');
-  if(loader) loader.style.display='flex';
-
-  var topEmo = PLUT_KEYS.filter(function(k){ return emoValues[k]>15; }).map(function(k){ return capitalize(k)+':'+emoValues[k]+'%'; }).join(', ') || 'indéterminées';
-
-  var patCtx = buildPatientContext();
-  var histCtx = HIST.length
-    ? '\nHISTORIQUE :\n'+HIST.map(function(h,i){ return (i+1)+'. '+h.date+' ('+h.duree+'min) — Risque:'+h.risque+' — '+h.resume+(h.evolution?'\n   Évolution: '+h.evolution:''); }).join('\n')
-    : '\nPremière consultation.';
-
-  var prompt = '## Contexte\n'
-    +'Tu es psychologue clinicien superviseur expérimenté.\n\n'
-    +'## Patient\n'+patCtx+'\n\n'
-    +'## Séance n°'+SESN+' · '+DATED+'\n'
-    +histCtx+'\n\n'
-    +'## Verbatim en cours (derniers échanges) :\n"'+text.slice(-700)+'"\n\n'
-    +'## Émotions détectées (Plutchik) :\n'+topEmo+'\n\n'
-    +'## Tendance inter-séances :\nRisque '+RISQUE_TENDANCE+'\n\n'
-    +'## Instruction\nRéponds UNIQUEMENT en JSON strict, sans markdown :\n'
-    +'{"observation":"1 observation clinique factuelle (12-18 mots)","theme":"1 thème clinique central (5-8 mots)","question_therapeutique":"1 question ouverte pour approfondir (15-22 mots)","evolution_inter":"1 phrase sur l\'évolution depuis la dernière séance, null si 1ère","alerte":null}\n'
-    +'Si risque suicidaire ou urgence, mets alerte = phrase courte.';
-
-  try {
-    var raw = await callAI(prompt, 400);
-    var ai; try{ ai=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim()); }catch(e){ return; }
-    if(ai.alerte)                addInsight('er','⚠ Alerte clinique',ai.alerte);
-    if(ai.observation)           addInsight('info','Observation',ai.observation);
-    if(ai.theme)                 addInsight('ok','Thème central',ai.theme);
-    if(ai.question_therapeutique) addInsight('warn','Question à explorer',ai.question_therapeutique);
-    if(ai.evolution_inter)       addInsight('info','Évolution inter-séances',ai.evolution_inter);
-  } catch(e){ console.warn('AutoAI:',e); }
-  finally { if(loader) loader.style.display='none'; }
-}
-
-function addInsight(type, title, body) {
-  ['feed-ph','sem-ph'].forEach(function(id){ var e=document.getElementById(id); if(e) e.remove(); });
-  var cls={info:'i-info',warn:'i-warn',ok:'i-ok',er:'i-er'};
-  var col={info:'var(--ink)',warn:'var(--amber)',ok:'var(--ok)',er:'var(--rose)'};
-  ['feed','semantic'].forEach(function(id){
-    var wrap=document.getElementById(id); if(!wrap) return;
-    var el=document.createElement('div');
-    el.className='ins-item '+(cls[type]||'i-info');
-    var tstr=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-    el.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">'
-      +'<span class="ins-ttl" style="color:'+(col[type]||'var(--ink)')+';">'+title+'</span>'
-      +'<span style="font-size:9px;color:var(--tx3);">'+tstr+'</span></div>'
-      +'<p class="ins-body">'+escH(body)+'</p>';
-    wrap.insertBefore(el, wrap.firstChild);
-    while(wrap.children.length>12) wrap.removeChild(wrap.lastChild);
-  });
-  document.getElementById('btn-ask').disabled = false;
-}
-
-/* ═══════════════════════════════════════════════════════════
-   CONTEXTE PATIENT POUR L'IA
+   CONTEXTE PATIENT
 ═══════════════════════════════════════════════════════════ */
 function buildPatientContext() {
-  var lines = ['Nom : '+PAT];
-  if(PAT_AGE)          lines.push('Âge : '+PAT_AGE+' ans');
-  if(PAT_GENDER)       lines.push('Genre : '+PAT_GENDER);
-  if(PAT_PROFESSION)   lines.push('Profession : '+PAT_PROFESSION);
-  if(PAT_SITUATION)    lines.push('Situation familiale : '+PAT_SITUATION);
-  if(PAT_MOTIF_INIT)   lines.push('Motif initial : '+(PAT_MOTIF_INIT||'').slice(0,200));
-  if(PAT_ANTECEDENTS)  lines.push('Antécédents : '+(PAT_ANTECEDENTS||'').slice(0,200));
-  if(PAT_TRAITEMENT)   lines.push('Traitement en cours : '+(PAT_TRAITEMENT||'').slice(0,150));
+  var lines=['Nom : '+PAT];
+  if(PAT_AGE) lines.push('Âge : '+PAT_AGE+' ans');
+  if(PAT_GENDER) lines.push('Genre : '+PAT_GENDER);
+  if(PAT_PROFESSION) lines.push('Profession : '+PAT_PROFESSION);
+  if(PAT_SITUATION) lines.push('Situation familiale : '+PAT_SITUATION);
+  if(PAT_MOTIF_INIT) lines.push('Motif initial : '+(PAT_MOTIF_INIT||'').slice(0,200));
+  if(PAT_ANTECEDENTS) lines.push('Antécédents : '+(PAT_ANTECEDENTS||'').slice(0,200));
+  if(PAT_TRAITEMENT) lines.push('Traitement en cours : '+(PAT_TRAITEMENT||'').slice(0,150));
   return lines.join('\n');
-}
-
-/* ═══════════════════════════════════════════════════════════
-   QUESTION LIBRE
-═══════════════════════════════════════════════════════════ */
-function toggleAsk(){
-  var b=document.getElementById('ask-box');
-  b.style.display = b.style.display==='none'?'block':'none';
-  if(b.style.display==='block') document.getElementById('ask-in').focus();
-}
-async function sendQ(){
-  var q=document.getElementById('ask-in').value.trim(); if(!q) return;
-  var text=document.getElementById('transcript').value.trim();
-  var resp=document.getElementById('ask-resp');
-  resp.innerHTML='<div class="dots" style="padding:8px;"><span></span><span></span><span></span></div>';
-  var patCtx = buildPatientContext();
-  var prompt = '## Rôle\nTu es psychologue clinicien superviseur. Réponds de façon clinique et précise en 4-5 phrases.\n\n'
-    +'## Contexte patient\n'+patCtx+'\n\n'
-    +'## Séance n°'+SESN+'\nVerbatim : "'+text.slice(-600)+'"\n\n'
-    +'## Question\n"'+q+'"';
-  try {
-    var raw=await callAI(prompt,550);
-    resp.innerHTML='<div class="card" style="margin-top:8px;padding:12px;">'
-      +'<p style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--ink);margin-bottom:6px;">Réponse IA</p>'
-      +'<p style="font-size:12px;color:var(--tx2);line-height:1.7;">'+escH(raw)+'</p></div>';
-  } catch(e){ resp.innerHTML='<p style="font-size:11px;color:var(--rose);margin-top:6px;">Erreur — Réessayez.</p>'; }
 }
 
 /* ═══════════════════════════════════════════════════════════
    PLAN THÉRAPEUTIQUE
 ═══════════════════════════════════════════════════════════ */
-var planMicOn = false;
+var planMicOn=false;
 function dictPlan(){
-  var SR2 = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var SR2=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR2){ ntf('plan-notif','Microphone non supporté.','er'); return; }
   if(planMicOn) return;
-  planMicOn = true;
-  var pr = new SR2();
-  pr.lang='fr-FR'; pr.continuous=false; pr.interimResults=false;
-  pr.onstart = function(){ ntf('plan-notif','🎤 Dictée en cours…','in',0); };
-  pr.onresult = function(e){
-    var t = e.results[0][0].transcript;
-    var f = document.getElementById('plan-field');
-    f.value = (f.value ? f.value+' ' : '') + t;
-    ntf('plan-notif','Dictée capturée.','ok');
+  planMicOn=true;
+  var pr=new SR2(); pr.lang='fr-FR'; pr.continuous=false; pr.interimResults=false;
+  pr.onstart=function(){ ntf('plan-notif','🎤 Dictée en cours…','in',0); };
+  pr.onresult=function(e){
+    var t=e.results[0][0].transcript;
+    var f=document.getElementById('plan-field');
+    if(f){ f.value=(f.value?f.value+' ':'')+t; ntf('plan-notif','Dictée capturée.','ok'); }
   };
-  pr.onerror = function(){ ntf('plan-notif','Erreur dictée.','er'); };
-  pr.onend = function(){ planMicOn=false; };
+  pr.onerror=function(){ ntf('plan-notif','Erreur dictée.','er'); };
+  pr.onend=function(){ planMicOn=false; };
   pr.start();
 }
 
 async function savePlan(){
-  var val = document.getElementById('plan-field').value.trim();
-  if(!val){ ntf('plan-notif','Plan vide.','wa'); return; }
+  var pf=document.getElementById('plan-field'); if(!pf) return;
+  var val=pf.value.trim(); if(!val){ ntf('plan-notif','Plan vide.','wa'); return; }
   ntf('plan-notif','Sauvegarde…','in',0);
-  var fd = new FormData();
-  fd.append('csrf_token',CSRF);
-  fd.append('action','save_plan');
-  fd.append('plan',val);
+  var fd=new FormData(); fd.append('csrf_token',CSRF); fd.append('action','save_plan'); fd.append('plan',val);
   try {
-    var res = await fetch('save_consultation.php',{method:'POST',body:fd});
-    var d = await res.text();
-    ntf('plan-notif', d.trim()==='success'?'✓ Plan sauvegardé.':'Erreur : '+d.trim(), d.trim()==='success'?'ok':'er');
+    var res=await fetch('save_consultation.php',{method:'POST',body:fd});
+    var d=await res.text();
+    ntf('plan-notif',d.trim()==='success'?'✓ Plan sauvegardé.':'Erreur : '+d.trim(),d.trim()==='success'?'ok':'er');
   } catch(e){ ntf('plan-notif','Erreur réseau.','er'); }
 }
 
 async function aiPlan(){
-  var text = document.getElementById('transcript').value.trim();
+  var pf=document.getElementById('plan-field'); if(!pf) return;
+  var text=document.getElementById('transcript').value.trim();
   if(text.length<20){ ntf('plan-notif','Transcription insuffisante.','wa'); return; }
   ntf('plan-notif','Génération via IA…','in',0);
-  var patCtx = buildPatientContext();
-  var histCtx = HIST.length
-    ? 'Historique :\n'+HIST.map(function(h){ return '- '+h.date+' : '+h.resume+(h.plan?' | Plan: '+h.plan:''); }).join('\n')
-    : 'Première consultation.';
-  var prompt = '## Rôle\nTu es psychologue clinicien. Propose un plan thérapeutique structuré en 3-5 lignes, en français professionnel, sans numérotation, en prose.\n\n'
-    +'## Patient\n'+patCtx+'\n\n'
-    +'## '+histCtx+'\n\n'
-    +'## Verbatim\n"'+text.slice(-800)+'"\n\n'
-    +'Réponds UNIQUEMENT avec le texte du plan, sans titre ni introduction.';
+  var patCtx=buildPatientContext();
+  var histCtx=HIST.length?'Historique :\n'+HIST.map(function(h){ return '- '+h.date+' : '+h.resume+(h.plan?' | Plan: '+h.plan:''); }).join('\n'):'Première consultation.';
+  var prompt='## Rôle\nTu es psychologue clinicien. Propose un plan thérapeutique structuré en 3-5 lignes, en français professionnel, sans numérotation, en prose.\n\n## Patient\n'+patCtx+'\n\n## '+histCtx+'\n\n## Verbatim\n"'+text.slice(-800)+'"\n\nRéponds UNIQUEMENT avec le texte du plan, sans titre ni introduction.';
   try {
-    var raw = await callAI(prompt,600);
-    document.getElementById('plan-field').value = raw.trim();
+    var raw=await callAI(prompt,600);
+    pf.value=raw.trim();
     ntf('plan-notif','✓ Plan généré. Vérifiez et sauvegardez.','ok');
   } catch(e){ ntf('plan-notif','Erreur IA.','er'); }
 }
 
 /* ═══════════════════════════════════════════════════════════
-   GÉNÉRATION DU COMPTE-RENDU
+   GÉNÉRATION COMPTE-RENDU
 ═══════════════════════════════════════════════════════════ */
 async function genReport() {
-  var text = document.getElementById('transcript').value.trim();
+  var text=document.getElementById('transcript').value.trim();
   if(text.length<20){ ntf('tr-notif','Volume insuffisant.','wa'); return; }
-  document.getElementById('btn-generate').disabled = true;
-  var body = document.getElementById('report-body');
-  body.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;color:var(--tx3);gap:14px;">'
-    +'<div class="dots"><span></span><span></span><span></span></div>'
-    +'<p style="font-size:12px;font-weight:500;">Rédaction du compte-rendu en cours…</p></div>';
+  document.getElementById('btn-generate').disabled=true;
+  var body=document.getElementById('report-body');
+  body.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:50px 20px;color:var(--tx3);gap:14px;"><div class="dots"><span></span><span></span><span></span></div><p style="font-size:12px;font-weight:500;">Rédaction du compte-rendu en cours…</p></div>';
 
-  var notes     = document.getElementById('notes').value;
-  var planVal   = document.getElementById('plan-field').value;
-  var dureeMin  = Math.floor(secs/60) || null;
-  var topEmoPct = PLUT_KEYS.filter(function(k){ return emoValues[k]>10; }).map(function(k){ return capitalize(k)+':'+emoValues[k]+'%'; }).join(', ') || 'non déterminées';
+  var notes=document.getElementById('notes').value;
+  var planEl=document.getElementById('plan-field');
+  var planVal=planEl?planEl.value:'';
+  var dureeMin=Math.floor(secs/60)||null;
+  var topEmoPct=EMO6_KEYS.filter(function(k){ return emoValues6[k]>10; }).map(function(k){ return PLUT6[k].label+':'+emoValues6[k]+'%'; }).join(', ')||'non déterminées';
 
-  var patCtx = buildPatientContext();
-  var histCtx = HIST.length
-    ? 'HISTORIQUE DES CONSULTATIONS :\n'+HIST.map(function(h,i){
-        return (i+1)+'. Séance du '+h.date+' ('+h.duree+'min) — Risque:'+h.risque+'\n'
-          +'   Résumé: '+h.resume+'\n'
-          +(h.evolution ? '   Évolution: '+h.evolution+'\n':'')
-          +(h.plan ? '   Plan précédent: '+h.plan+'\n':'')
-          +(h.objectifs ? '   Objectifs fixés: '+h.objectifs+'\n':'');
+  var patCtx=buildPatientContext();
+  var histCtx=HIST.length
+    ?'HISTORIQUE DES CONSULTATIONS :\n'+HIST.map(function(h,i){
+        return (i+1)+'. Séance du '+h.date+' ('+h.duree+'min) — Risque:'+h.risque+'\n   Résumé: '+h.resume+'\n'
+          +(h.evolution?'   Évolution: '+h.evolution+'\n':'')
+          +(h.plan?'   Plan précédent: '+h.plan+'\n':'')
+          +(h.objectifs?'   Objectifs fixés: '+h.objectifs+'\n':'');
       }).join('\n')
-    : 'HISTORIQUE : Première consultation.';
+    :'HISTORIQUE : Première consultation.';
 
-  var prompt = '# RÔLE\nTu es psychologue clinicien senior avec 20 ans d\'expérience. Rédige un compte-rendu de consultation psychologique complet, professionnel et confidentiel.\n\n'
-    +'# CONTEXTE ADMINISTRATIF\n'
-    +'- Praticien : Dr. '+DR+', '+DR_SPEC+(DR_RPPS?' (RPPS : '+DR_RPPS+')':'')+'\n'
+  var prompt='# RÔLE\nTu es psychologue clinicien senior avec 20 ans d\'expérience.\n\n'
+    +'# CONTEXTE\n- Praticien : Dr. '+DR+', '+DR_SPEC+(DR_RPPS?' (RPPS : '+DR_RPPS+')':'')+'\n'
     +'- Date : '+DATED+' · Séance n°'+SESN+(dureeMin?' · Durée : '+dureeMin+'min':'')+'\n\n'
-    +'# PROFIL PATIENT COMPLET\n'+patCtx+'\n\n'
+    +'# PROFIL PATIENT\n'+patCtx+'\n\n'
     +'# '+histCtx+'\n\n'
-    +(notes?'# NOTES DU PRATICIEN (observations internes)\n'+notes+'\n\n':'')
+    +(notes?'# NOTES PRATICIEN\n'+notes+'\n\n':'')
     +(planVal?'# PLAN THÉRAPEUTIQUE ACTUEL\n'+planVal+'\n\n':'')
-    +'# PROFIL ÉMOTIONNEL DÉTECTÉ (Plutchik)\n'+topEmoPct+'\n'
-    +'Tendance inter-séances : risque '+RISQUE_TENDANCE+'\n\n'
-    +'# VERBATIM COMPLET DE LA SÉANCE\n"""\n'+text+'\n"""\n\n'
-    +'# INSTRUCTIONS\nRédige ce CR médical COMPLET avec les champs suivants. Chaque champ : prose clinique professionnelle, français soigné.\n\n'
-    +'**resume_psychologue** : Résumé clinique du discours du patient de son point de vue (5-7 phrases, style "M./Mme X s\'est présenté(e)…").\n'
-    +'**evolution_depuis_derniere_seance** : Évolution observée depuis la dernière séance (si 1ère consultation : null). 2-3 phrases.\n'
-    +'**motif** : Motif de cette séance (1-2 phrases).\n'
-    +'**deroulement** : Déroulement de la séance — engagement, résistances, moments clés (4-5 phrases).\n'
-    +'**observations** : Observations cliniques — état psychique, affect, cognitions, fonctionnement (4-5 phrases).\n'
-    +'**points_vigilance** : Points de vigilance à surveiller (2-4 phrases).\n'
-    +'**hypotheses_diagnostiques** : Liste CIM-11 ex: ["6A70 - Trouble dépressif caractérisé"]\n'
-    +'**plan_therapeutique** : Plan de suivi mis à jour (3-4 phrases).\n'
-    +'**objectifs_prochaine_seance** : 2-3 objectifs concrets. Format liste de strings.\n'
-    +'**niveau_risque** : "faible", "modéré", "élevé" ou "critique"\n\n'
-    +'# FORMAT\nJSON strict uniquement, sans markdown.\n'
+    +'# PROFIL ÉMOTIONNEL (6 émotions)\n'+topEmoPct+'\nTendance risque : '+RISQUE_TENDANCE+'\n\n'
+    +'# VERBATIM\n"""\n'+text+'\n"""\n\n'
+    +'# INSTRUCTIONS\nJSON strict uniquement :\n'
     +'{"resume_psychologue":"","evolution_depuis_derniere_seance":null,"motif":"","deroulement":"","observations":"","points_vigilance":"","hypotheses_diagnostiques":[],"plan_therapeutique":"","objectifs_prochaine_seance":[],"niveau_risque":"faible"}';
 
   try {
-    var raw = await callAI(prompt, 4000);
+    var raw=await callAI(prompt,4000);
     var ai; try{ ai=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim()); }catch(e){ throw new Error('JSON invalide: '+e.message); }
-    lastReport = {ai:ai, text:text, duree:dureeMin, date:new Date().toLocaleDateString('fr-FR'), emo:Object.assign({},emoValues)};
-    lastReport.resume_str = [
+    lastReport={ai:ai,text:text,duree:dureeMin,date:new Date().toLocaleDateString('fr-FR'),emo:Object.assign({},emoValues6)};
+    lastReport.resume_str=[
       'CR · '+PAT+' · S'+SESN+' · '+DATED,
       ai.resume_psychologue||'',
-      ai.evolution_depuis_derniere_seance ? 'Évolution : '+ai.evolution_depuis_derniere_seance : '',
+      ai.evolution_depuis_derniere_seance?'Évolution : '+ai.evolution_depuis_derniere_seance:'',
       'Plan : '+(ai.plan_therapeutique||''),
       'Risque : '+(ai.niveau_risque||'faible')
     ].filter(Boolean).join('\n\n');
-    document.getElementById('btn-pdf').disabled = false;
+    document.getElementById('btn-pdf').disabled=false;
     renderReport(lastReport);
-    addInsight('ok','Compte-rendu généré','Risque : '+(ai.niveau_risque||'faible')+(ai.evolution_depuis_derniere_seance?' · Évolution tracée':''));
+    addInsight('ok','Compte-rendu généré','Risque : '+(ai.niveau_risque||'faible'));
   } catch(err) {
     body.innerHTML='<div style="padding:40px 20px;text-align:center;"><p style="color:var(--rose);font-weight:700;font-size:13px;margin-bottom:8px;">Erreur</p><p style="color:var(--tx3);font-size:11px;line-height:1.65;">'+err.message+'</p></div>';
   } finally {
-    document.getElementById('btn-generate').disabled = false;
+    document.getElementById('btn-generate').disabled=false;
   }
 }
 
 /* ═══════════════════════════════════════════════════════════
-   RENDU DU RAPPORT
+   RENDU RAPPORT
 ═══════════════════════════════════════════════════════════ */
 function renderReport(lr) {
   var ai=lr.ai;
   var niv=(ai.niveau_risque||'faible').toLowerCase();
-  var riskCfg = {
-    faible:  {bg:'#E8F5E9',txt:'#1B5E20',bdg:'rgba(27,94,32,.9)'},
-    modéré:  {bg:'#FFF8E1',txt:'#E65100',bdg:'rgba(230,81,0,.9)'},
-    élevé:   {bg:'#FFEBEE',txt:'#B71C1C',bdg:'rgba(183,28,28,.9)'},
-    critique:{bg:'#FCE4EC',txt:'#880E4F',bdg:'rgba(136,14,79,.95)'}
+  var riskCfg={
+    faible:{bdg:'rgba(27,94,32,.9)'},
+    modéré:{bdg:'rgba(230,81,0,.9)'},
+    élevé:{bdg:'rgba(183,28,28,.9)'},
+    critique:{bdg:'rgba(136,14,79,.95)'}
   };
-  var rc = riskCfg[niv] || riskCfg['faible'];
+  var rc=riskCfg[niv]||riskCfg['faible'];
 
-  var html = '<div class="rpt-wrap">';
-  html += '<div class="rpt-head">';
-  html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+  var html='<div class="rpt-wrap">';
+  html+='<div class="rpt-head">';
+  html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
     +'<div><p class="rpt-head-label">Compte-Rendu de Consultation Psychologique — Confidentiel</p>'
     +'<p class="rpt-head-name">'+escH(PAT)+'</p></div>'
     +'<div style="text-align:right;">'
     +'<div class="rpt-risk-badge" style="background:'+rc.bdg+';">'+niv.charAt(0).toUpperCase()+niv.slice(1)+'</div>'
     +'<p style="font-size:9px;color:rgba(255,255,255,.35);margin-top:5px;font-weight:600;">PsySpace Pro</p>'
     +'</div></div>';
-  html += '<div class="rpt-meta-grid">'
+  html+='<div class="rpt-meta-grid">'
     +'<div class="rpt-mc"><div class="rpt-mc-lbl">Date</div><div class="rpt-mc-val">'+escH(DATED)+'</div></div>'
     +'<div class="rpt-mc"><div class="rpt-mc-lbl">Séance</div><div class="rpt-mc-val">N°'+SESN+'</div></div>'
     +'<div class="rpt-mc"><div class="rpt-mc-lbl">Durée</div><div class="rpt-mc-val">'+(lr.duree?lr.duree+' min':'—')+'</div></div>'
     +'<div class="rpt-mc"><div class="rpt-mc-lbl">Praticien</div><div class="rpt-mc-val">Dr. '+escH(DR)+'</div></div>'
-    +'</div>';
-  html += '</div>';
-  html += '<div class="rpt-doc-band">'
+    +'</div></div>';
+  html+='<div class="rpt-doc-band">'
     +'<div><p class="rpt-doc-name">Dr. '+escH(DR)+'</p><p class="rpt-doc-sub">'+escH(DR_SPEC)+(DR_RPPS?' · RPPS '+escH(DR_RPPS):'')+'</p></div>'
     +'<div style="text-align:right;"><p class="rpt-doc-sub">'+escH(DATED)+'</p>'+(DR_TEL?'<p class="rpt-doc-sub">'+escH(DR_TEL)+'</p>':'')+'</div>'
     +'</div>';
+  html+='<div class="rpt-body">';
 
-  html += '<div class="rpt-body">';
-
-  // Émotions mini-strip
-  var topEmo = PLUT_KEYS.filter(function(k){ return emoValues[k]>15; }).slice(0,4);
+  // Émotions dominantes
+  var topEmo=EMO6_KEYS.filter(function(k){ return emoValues6[k]>10; }).slice(0,4);
   if(topEmo.length>0){
-    html += '<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">';
+    html+='<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">';
     topEmo.forEach(function(k){
-      html += '<div style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:99px;background:'+PLUT[k].bg+';border:1px solid '+PLUT[k].border+';font-size:11px;font-weight:600;color:'+PLUT[k].color+';">'
-        +PLUT[k].icon+' '+capitalize(k)+' '+emoValues[k]+'%</div>';
+      html+='<div style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:99px;background:'+PLUT6[k].colorLight+';border:1px solid '+PLUT6[k].border+';font-size:11px;font-weight:600;color:'+PLUT6[k].color+';">'
+        +PLUT6[k].icon+' '+PLUT6[k].label+' '+emoValues6[k]+'%</div>';
     });
-    html += '</div>';
+    html+='</div>';
   }
 
   if(ai.resume_psychologue){
-    html += '<div class="rpt-summary-box">'
-      +'<div class="rpt-summary-lbl">Synthèse du discours patient</div>'
+    html+='<div class="rpt-summary-box"><div class="rpt-summary-lbl">Synthèse du discours patient</div>'
       +'<p class="rpt-summary-txt">'+escH(ai.resume_psychologue)+'</p></div>';
   }
   if(ai.evolution_depuis_derniere_seance){
-    html += '<div class="rpt-evolution-box">'
-      +'<div class="rpt-evolution-lbl">Évolution depuis la dernière séance</div>'
+    html+='<div class="rpt-evolution-box"><div class="rpt-evolution-lbl">Évolution depuis la dernière séance</div>'
       +'<p class="rpt-evolution-txt">'+escH(ai.evolution_depuis_derniere_seance)+'</p></div>';
   }
-
-  if(ai.motif)        html += rptSec('Motif de consultation','<p class="rpt-prose">'+escH(ai.motif)+'</p>');
-  if(ai.deroulement)  html += rptSec('Déroulement de la séance','<p class="rpt-prose">'+escH(ai.deroulement)+'</p>');
-  if(ai.observations) html += rptSec('Observations cliniques','<p class="rpt-prose">'+escH(ai.observations)+'</p>');
-
+  if(ai.motif) html+=rptSec('Motif de consultation','<p class="rpt-prose">'+escH(ai.motif)+'</p>');
+  if(ai.deroulement) html+=rptSec('Déroulement de la séance','<p class="rpt-prose">'+escH(ai.deroulement)+'</p>');
+  if(ai.observations) html+=rptSec('Observations cliniques','<p class="rpt-prose">'+escH(ai.observations)+'</p>');
   if(ai.points_vigilance){
-    html += '<div class="rpt-section"><div class="rpt-sec-lbl" style="color:var(--rose);">Points de vigilance</div>'
-      +'<div class="rpt-vigil-box"><div class="rpt-vigil-lbl">À surveiller</div><p class="rpt-vigil-txt">'+escH(ai.points_vigilance)+'</p></div>'
-      +'</div>';
+    html+='<div class="rpt-section"><div class="rpt-sec-lbl" style="color:var(--rose);">Points de vigilance</div>'
+      +'<div class="rpt-vigil-box"><div class="rpt-vigil-lbl">À surveiller</div><p class="rpt-vigil-txt">'+escH(ai.points_vigilance)+'</p></div></div>';
   }
-
-  if(Array.isArray(ai.hypotheses_diagnostiques) && ai.hypotheses_diagnostiques.length){
-    html += '<div class="rpt-section"><div class="rpt-sec-lbl">Hypothèses diagnostiques · CIM-11</div>';
+  if(Array.isArray(ai.hypotheses_diagnostiques)&&ai.hypotheses_diagnostiques.length){
+    html+='<div class="rpt-section"><div class="rpt-sec-lbl">Hypothèses diagnostiques · CIM-11</div>';
     ai.hypotheses_diagnostiques.forEach(function(h){
       var m=h.match(/([A-Z][A-Z0-9]+\.?[0-9A-Z]*)/);
-      html += '<div class="rpt-diag-row">'+(m?'<span class="rpt-diag-code">'+m[1]+'</span>':'')+'<p class="rpt-diag-txt">'+escH(h)+'</p></div>';
+      html+='<div class="rpt-diag-row">'+(m?'<span class="rpt-diag-code">'+m[1]+'</span>':'')+'<p class="rpt-diag-txt">'+escH(h)+'</p></div>';
     });
-    html += '</div>';
+    html+='</div>';
   }
-
-  if(ai.plan_therapeutique || (Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length)){
-    html += '<div class="rpt-section"><div class="rpt-sec-lbl">Plan thérapeutique & Prochaine séance</div><div class="rpt-grid2">';
+  if(ai.plan_therapeutique||(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length)){
+    html+='<div class="rpt-section"><div class="rpt-sec-lbl">Plan thérapeutique & Prochaine séance</div><div class="rpt-grid2">';
     if(ai.plan_therapeutique)
-      html += '<div class="rpt-ib"><div class="rpt-ib-lbl">Plan de suivi</div><p class="rpt-ib-txt">'+escH(ai.plan_therapeutique)+'</p></div>';
+      html+='<div class="rpt-ib"><div class="rpt-ib-lbl">Plan de suivi</div><p class="rpt-ib-txt">'+escH(ai.plan_therapeutique)+'</p></div>';
     if(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length){
-      html += '<div class="rpt-ib"><div class="rpt-ib-lbl">Objectifs · Prochaine séance</div>';
+      html+='<div class="rpt-ib"><div class="rpt-ib-lbl">Objectifs · Prochaine séance</div>';
       ai.objectifs_prochaine_seance.forEach(function(o,i){
-        html += '<div class="rpt-obj-row"><span class="rpt-obj-n">'+(i+1)+'</span><p class="rpt-obj-t">'+escH(o)+'</p></div>';
+        html+='<div class="rpt-obj-row"><span class="rpt-obj-n">'+(i+1)+'</span><p class="rpt-obj-t">'+escH(o)+'</p></div>';
       });
-      html += '</div>';
+      html+='</div>';
     }
-    html += '</div></div>';
+    html+='</div></div>';
   }
-
-  html += '</div>';
-  html += '<div class="rpt-sig">'
-    +'<div><p class="rpt-sig-sub">Confidentiel · PsySpace Pro · Usage clinique exclusif</p></div>'
+  html+='</div>';
+  html+='<div class="rpt-sig"><div><p class="rpt-sig-sub">Confidentiel · PsySpace Pro</p></div>'
     +'<div style="text-align:right;"><p class="rpt-sig-sub">Dr. '+escH(DR)+'</p><p class="rpt-sig-name">'+escH(DR_SPEC)+'</p>'+(DR_RPPS?'<p class="rpt-sig-sub">RPPS : '+escH(DR_RPPS)+'</p>':'')+'</div>'
-    +'</div>';
-  html += '</div>';
-  document.getElementById('report-body').innerHTML = html;
+    +'</div></div>';
+  document.getElementById('report-body').innerHTML=html;
 }
 
-function rptSec(title, content){
+function rptSec(title,content){
   return '<div class="rpt-section"><div class="rpt-sec-lbl">'+title+'</div>'+content+'</div>';
 }
 
 /* ═══════════════════════════════════════════════════════════
-   EXPORT PDF
+   ARCHIVAGE — corrigé (transcription non obligatoire si vide)
+═══════════════════════════════════════════════════════════ */
+async function finalize() {
+  var tr=document.getElementById('transcript').value.trim();
+  // Transcription peut être vide si saisie manuelle non utilisée — on archive quand même
+  openOv('Archiver la séance',
+    'Vous allez archiver la séance n°'+SESN+' de <strong>'+escH(PAT)+'</strong>.<br><br>'
+    +(tr?'La transcription et le compte-rendu seront sauvegardés.':'<em>Aucune transcription — seul le compte-rendu sera archivé.</em>'),
+    async function(){
+      ntf('arch-notif','Archivage en cours…','in',0);
+      var resumeTexte=lastReport?lastReport.resume_str:'Séance n°'+SESN+' du '+DATED+(tr?' — avec transcription.':' — sans transcription.');
+      var planEl=document.getElementById('plan-field');
+      var planVal=planEl?planEl.value:'';
+      var fd=new FormData();
+      fd.append('csrf_token',CSRF);
+      fd.append('transcript',tr||''); // envoyer chaîne vide si pas de transcription
+      fd.append('resume',resumeTexte);
+      fd.append('duree',String(Math.floor(secs/60)));
+      fd.append('emotions',JSON.stringify(emoValues6));
+      fd.append('emo_timeline',JSON.stringify(emoPoints));
+      fd.append('plan',planVal);
+      fd.append('notes',document.getElementById('notes').value);
+      if(lastReport){
+        fd.append('niveau_risque',lastReport.ai.niveau_risque||'faible');
+        fd.append('hypotheses',JSON.stringify(lastReport.ai.hypotheses_diagnostiques||[]));
+        fd.append('objectifs',JSON.stringify(lastReport.ai.objectifs_prochaine_seance||[]));
+        fd.append('motif_seance',lastReport.ai.motif||'');
+        fd.append('evolution_inter',lastReport.ai.evolution_depuis_derniere_seance||'');
+      }
+      try {
+        var res=await fetch('save_consultation.php',{method:'POST',body:fd});
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        var d=await res.text(); d=d.trim();
+        if(d==='success'){
+          ntf('arch-notif','✓ Séance archivée !','ok',0);
+          setTimeout(function(){ window.location.href='dashboard.php'; },2000);
+        } else if(d==='already_saved'){ ntf('arch-notif','Déjà archivée.','wa');
+        } else if(d==='csrf_invalid'){  ntf('arch-notif','Erreur sécurité. Rechargez.','er');
+        } else { ntf('arch-notif','Erreur : '+d,'er'); }
+      } catch(e){ ntf('arch-notif','Erreur réseau : '+e.message,'er'); }
+    }
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   EXPORT PDF — inclut transcription, émotions, plan
 ═══════════════════════════════════════════════════════════ */
 function exportPDF() {
   if(!lastReport){ ntf('arch-notif',"Générez d'abord le bilan.",'wa'); return; }
@@ -1787,6 +1511,7 @@ function exportPDF() {
     y+=2;
   }
 
+  // Header
   doc.setFillColor(15,52,96); doc.rect(0,0,W,40,'F');
   doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(180,200,240);
   doc.text('COMPTE-RENDU DE CONSULTATION PSYCHOLOGIQUE — CONFIDENTIEL',M,10);
@@ -1798,21 +1523,22 @@ function exportPDF() {
   doc.setFillColor(255,255,255); doc.roundedRect(W-M-34,9,32,14,2,2,'F');
   doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(nc[0],nc[1],nc[2]);
   doc.text(niv,W-M-18,17.5,{align:'center'});
+  y=46;
 
-  // Émotions dominantes PDF
-  var topEmo = PLUT_KEYS.filter(function(k){ return emoValues[k]>15; });
+  // Émotions 6
+  var topEmo=EMO6_KEYS.filter(function(k){ return emoValues6[k]>10; });
   if(topEmo.length>0){
-    y=46;
     doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
-    doc.text('ÉMOTIONS DOMINANTES :',M,y);
+    doc.text('ÉMOTIONS DÉTECTÉES :',M,y);
     var ex=M+45;
     topEmo.slice(0,5).forEach(function(k){
       doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(60,55,50);
-      doc.text(PLUT[k].icon+' '+capitalize(k)+' '+emoValues[k]+'%',ex,y); ex+=32;
+      doc.text(PLUT6[k].icon+' '+PLUT6[k].label+' '+emoValues6[k]+'%',ex,y); ex+=34;
     });
     y+=8;
-  } else { y=46; }
+  }
 
+  // Info praticien
   doc.setFillColor(248,247,244); doc.rect(M,y,W-M*2,14,'F');
   doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
   doc.text('Dr. '+DR,M+4,y+5);
@@ -1821,16 +1547,14 @@ function exportPDF() {
   if(DR_TEL) doc.text(DR_TEL,W-M-4,y+5,{align:'right'});
   y+=18; hr();
 
+  // Synthèse
   if(ai.resume_psychologue){
     doc.setFillColor(240,245,255); doc.roundedRect(M,y-2,W-M*2,28,2,2,'F');
-    doc.setDrawColor(180,200,245);doc.setLineWidth(.3);doc.roundedRect(M,y-2,W-M*2,28,2,2,'S');
     doc.setFillColor(15,52,96);doc.rect(M,y-2,3,28,'F');
     doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
     doc.text('SYNTHÈSE DU DISCOURS PATIENT',M+6,y+3);
-    y+=7;
-    ln(ai.resume_psychologue,{sz:11,c:[20,35,100],lh:5.5,ind:4,it:true}); y+=3;
+    y+=7; ln(ai.resume_psychologue,{sz:11,c:[20,35,100],lh:5.5,ind:4,it:true}); y+=3;
   }
-
   if(ai.evolution_depuis_derniere_seance){
     hr();
     doc.setFillColor(224,242,241); doc.roundedRect(M,y-2,W-M*2,20,2,2,'F');
@@ -1839,23 +1563,39 @@ function exportPDF() {
     doc.text('ÉVOLUTION DEPUIS LA DERNIÈRE SÉANCE',M+6,y+3);
     y+=7; ln(ai.evolution_depuis_derniere_seance,{sz:10.5,c:[0,60,50],lh:5.5,ind:4}); y+=2;
   }
-
   hr();
-  sec('Motif de consultation', ai.motif||'');
-  sec('Déroulement', ai.deroulement||'');
-  sec('Observations cliniques', ai.observations||'');
-  if(ai.points_vigilance){ sec('Points de vigilance', ai.points_vigilance); }
+  sec('Motif de consultation',ai.motif||'');
+  sec('Déroulement',ai.deroulement||'');
+  sec('Observations cliniques',ai.observations||'');
+  if(ai.points_vigilance) sec('Points de vigilance',ai.points_vigilance);
   if(Array.isArray(ai.hypotheses_diagnostiques)&&ai.hypotheses_diagnostiques.length){
     sec('Hypothèses diagnostiques · CIM-11',null);
     ai.hypotheses_diagnostiques.forEach(function(h){ ln('• '+h,{sz:10,c:[15,52,96],ind:6,lh:5.5}); }); y+=2;
   }
-  sec('Plan thérapeutique', ai.plan_therapeutique||'');
+  sec('Plan thérapeutique',ai.plan_therapeutique||'');
   if(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length){
     sec('Objectifs · Prochaine séance',null);
     ai.objectifs_prochaine_seance.forEach(function(o,i){ ln((i+1)+'. '+o,{sz:10,c:[0,77,64],ind:6,lh:5.5}); }); y+=2;
   }
-  var notesVal = document.getElementById('notes').value;
-  if(notesVal){ hr(); sec('Notes du praticien (usage interne)', notesVal); }
+
+  // ── PLAN THÉRAPEUTIQUE DU PRATICIEN
+  var planEl=document.getElementById('plan-field');
+  if(planEl&&planEl.value.trim()){
+    hr(); sec('Plan thérapeutique (praticien)',planEl.value.trim());
+  }
+
+  // ── TRANSCRIPTION COMPLÈTE
+  var trVal=document.getElementById('transcript').value.trim();
+  if(trVal){
+    hr();
+    if(y>240){doc.addPage();y=M;}
+    doc.setFillColor(240,240,248); doc.rect(M,y-2,W-M*2,10,'F');
+    doc.setFillColor(15,52,96);doc.rect(M,y-2,3,10,'F');
+    doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
+    doc.text('TRANSCRIPTION COMPLÈTE DE LA SÉANCE',M+6,y+4); y+=12;
+    ln(trVal,{sz:9,c:[50,46,42],lh:5,ind:2});
+    y+=2;
+  }
 
   hr();
   doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(150,146,142);
@@ -1866,55 +1606,11 @@ function exportPDF() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   ARCHIVAGE
-═══════════════════════════════════════════════════════════ */
-async function finalize() {
-  var tr = document.getElementById('transcript').value.trim();
-  if(!tr){ ntf('arch-notif','Aucune transcription à archiver.','wa'); return; }
-  openOv('Archiver la séance',
-    'Vous allez archiver la séance n°'+SESN+' de <strong>'+escH(PAT)+'</strong>.<br><br>Le compte-rendu sera sauvegardé dans le dossier patient.',
-    async function(){
-      ntf('arch-notif','Archivage en cours…','in',0);
-      var resumeTexte = lastReport ? lastReport.resume_str : 'Séance n°'+SESN+' du '+DATED+' — transcription sans CR.';
-      var planVal = document.getElementById('plan-field').value;
-      var fd = new FormData();
-      fd.append('csrf_token',CSRF);
-      fd.append('transcript',tr);
-      fd.append('resume',resumeTexte);
-      fd.append('duree',String(Math.floor(secs/60)));
-      fd.append('emotions',JSON.stringify(emoValues));
-      fd.append('emo_timeline',JSON.stringify(emoPoints));
-      fd.append('plan',planVal);
-      fd.append('notes',document.getElementById('notes').value);
-      if(lastReport){
-        fd.append('niveau_risque',lastReport.ai.niveau_risque||'faible');
-        fd.append('hypotheses',JSON.stringify(lastReport.ai.hypotheses_diagnostiques||[]));
-        fd.append('objectifs',JSON.stringify(lastReport.ai.objectifs_prochaine_seance||[]));
-        fd.append('motif_seance',lastReport.ai.motif||'');
-        fd.append('evolution_inter',lastReport.ai.evolution_depuis_derniere_seance||'');
-      }
-      try {
-        var res = await fetch('save_consultation.php',{method:'POST',body:fd});
-        if(!res.ok) throw new Error('HTTP '+res.status);
-        var d = await res.text(); d=d.trim();
-        if(d==='success'){
-          ntf('arch-notif','✓ Séance archivée !','ok',0);
-          setTimeout(function(){ window.location.href='dashboard.php'; },2000);
-        } else if(d==='already_saved'){ ntf('arch-notif','Déjà archivée.','wa');
-        } else if(d==='csrf_invalid'){  ntf('arch-notif','Erreur sécurité. Rechargez.','er');
-        } else { ntf('arch-notif','Erreur : '+d,'er'); }
-      } catch(e){ ntf('arch-notif','Erreur réseau : '+e.message,'er'); }
-    }
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   OBJECTIFS — cocher comme atteint
+   OBJECTIFS
 ═══════════════════════════════════════════════════════════ */
 async function toggleGoal(goalId, el){
   var txt=document.getElementById('gt_'+goalId);
-  var isDone = el.classList.contains('done');
-  if(!isDone){
+  if(!el.classList.contains('done')){
     el.classList.add('done');
     el.querySelector('.check-svg').style.display='block';
     if(txt) txt.classList.add('done');
@@ -1923,30 +1619,22 @@ async function toggleGoal(goalId, el){
   }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   HISTORIQUE — charger dans notes
-═══════════════════════════════════════════════════════════ */
-function loadPrev(resume, plan){
-  openOv('Charger la séance précédente',
-    'Ajouter le résumé et le plan de la séance précédente dans vos notes ?',
-    function(){
-      var n=document.getElementById('notes');
-      var txt='[Séance précédente]\n'+resume.slice(0,400);
-      if(plan) txt += '\n\n[Plan précédent]\n'+plan.slice(0,300);
-      n.value=(n.value?n.value+'\n\n':'')+txt;
-    }
-  );
+function loadPrev(resume,plan){
+  openOv('Charger la séance précédente','Ajouter le résumé et le plan dans vos notes ?',function(){
+    var n=document.getElementById('notes');
+    var txt='[Séance précédente]\n'+resume.slice(0,400);
+    if(plan) txt+='\n\n[Plan précédent]\n'+plan.slice(0,300);
+    n.value=(n.value?n.value+'\n\n':'')+txt;
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════
    MICROPHONE
 ═══════════════════════════════════════════════════════════ */
-var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function makeRecog(){
   if(!SR) return null;
-  var r = new SR();
-  r.lang='fr-FR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
+  var r=new SR(); r.lang='fr-FR'; r.continuous=true; r.interimResults=true; r.maxAlternatives=1;
   r.onstart=function(){
     micOn=true;
     document.getElementById('mic-btn').className='mic-btn live';
@@ -1957,7 +1645,7 @@ function makeRecog(){
     document.getElementById('rec-status').className='chip c-live';
     startWaveform(); clearInterval(timerIv);
     timerIv=setInterval(function(){
-      secs++; var m=Math.floor(secs/60).toString().padStart(2,'0'), s=(secs%60).toString().padStart(2,'0');
+      secs++; var m=Math.floor(secs/60).toString().padStart(2,'0'),s=(secs%60).toString().padStart(2,'0');
       document.getElementById('timer').textContent=m+':'+s;
       document.getElementById('audio-fill').style.width=(10+Math.random()*65)+'%';
     },1000);
@@ -1979,22 +1667,19 @@ function makeRecog(){
   r.onend=function(){ if(micOn){ try{ recog.start(); }catch(ex){ setMicStopped(); } } };
   return r;
 }
-
 if(SR){ recog=makeRecog(); }
 else{
   setTimeout(function(){
     document.getElementById('stt-warning').style.display='block';
     var mb=document.getElementById('mic-btn');
-    if(mb){ mb.disabled=true; mb.style.opacity='.3'; mb.style.cursor='not-allowed'; }
+    if(mb){mb.disabled=true;mb.style.opacity='.3';mb.style.cursor='not-allowed';}
   },500);
 }
-
 function toggleMic(){
   if(!SR){ ntf('tr-notif','Non supporté — utilisez Chrome/Edge.','er'); return; }
   if(micOn){ micOn=false; try{ recog.stop(); }catch(e){} setMicStopped(); }
   else{ try{ recog.abort(); }catch(e){} recog=makeRecog(); try{ recog.start(); }catch(e){ ntf('tr-notif','Erreur : '+e.message,'er'); } }
 }
-
 function setMicStopped(){
   micOn=false; clearInterval(timerIv); stopWaveform();
   document.getElementById('audio-fill').style.width='0%';
@@ -2005,28 +1690,23 @@ function setMicStopped(){
   document.getElementById('rec-status').textContent='Terminé'; document.getElementById('rec-status').className='chip c-ok';
   document.getElementById('btn-generate').disabled=false;
 }
-
 var wvIv=null;
 function startWaveform(){
   var bars=document.querySelectorAll('.wv-bar');
-  wvIv=setInterval(function(){
-    bars.forEach(function(b){ b.style.height=(3+Math.random()*16)+'px'; b.style.background='var(--ink)'; });
-  },100);
+  wvIv=setInterval(function(){ bars.forEach(function(b){ b.style.height=(3+Math.random()*16)+'px'; b.style.background='var(--ink)'; }); },100);
 }
 function stopWaveform(){
   clearInterval(wvIv);
   document.querySelectorAll('.wv-bar').forEach(function(b){ b.style.height='3px'; b.style.background='var(--border)'; });
 }
-
 function clearTranscript(){
   openOv('Effacer la transcription','Effacer tout le contenu ? Action irréversible.',function(){
     document.getElementById('transcript').value='';
     document.getElementById('word-count').textContent='0 mot';
     document.getElementById('wc-fill').style.width='0%';
     emoPoints=[0]; tlRisk=[]; tlResil=[]; tlAnx=[];
-    PLUT_KEYS.forEach(function(k){ emoValues[k]=0; });
-    radarData={detresse:0,anxiete:0,resilience:0,social:0,lien:0};
-    drawAll(); updatePluTchikGrid();
+    EMO6_KEYS.forEach(function(k){ emoValues6[k]=0; });
+    drawAll(); updateEmo6Grid();
     ntf('tr-notif','Effacé.','in',2500);
   });
 }
@@ -2039,10 +1719,8 @@ function escH(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/\n/g,'<br>');
 }
 
-/* ═══════════════════════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════════════════════ */
-updatePluTchikGrid();
+/* INIT */
+updateEmo6Grid();
 drawAll();
 </script>
 </body>
