@@ -86,7 +86,7 @@ while ($row2 = $res2->fetch_assoc()) $prev_consults[] = $row2;
 $stmt2->close();
 
 $session_num = count($prev_consults) + 1;
-$is_followup = $session_num > 1; // C'est une séance de suivi (pas la 1ère)
+$is_followup = $session_num > 1;
 
 // Objectifs en cours (non atteints)
 $goals_open = [];
@@ -255,7 +255,7 @@ body{overflow:hidden;}
 .ta-plan:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-bg);}
 .ta-plan::placeholder{color:var(--tx4);font-style:italic;}
 
-/* NOTES PRATICIEN — GRANDE VERSION */
+/* NOTES PRATICIEN */
 .ta-notes-big{
   width:100%;
   background:var(--amber-bg);
@@ -378,7 +378,7 @@ body{overflow:hidden;}
 .rpt-sig-sub{font-size:11px;color:var(--tx3);}
 .rpt-sig-name{font-size:13px;font-weight:700;color:var(--tx);margin-top:2px;}
 
-/* ═══ ÉMOTIONS 6 — PLUTCHIK REDESIGN ═══ */
+/* EMOTIONS 6 */
 .emo-6-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;}
 .emo-6-cell{
   border-radius:var(--r2);padding:14px 10px;text-align:center;
@@ -386,7 +386,6 @@ body{overflow:hidden;}
   transition:all .25s;position:relative;overflow:hidden;
 }
 .emo-6-cell:hover{transform:translateY(-3px);box-shadow:var(--sh2);}
-.emo-6-icon{font-size:26px;line-height:1;margin-bottom:6px;}
 .emo-6-name{
   font-size:10px;font-weight:800;text-transform:uppercase;
   letter-spacing:.08em;margin-bottom:8px;
@@ -397,7 +396,6 @@ body{overflow:hidden;}
 }
 .emo-6-bar-track{height:4px;border-radius:3px;background:rgba(0,0,0,.1);overflow:hidden;}
 .emo-6-bar-fill{height:100%;border-radius:3px;transition:width .6s ease;}
-/* Chip état */
 .emo-6-chip{
   display:inline-block;margin-top:6px;padding:2px 8px;
   border-radius:99px;font-size:9px;font-weight:700;
@@ -421,9 +419,6 @@ body{overflow:hidden;}
 .lex-title{font-family:'Fraunces',serif;font-size:20px;font-weight:700;margin-bottom:4px;}
 .lex-sub{font-size:12px;color:var(--tx3);margin-bottom:16px;}
 .lex-word{display:inline-block;margin:3px;padding:3px 10px;border-radius:99px;font-size:11.5px;font-weight:600;border:1px solid;cursor:default;}
-
-/* TIMELINE EMO */
-.tl-chip-ok{background:var(--ok-bg);color:var(--ok);border-color:rgba(27,107,58,.25);}
 </style>
 </head>
 <body>
@@ -456,7 +451,7 @@ body{overflow:hidden;}
     </div>
     <div id="rec-status" class="chip c-idle">En attente</div>
     <button class="ctrl-btn" id="theme-btn" title="Thème">
-      <span id="theme-icon">🌙</span>
+      <span id="theme-icon">L</span>
     </button>
   </div>
 </div>
@@ -464,7 +459,7 @@ body{overflow:hidden;}
 <!-- MAIN -->
 <div class="main">
 
-<!-- ═══ COLONNE GAUCHE ═══ -->
+<!-- COLONNE GAUCHE -->
 <div class="col" style="border-right:1px solid var(--border);">
 
   <!-- Profil Patient -->
@@ -485,10 +480,10 @@ body{overflow:hidden;}
         </div>
         <div class="prof-tags">
           <?php if($pat_profession): ?>
-          <span class="ptag">💼 <?= htmlspecialchars($pat_profession) ?></span>
+          <span class="ptag"><?= htmlspecialchars($pat_profession) ?></span>
           <?php endif; ?>
           <?php if($pat_dob): ?>
-          <span class="ptag">🗓 <?= date('d/m/Y', strtotime($pat_dob)) ?></span>
+          <span class="ptag"><?= date('d/m/Y', strtotime($pat_dob)) ?></span>
           <?php endif; ?>
           <?php if($doc['specialty'] ?? null): ?>
           <span class="ptag" style="background:var(--ink-bg);color:var(--ink);border-color:rgba(15,52,96,.2);"><?= htmlspecialchars($doc['specialty']) ?></span>
@@ -511,7 +506,7 @@ body{overflow:hidden;}
       <div class="inter-cell" style="border-right:none;">
         <div class="inter-lbl">Tendance</div>
         <div class="inter-val" style="font-size:18px;<?= $risque_tendance==='hausse'?'color:var(--rose)':($risque_tendance==='baisse'?'color:var(--ok)':'color:var(--tx3)') ?>">
-          <?= $risque_tendance==='hausse'?'↑':($risque_tendance==='baisse'?'↓':'→') ?>
+          <?= $risque_tendance==='hausse'?'haut':($risque_tendance==='baisse'?'bas':'stable') ?>
         </div>
         <div class="inter-sub"><?= $risque_tendance ?></div>
       </div>
@@ -539,15 +534,16 @@ body{overflow:hidden;}
     <?php endif; ?>
   </div>
 
-  <!-- NOTES PRATICIEN — mise en valeur -->
+  <!-- NOTES PRATICIEN -->
   <div class="card">
     <div class="card-hd">
       <span class="hd-dot" style="background:var(--amber)"></span>
       Notes du praticien
-      <span class="chip c-warn" style="font-size:9px;margin-left:auto;">Privé · Non archivé</span>
+      <span class="chip c-warn" style="font-size:9px;margin-left:auto;">Confidentiel · Archivé</span>
     </div>
     <textarea id="notes" class="ta-notes-big" rows="7"
-      placeholder="Vos observations cliniques, impressions, hypothèses, contre-transfert, éléments non verbaux…&#10;&#10;Ces notes restent confidentielles et ne sont pas incluses dans l'archive patient."></textarea>
+      placeholder="Observations cliniques, impressions, hypothèses, contre-transfert, éléments non verbaux…&#10;&#10;Ces notes sont archivées avec la séance, accessibles uniquement par vous."></textarea>
+    <div id="notes-save-status" style="margin-top:6px;min-height:18px;font-size:10.5px;color:var(--tx3);"></div>
   </div>
 
   <!-- Historique séances -->
@@ -569,7 +565,7 @@ body{overflow:hidden;}
       <span class="evo-txt"><?= htmlspecialchars(mb_substr(strip_tags($pc['resume_ia']??''),0,60,'UTF-8')) ?>…</span>
       <span class="evo-dur"><?= $pc['duree_minutes'] ?>min</span>
       <button onclick="loadPrev(<?= json_encode(strip_tags($pc['resume_ia']??'')) ?>,<?= json_encode($pc['plan_therapeutique']??'') ?>)"
-        class="btn btn-ghost" style="padding:3px 7px;font-size:10px;flex-shrink:0;">→</button>
+        class="btn btn-ghost" style="padding:3px 7px;font-size:10px;flex-shrink:0;">voir</button>
     </div>
     <?php endforeach; ?>
   </div>
@@ -596,7 +592,7 @@ body{overflow:hidden;}
 
 </div><!-- /col gauche -->
 
-<!-- ═══ COLONNE CENTRE ═══ -->
+<!-- COLONNE CENTRE -->
 <div class="col" style="padding:18px 18px;">
 
   <!-- TRANSCRIPTION -->
@@ -626,14 +622,14 @@ body{overflow:hidden;}
         <p id="mic-label" style="font-size:11px;font-weight:600;color:var(--tx3);margin-bottom:4px;">Microphone inactif — Cliquez pour démarrer</p>
         <div class="audio-vis"><div class="audio-fill" id="audio-fill" style="width:0%;"></div></div>
       </div>
-      <button onclick="clearTranscript()" class="btn btn-danger" style="padding:6px 11px;font-size:11px;flex-shrink:0;">✕</button>
+      <button onclick="clearTranscript()" class="btn btn-danger" style="padding:6px 11px;font-size:11px;flex-shrink:0;">Effacer</button>
     </div>
     <div id="stt-warning" style="display:none;margin-top:9px;padding:9px 13px;border-radius:var(--r2);background:var(--amber-bg);border:1px solid rgba(199,119,0,.25);">
-      <p style="font-size:11px;color:var(--amber);font-weight:600;">⚠ Reconnaissance vocale non disponible — Utilisez Chrome ou Edge et autorisez le microphone.</p>
+      <p style="font-size:11px;color:var(--amber);font-weight:600;">Reconnaissance vocale non disponible — Utilisez Chrome ou Edge et autorisez le microphone.</p>
     </div>
   </div>
 
-  <!-- PLAN THÉRAPEUTIQUE — affiché seulement si séance de suivi (>=2) -->
+  <!-- PLAN THÉRAPEUTIQUE -->
   <?php if($is_followup): ?>
   <div class="plan-section">
     <div class="plan-hd">
@@ -642,7 +638,7 @@ body{overflow:hidden;}
       <?php if($last_plan): ?>
       <span class="chip" style="background:var(--teal-bg);color:var(--teal);border-color:rgba(0,121,107,.25);font-size:9px;margin-left:4px;">Reprise séance précédente</span>
       <?php endif; ?>
-      <button onclick="dictPlan()" class="btn" style="margin-left:auto;padding:4px 10px;font-size:10px;background:var(--teal);color:#fff;">🎤 Dicter</button>
+      <button onclick="dictPlan()" class="btn" style="margin-left:auto;padding:4px 10px;font-size:10px;background:var(--teal);color:#fff;">Dicter</button>
     </div>
     <?php if($last_plan): ?>
     <div style="padding:10px 12px;border-radius:var(--r2);background:rgba(0,121,107,.06);border:1px dashed rgba(0,121,107,.3);margin-bottom:10px;">
@@ -658,7 +654,7 @@ body{overflow:hidden;}
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         Sauvegarder le plan
       </button>
-      <button onclick="aiPlan()" class="btn btn-ghost" style="flex:1;font-size:11px;">✦ Suggérer via IA</button>
+      <button onclick="aiPlan()" class="btn btn-ghost" style="flex:1;font-size:11px;">Suggérer via IA</button>
     </div>
   </div>
   <?php endif; ?>
@@ -701,10 +697,10 @@ body{overflow:hidden;}
 
 </div><!-- /col centre -->
 
-<!-- ═══ COLONNE DROITE ═══ -->
+<!-- COLONNE DROITE -->
 <div class="col" style="border-left:1px solid var(--border);">
 
-  <!-- ÉMOTIONS 6 — PLUTCHIK REDESIGNÉ -->
+  <!-- EMOTIONS 6 -->
   <div class="card">
     <div class="card-hd">
       <span class="hd-dot" style="background:var(--amber)"></span>
@@ -712,7 +708,6 @@ body{overflow:hidden;}
       <span id="emo-chip" class="chip c-idle" style="font-size:9px;margin-left:auto;">En attente</span>
     </div>
     <div class="emo-6-grid" id="emo-grid"></div>
-    <!-- Donut chart -->
     <div id="emo-donut-wrap" style="height:130px;position:relative;margin-top:12px;">
       <canvas id="emoDonut"></canvas>
     </div>
@@ -738,8 +733,8 @@ body{overflow:hidden;}
     </div>
     <div style="height:50px;position:relative;"><canvas id="polChart"></canvas></div>
     <div style="display:flex;justify-content:space-between;margin-top:3px;">
-      <span style="font-size:10px;color:var(--tx3);">← Négatif</span>
-      <span style="font-size:10px;color:var(--tx3);">Positif →</span>
+      <span style="font-size:10px;color:var(--tx3);">Négatif</span>
+      <span style="font-size:10px;color:var(--tx3);">Positif</span>
     </div>
   </div>
 
@@ -780,7 +775,7 @@ body{overflow:hidden;}
         <div class="lex-title" id="lex-title"></div>
         <div class="lex-sub" id="lex-sub"></div>
       </div>
-      <button onclick="closeLex()" class="btn btn-ghost" style="padding:5px 9px;font-size:11px;">✕</button>
+      <button onclick="closeLex()" class="btn btn-ghost" style="padding:5px 9px;font-size:11px;">Fermer</button>
     </div>
     <div id="lex-words"></div>
     <div id="lex-extract" style="margin-top:14px;"></div>
@@ -813,60 +808,54 @@ var RISQUE_TENDANCE = <?= json_encode($risque_tendance) ?>;
 var GOALS_OPEN = <?= json_encode(array_map(fn($g)=>['id'=>$g['id'],'text'=>$g['goal_text']], $goals_open)) ?>;
 var IS_FOLLOWUP = <?= json_encode($is_followup) ?>;
 
-/* ── ÉTAT GLOBAL ── */
+/* ÉTAT GLOBAL */
 var micOn = false, recog = null, timerIv = null, secs = 0;
 var lastReport = null, lastAutoText = '';
 var tlC, polC, donutC;
 var emoPoints = [0], tlRisk = [], tlResil = [], tlAnx = [];
 
 /* ═══════════════════════════════════════════════════════════
-   6 ÉMOTIONS PLUTCHIK SEULEMENT
+   6 ÉMOTIONS PLUTCHIK
 ═══════════════════════════════════════════════════════════ */
 var PLUT6 = {
   tristesse: {
-    icon:'😢', label:'Tristesse',
-    color:'#1565C0', colorLight:'#E3F2FD', border:'#0D47A1',
-    textOnBg:'#1565C0',
+    label:'Tristesse',
+    color:'#1565C0', colorLight:'#E3F2FD', border:'#0D47A1', textOnBg:'#1565C0',
     lex:['triste','tristesse','déprimé','déprimée','dépression','pleur','larme','désespoir','vide','souffrance',
          'effondré','brisé','perdu','abandonné','seul','solitude','deuil','rupture','chagrin','mélancolie',
          'abattu','cafard','épuisé','vide','mort','noir','sombre']
   },
   joie: {
-    icon:'😊', label:'Joie',
-    color:'#E65100', colorLight:'#FFF3E0', border:'#BF360C',
-    textOnBg:'#E65100',
+    label:'Joie',
+    color:'#E65100', colorLight:'#FFF3E0', border:'#BF360C', textOnBg:'#E65100',
     lex:['heureux','heureuse','joie','bonheur','content','bien','sourire','rire','fantastique','génial',
-         'super','top','merveilleux','enchanté','ravi','épanoui','fier','gratitude','légèreté','haha',
+         'super','top','merveilleux','enchanté','ravi','épanoui','fier','gratitude','légèreté',
          'rigole','plaisir','amusant','drôle','bien-être']
   },
   surprise: {
-    icon:'😲', label:'Surprise',
-    color:'#00796B', colorLight:'#E0F2F1', border:'#004D40',
-    textOnBg:'#00796B',
+    label:'Surprise',
+    color:'#00796B', colorLight:'#E0F2F1', border:'#004D40', textOnBg:'#00796B',
     lex:['surpris','surprise','choc','inattendu','bizarre','étrange','incroyable','soudain','brutal',
          'stupéfait','stupéfaction','imprévu','déconcerté','abasourdi','sidéré','ahuri','insolite',
-         'wow','incroyable','tellement','pas prévu']
+         'wow','tellement','pas prévu']
   },
   degout: {
-    icon:'🤢', label:'Dégoût',
-    color:'#558B2F', colorLight:'#F1F8E9', border:'#33691E',
-    textOnBg:'#558B2F',
+    label:'Dégoût',
+    color:'#558B2F', colorLight:'#F1F8E9', border:'#33691E', textOnBg:'#558B2F',
     lex:['dégoût','dégoûté','nauséeux','écœurant','répugnant','insupportable','horrible','abominable',
          'honte','honteux','rejet','mépris','nausée','répulsion','dépréciation','abject','immonde',
-         'horreur','dégueulasse','écœuré']
+         'horreur','écœuré']
   },
   colere: {
-    icon:'😡', label:'Colère',
-    color:'#B71C1C', colorLight:'#FFEBEE', border:'#7F0000',
-    textOnBg:'#B71C1C',
+    label:'Colère',
+    color:'#B71C1C', colorLight:'#FFEBEE', border:'#7F0000', textOnBg:'#B71C1C',
     lex:['colère','furieux','furie','rage','énervé','énervée','irrité','frustré','frustration','agressif',
          'agressivité','haine','crier','violence','injustice','révolté','exaspéré','hostile','conflit',
          'dispute','rancœur','marre','ras-le-bol','excédé','fâché']
   },
   peur: {
-    icon:'😰', label:'Peur',
-    color:'#6A1B9A', colorLight:'#F3E5F5', border:'#4A148C',
-    textOnBg:'#6A1B9A',
+    label:'Peur',
+    color:'#6A1B9A', colorLight:'#F3E5F5', border:'#4A148C', textOnBg:'#6A1B9A',
     lex:['peur','anxieux','anxieuse','anxiété','angoisse','stress','panique','terreur','crainte','phob',
          'cauchemar','insomnie','tremble','terrif','effroi','appréhension','inquiet','inquiète',
          'hypervigilance','menace','danger','effrayé','affolé','paralysé','redoute']
@@ -884,14 +873,14 @@ var detectedWords6 = {};
 (function(){
   var t = localStorage.getItem('psyspace-theme') || 'light';
   document.documentElement.setAttribute('data-theme', t);
-  document.getElementById('theme-icon').textContent = t==='dark'?'☀️':'🌙';
+  document.getElementById('theme-icon').textContent = t==='dark'?'C':'L';
 })();
 document.getElementById('theme-btn').addEventListener('click', function(){
   var c = document.documentElement.getAttribute('data-theme');
   var n = c==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme', n);
   localStorage.setItem('psyspace-theme', n);
-  document.getElementById('theme-icon').textContent = n==='dark'?'☀️':'🌙';
+  document.getElementById('theme-icon').textContent = n==='dark'?'C':'L';
   setTimeout(function(){ drawAll(); }, 50);
 });
 
@@ -908,8 +897,8 @@ function closeOv(){ document.getElementById('overlay').classList.remove('open');
 function ntf(id, msg, type, ms) {
   if(ms===undefined) ms=4000;
   var z=document.getElementById(id); if(!z) return;
-  var ic={ok:'✓',er:'✕',wa:'⚠',in:'ℹ'};
-  z.innerHTML='<div class="toast t-'+type+'"><span>'+(ic[type]||'ℹ')+'</span><span>'+msg+'</span></div>';
+  var ic={ok:'ok',er:'err',wa:'avert',in:'info'};
+  z.innerHTML='<div class="toast t-'+type+'"><span>'+msg+'</span></div>';
   if(ms>0) setTimeout(function(){ if(z) z.innerHTML=''; }, ms);
 }
 
@@ -966,22 +955,19 @@ function onTyping(val) {
   document.getElementById('wc-fill').style.width=Math.min(100,wc/5)+'%';
 
   if(checkUrgence(val)){
-    addInsight('er','⚠ ALERTE URGENCE','Propos pouvant indiquer un risque vital détectés. Évaluation immédiate requise.');
-    document.getElementById('rec-status').textContent='⚠ ALERTE';
+    addInsight('er','ALERTE URGENCE','Propos pouvant indiquer un risque vital détectés. Évaluation immédiate requise.');
+    document.getElementById('rec-status').textContent='ALERTE';
     document.getElementById('rec-status').className='chip c-crit';
   }
 
   var sc=analyzeText(val);
   var plut=analyzePlutchik6(val);
 
-  // Normalisation en pourcentage (0-100) basée sur occurrences réelles
   var maxRaw=Math.max(1, Math.max.apply(null, EMO6_KEYS.map(function(k){ return plut[k]; })));
   EMO6_KEYS.forEach(function(k){
-    // Formule réaliste : plus sensible aux faibles occurrences
     var raw=plut[k];
     emoValues6[k]=raw===0?0:Math.min(100, Math.round(10+((raw/maxRaw)*90)));
   });
-  // Les émotions non détectées restent à 0
   EMO6_KEYS.forEach(function(k){ if(plut[k]===0) emoValues6[k]=0; });
 
   updateEmo6Grid();
@@ -1003,16 +989,12 @@ function onTyping(val) {
 function updateEmo6Grid() {
   var g=document.getElementById('emo-grid');
   g.innerHTML='';
-
-  // Trier par valeur décroissante pour mettre en avant les dominantes
   var sorted=[...EMO6_KEYS].sort(function(a,b){ return emoValues6[b]-emoValues6[a]; });
-
   sorted.forEach(function(emo){
     var p=PLUT6[emo];
     var v=emoValues6[emo];
     var isDominant=v>=50;
     var isActive=v>0;
-
     var cell=document.createElement('div');
     cell.className='emo-6-cell';
     cell.style.background=isActive?p.colorLight:'var(--bg3)';
@@ -1020,25 +1002,19 @@ function updateEmo6Grid() {
     cell.style.borderWidth=isDominant?'2.5px':'1.5px';
     cell.style.opacity=isActive?'1':'0.45';
     cell.style.transform=isDominant?'scale(1.02)':'scale(1)';
-
-    // Badge état
     var badgeLabel='', badgeBg='', badgeColor='';
     if(v>=75){ badgeLabel='Dominant'; badgeBg=p.color; badgeColor='#fff'; }
     else if(v>=40){ badgeLabel='Présent'; badgeBg=p.colorLight; badgeColor=p.color; }
     else if(v>0){ badgeLabel='Trace'; badgeBg='var(--bg3)'; badgeColor='var(--tx3)'; }
-
     cell.innerHTML=
-      '<div class="emo-6-icon">'+p.icon+'</div>'+
       '<div class="emo-6-name" style="color:'+(isActive?p.textOnBg:'var(--tx3)')+';">'+p.label+'</div>'+
       '<div class="emo-6-pct" style="color:'+(isActive?p.color:'var(--tx4)')+';">'+(isActive?v+'%':'—')+'</div>'+
       '<div class="emo-6-bar-track"><div class="emo-6-bar-fill" style="width:'+v+'%;background:'+p.color+';"></div></div>'+
       (badgeLabel?'<div class="emo-6-chip" style="background:'+badgeBg+';color:'+badgeColor+';">'+badgeLabel+'</div>':'');
-
     cell.onclick=function(){ if(isActive) openLex6(emo); };
-    cell.title=isActive?('Cliquez — '+p.label+' : '+v+' %'):p.label+' : non détecté';
+    cell.title=isActive?(p.label+' : '+v+' %'):p.label+' : non détecté';
     g.appendChild(cell);
   });
-
   document.getElementById('emo-chip').textContent='Actif';
   document.getElementById('emo-chip').className='chip c-ok';
 }
@@ -1049,13 +1025,12 @@ function updateEmo6Grid() {
 function openLex6(emo) {
   var p=PLUT6[emo];
   var found=detectedWords6[emo]||[];
-  document.getElementById('lex-title').innerHTML=p.icon+' '+p.label;
+  document.getElementById('lex-title').innerHTML=p.label;
   document.getElementById('lex-title').style.color=p.color;
   var totalOcc=found.reduce(function(a,b){return a+b.n;},0);
   document.getElementById('lex-sub').textContent=totalOcc>0
     ?totalOcc+' occurrence(s) détectée(s) dans le verbatim'
     :'Aucune occurrence détectée';
-
   var wordsHtml='';
   p.lex.forEach(function(w){
     var hit=found.find(function(f){ return f.w===w; });
@@ -1063,10 +1038,9 @@ function openLex6(emo) {
       border-color:'+(hit?p.border:'var(--border)')+';\
       color:'+(hit?p.color:'var(--tx3)')+';\
       font-weight:'+(hit?'800':'500')+';">'
-      +(hit?'✓ ':'')+w+(hit?' ×'+hit.n:'')+'</span>';
+      +(hit?'+ ':'')+w+(hit?' x'+hit.n:'')+'</span>';
   });
   document.getElementById('lex-words').innerHTML=wordsHtml;
-
   var tr=document.getElementById('transcript').value;
   var extraits='';
   if(found.length>0&&tr){
@@ -1077,7 +1051,7 @@ function openLex6(emo) {
     if(matchSentences.length>0){
       extraits='<div style="margin-top:12px;"><div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--tx3);margin-bottom:8px;">Extraits du verbatim</div>';
       matchSentences.forEach(function(s){
-        extraits+='<div style="padding:9px 12px;border-radius:var(--r2);background:var(--bg3);border-left:3px solid '+p.color+';margin-bottom:6px;font-size:12px;line-height:1.65;color:var(--tx2);font-style:italic;">«&nbsp;'+escH(s.trim())+'&nbsp;»</div>';
+        extraits+='<div style="padding:9px 12px;border-radius:var(--r2);background:var(--bg3);border-left:3px solid '+p.color+';margin-bottom:6px;font-size:12px;line-height:1.65;color:var(--tx2);font-style:italic;">« '+escH(s.trim())+' »</div>';
       });
       extraits+='</div>';
     }
@@ -1178,20 +1152,19 @@ function updateTimeline(sc) {
     var n=tlRisk.length;
     var diff=((tlRisk[n-1]+tlRisk[n-2])/2)-((tlRisk[n-3]+tlRisk[n-4])/2);
     var chip=document.getElementById('tl-chip'), lbl=document.getElementById('tl-label');
-    if(diff>8){chip.textContent='↑ Tension';chip.className='chip c-live';lbl.textContent='Montée du niveau de détresse';}
-    else if(diff<-8){chip.textContent='↓ Apaisement';chip.className='chip c-ok';lbl.textContent='Stabilisation progressive';}
-    else{chip.textContent='→ Stable';chip.className='chip c-idle';lbl.textContent='Régularité du discours';}
+    if(diff>8){chip.textContent='Tension en hausse';chip.className='chip c-live';lbl.textContent='Montée du niveau de détresse';}
+    else if(diff<-8){chip.textContent='Apaisement';chip.className='chip c-ok';lbl.textContent='Stabilisation progressive';}
+    else{chip.textContent='Stable';chip.className='chip c-idle';lbl.textContent='Régularité du discours';}
   }
 }
 
 function drawAll() { drawTL(); drawPol(); drawDonut6(); }
 
 /* ═══════════════════════════════════════════════════════════
-   INSIGHTS SÉMANTIQUES (colonne droite seulement)
+   INSIGHTS SÉMANTIQUES
 ═══════════════════════════════════════════════════════════ */
 function addInsight(type, title, body) {
   var sem=document.getElementById('sem-ph'); if(sem) sem.remove();
-  var cls={info:'i-info',warn:'i-warn',ok:'i-ok',er:'i-er'};
   var col={info:'var(--ink)',warn:'var(--amber)',ok:'var(--ok)',er:'var(--rose)'};
   var wrap=document.getElementById('semantic'); if(!wrap) return;
   var el=document.createElement('div');
@@ -1249,7 +1222,7 @@ function dictPlan(){
   if(planMicOn) return;
   planMicOn=true;
   var pr=new SR2(); pr.lang='fr-FR'; pr.continuous=false; pr.interimResults=false;
-  pr.onstart=function(){ ntf('plan-notif','🎤 Dictée en cours…','in',0); };
+  pr.onstart=function(){ ntf('plan-notif','Dictée en cours…','in',0); };
   pr.onresult=function(e){
     var t=e.results[0][0].transcript;
     var f=document.getElementById('plan-field');
@@ -1268,7 +1241,7 @@ async function savePlan(){
   try {
     var res=await fetch('save_consultation.php',{method:'POST',body:fd});
     var d=await res.text();
-    ntf('plan-notif',d.trim()==='success'?'✓ Plan sauvegardé.':'Erreur : '+d.trim(),d.trim()==='success'?'ok':'er');
+    ntf('plan-notif',d.trim()==='success'?'Plan sauvegardé.':'Erreur : '+d.trim(),d.trim()==='success'?'ok':'er');
   } catch(e){ ntf('plan-notif','Erreur réseau.','er'); }
 }
 
@@ -1283,7 +1256,7 @@ async function aiPlan(){
   try {
     var raw=await callAI(prompt,600);
     pf.value=raw.trim();
-    ntf('plan-notif','✓ Plan généré. Vérifiez et sauvegardez.','ok');
+    ntf('plan-notif','Plan généré. Vérifiez et sauvegardez.','ok');
   } catch(e){ ntf('plan-notif','Erreur IA.','er'); }
 }
 
@@ -1381,13 +1354,12 @@ function renderReport(lr) {
     +'</div>';
   html+='<div class="rpt-body">';
 
-  // Émotions dominantes
   var topEmo=EMO6_KEYS.filter(function(k){ return emoValues6[k]>10; }).slice(0,4);
   if(topEmo.length>0){
     html+='<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">';
     topEmo.forEach(function(k){
       html+='<div style="display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:99px;background:'+PLUT6[k].colorLight+';border:1px solid '+PLUT6[k].border+';font-size:11px;font-weight:600;color:'+PLUT6[k].color+';">'
-        +PLUT6[k].icon+' '+PLUT6[k].label+' '+emoValues6[k]+'%</div>';
+        +PLUT6[k].label+' '+emoValues6[k]+'%</div>';
     });
     html+='</div>';
   }
@@ -1440,14 +1412,16 @@ function rptSec(title,content){
 }
 
 /* ═══════════════════════════════════════════════════════════
-   ARCHIVAGE — corrigé (transcription non obligatoire si vide)
+   ARCHIVAGE — notes incluses
 ═══════════════════════════════════════════════════════════ */
 async function finalize() {
   var tr=document.getElementById('transcript').value.trim();
-  // Transcription peut être vide si saisie manuelle non utilisée — on archive quand même
+  var notesVal=document.getElementById('notes').value.trim();
+
   openOv('Archiver la séance',
     'Vous allez archiver la séance n°'+SESN+' de <strong>'+escH(PAT)+'</strong>.<br><br>'
-    +(tr?'La transcription et le compte-rendu seront sauvegardés.':'<em>Aucune transcription — seul le compte-rendu sera archivé.</em>'),
+    +(tr?'La transcription et le compte-rendu seront sauvegardés.':'<em>Aucune transcription — seul le compte-rendu sera archivé.</em>')
+    +(notesVal?'<br>Vos notes cliniques seront archivées de manière confidentielle.':''),
     async function(){
       ntf('arch-notif','Archivage en cours…','in',0);
       var resumeTexte=lastReport?lastReport.resume_str:'Séance n°'+SESN+' du '+DATED+(tr?' — avec transcription.':' — sans transcription.');
@@ -1455,13 +1429,14 @@ async function finalize() {
       var planVal=planEl?planEl.value:'';
       var fd=new FormData();
       fd.append('csrf_token',CSRF);
-      fd.append('transcript',tr||''); // envoyer chaîne vide si pas de transcription
+      fd.append('transcript',tr||'');
       fd.append('resume',resumeTexte);
       fd.append('duree',String(Math.floor(secs/60)));
       fd.append('emotions',JSON.stringify(emoValues6));
       fd.append('emo_timeline',JSON.stringify(emoPoints));
       fd.append('plan',planVal);
-      fd.append('notes',document.getElementById('notes').value);
+      // Notes du praticien — transmises séparément
+      fd.append('notes',notesVal);
       if(lastReport){
         fd.append('niveau_risque',lastReport.ai.niveau_risque||'faible');
         fd.append('hypotheses',JSON.stringify(lastReport.ai.hypotheses_diagnostiques||[]));
@@ -1474,7 +1449,7 @@ async function finalize() {
         if(!res.ok) throw new Error('HTTP '+res.status);
         var d=await res.text(); d=d.trim();
         if(d==='success'){
-          ntf('arch-notif','✓ Séance archivée !','ok',0);
+          ntf('arch-notif','Séance archivée avec succès.','ok',0);
           setTimeout(function(){ window.location.href='dashboard.php'; },2000);
         } else if(d==='already_saved'){ ntf('arch-notif','Déjà archivée.','wa');
         } else if(d==='csrf_invalid'){  ntf('arch-notif','Erreur sécurité. Rechargez.','er');
@@ -1485,7 +1460,7 @@ async function finalize() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   EXPORT PDF — inclut transcription, émotions, plan
+   EXPORT PDF
 ═══════════════════════════════════════════════════════════ */
 function exportPDF() {
   if(!lastReport){ ntf('arch-notif',"Générez d'abord le bilan.",'wa'); return; }
@@ -1511,7 +1486,6 @@ function exportPDF() {
     y+=2;
   }
 
-  // Header
   doc.setFillColor(15,52,96); doc.rect(0,0,W,40,'F');
   doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(180,200,240);
   doc.text('COMPTE-RENDU DE CONSULTATION PSYCHOLOGIQUE — CONFIDENTIEL',M,10);
@@ -1525,7 +1499,6 @@ function exportPDF() {
   doc.text(niv,W-M-18,17.5,{align:'center'});
   y=46;
 
-  // Émotions 6
   var topEmo=EMO6_KEYS.filter(function(k){ return emoValues6[k]>10; });
   if(topEmo.length>0){
     doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
@@ -1533,12 +1506,11 @@ function exportPDF() {
     var ex=M+45;
     topEmo.slice(0,5).forEach(function(k){
       doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(60,55,50);
-      doc.text(PLUT6[k].icon+' '+PLUT6[k].label+' '+emoValues6[k]+'%',ex,y); ex+=34;
+      doc.text(PLUT6[k].label+' '+emoValues6[k]+'%',ex,y); ex+=34;
     });
     y+=8;
   }
 
-  // Info praticien
   doc.setFillColor(248,247,244); doc.rect(M,y,W-M*2,14,'F');
   doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
   doc.text('Dr. '+DR,M+4,y+5);
@@ -1547,7 +1519,6 @@ function exportPDF() {
   if(DR_TEL) doc.text(DR_TEL,W-M-4,y+5,{align:'right'});
   y+=18; hr();
 
-  // Synthèse
   if(ai.resume_psychologue){
     doc.setFillColor(240,245,255); doc.roundedRect(M,y-2,W-M*2,28,2,2,'F');
     doc.setFillColor(15,52,96);doc.rect(M,y-2,3,28,'F');
@@ -1570,7 +1541,7 @@ function exportPDF() {
   if(ai.points_vigilance) sec('Points de vigilance',ai.points_vigilance);
   if(Array.isArray(ai.hypotheses_diagnostiques)&&ai.hypotheses_diagnostiques.length){
     sec('Hypothèses diagnostiques · CIM-11',null);
-    ai.hypotheses_diagnostiques.forEach(function(h){ ln('• '+h,{sz:10,c:[15,52,96],ind:6,lh:5.5}); }); y+=2;
+    ai.hypotheses_diagnostiques.forEach(function(h){ ln('· '+h,{sz:10,c:[15,52,96],ind:6,lh:5.5}); }); y+=2;
   }
   sec('Plan thérapeutique',ai.plan_therapeutique||'');
   if(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length){
@@ -1578,13 +1549,11 @@ function exportPDF() {
     ai.objectifs_prochaine_seance.forEach(function(o,i){ ln((i+1)+'. '+o,{sz:10,c:[0,77,64],ind:6,lh:5.5}); }); y+=2;
   }
 
-  // ── PLAN THÉRAPEUTIQUE DU PRATICIEN
   var planEl=document.getElementById('plan-field');
   if(planEl&&planEl.value.trim()){
     hr(); sec('Plan thérapeutique (praticien)',planEl.value.trim());
   }
 
-  // ── TRANSCRIPTION COMPLÈTE
   var trVal=document.getElementById('transcript').value.trim();
   if(trVal){
     hr();
@@ -1625,6 +1594,8 @@ function loadPrev(resume,plan){
     var txt='[Séance précédente]\n'+resume.slice(0,400);
     if(plan) txt+='\n\n[Plan précédent]\n'+plan.slice(0,300);
     n.value=(n.value?n.value+'\n\n':'')+txt;
+    document.getElementById('notes-save-status').textContent='Notes mises à jour depuis l\'historique.';
+    setTimeout(function(){ document.getElementById('notes-save-status').textContent=''; }, 3000);
   });
 }
 
@@ -1638,10 +1609,10 @@ function makeRecog(){
   r.onstart=function(){
     micOn=true;
     document.getElementById('mic-btn').className='mic-btn live';
-    document.getElementById('mic-label').textContent='● CAPTURE ACTIVE — Cliquez pour arrêter';
+    document.getElementById('mic-label').textContent='CAPTURE ACTIVE — Cliquez pour arrêter';
     document.getElementById('mic-label').style.color='var(--rose)';
     document.getElementById('t-dot').className='t-dot live';
-    document.getElementById('rec-status').textContent='● Enregistrement';
+    document.getElementById('rec-status').textContent='Enregistrement';
     document.getElementById('rec-status').className='chip c-live';
     startWaveform(); clearInterval(timerIv);
     timerIv=setInterval(function(){
@@ -1707,7 +1678,7 @@ function clearTranscript(){
     emoPoints=[0]; tlRisk=[]; tlResil=[]; tlAnx=[];
     EMO6_KEYS.forEach(function(k){ emoValues6[k]=0; });
     drawAll(); updateEmo6Grid();
-    ntf('tr-notif','Effacé.','in',2500);
+    ntf('tr-notif','Transcription effacée.','in',2500);
   });
 }
 
