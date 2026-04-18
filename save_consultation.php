@@ -186,11 +186,11 @@ $stmt_dup->close();
 $sql = "INSERT INTO consultations
         (patient_id, appointment_id, doctor_id, date_consultation,
          transcription_brute, resume_ia, duree_minutes,
-         emotion_data, emotions_plutchik, emo_timeline,
+         emotion_data, emotions_plutchik,
          plan_therapeutique, niveau_risque,
          motif_seance, evolution_inter, notes_praticien,
          age_patient, ville_patient)
-        VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 $stmt = $db->prepare($sql);
 
@@ -200,24 +200,33 @@ if (!$stmt) {
     exit();
 }
 
-// Types : iii = patient_id, appointment_id, doctor_id
-//         sssi = transcript, resume, duree (int)
-//         sss  = emotions(json), emotions_plutchik(json), emo_timeline(json)
-//         ss   = plan, niveau_risque
-//         sss  = motif_seance, evolution_inter, notes_praticien
-//         is   = age_patient(int), ville_patient
-// Total : 17 params → "iiisissssssssssis"
+// Comptage précis — 16 paramètres :
+// i  patient_id
+// i  appointment_id
+// i  doctor_id
+// s  transcript
+// s  resume
+// i  duree
+// s  emotions (emotion_data)
+// s  emotions (emotions_plutchik, même valeur)
+// s  plan
+// s  niveau_risque
+// s  motif_seance
+// s  evolution_inter
+// s  notes_praticien
+// i  age_patient
+// s  ville_patient
+// = "iiississssssssis" → 16 chars, 16 vars
 $stmt->bind_param(
-    "iiisissssssssssis",
+    "iiississssssssis",
     $patient_id,
     $appointment_id,
     $doctor_id,
     $transcript,
     $resume,
     $duree,
-    $emotions,        // emotion_data (objet JSON des 6 émotions)
-    $emotions,        // emotions_plutchik (même donnée, champ legacy)
-    $emo_timeline,    // emo_timeline
+    $emotions,
+    $emotions,
     $plan,
     $niveau_risque,
     $motif_seance,
@@ -237,7 +246,8 @@ if ($stmt->execute()) {
     echo "success";
 } else {
     error_log("[PsySpace Error] Insert: " . $stmt->error);
-    echo "insert_error";
+    // Retourner le détail de l'erreur pour debug (à retirer en prod)
+    echo "insert_error: " . $stmt->error;
 }
 
 $stmt->close();
