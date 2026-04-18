@@ -844,7 +844,8 @@ var IS_FOLLOWUP = <?= json_encode($is_followup) ?>;
 var micOn = false, recog = null, timerIv = null, secs = 0;
 var lastReport = null, lastAutoText = '';
 var tlC, polC, donutC;
-var emoPoints = [0], tlRisk = [], tlResil = [], tlAnx = [];
+// Initialiser avec quelques points plats pour que la courbe soit visible dès le départ
+var emoPoints = [0,0,0], tlRisk = [0,0,0], tlResil = [0,0,0], tlAnx = [0,0,0];
 
 /* ═══════════════════════════════════════════════════════════
    6 ÉMOTIONS PLUTCHIK
@@ -1065,6 +1066,17 @@ function onTyping(val) {
   emoPoints.push(total>0?Math.max(-1,Math.min(1,(pos-neg)/total)):0);
   if(emoPoints.length>60) emoPoints.shift();
   drawPol();
+
+  // Insights sémantiques automatiques au fil de la frappe
+  if(wc>0 && wc%40===0){
+    var domEmo=EMO6_KEYS.reduce(function(a,b){ return emoValues6[a]>emoValues6[b]?a:b; });
+    if(emoValues6[domEmo]>20){
+      var typeMap={tristesse:'warn',peur:'warn',colere:'er',joie:'ok',surprise:'info',degout:'warn'};
+      addInsight(typeMap[domEmo]||'info','Émotion dominante',PLUT6[domEmo].label+' détectée à '+emoValues6[domEmo]+'% — '+wc+' mots analysés');
+    }
+    if(sc.resilience>2) addInsight('ok','Résilience','Éléments de ressources et d\'espoir présents dans le discours.');
+    if(sc.detresse>3) addInsight('warn','Détresse','Niveau de détresse significatif détecté dans le verbatim.');
+  }
 
   if(wc>8) document.getElementById('btn-generate').disabled=false;
 }
@@ -1389,26 +1401,46 @@ async function genReport() {
     +'# '+histCtx+'\n\n'
     +(notes?'# NOTES CLINIQUES DU PRATICIEN (observations directes, non verbal, contre-transfert)\n'+notes+'\n\n':'')
     +(planVal?'# PLAN DE SUIVI EN COURS (défini par le praticien)\n'+planVal+'\n\n':'')
-    +'# ÉMOTIONS DÉTECTÉES AUTOMATIQUEMENT\n'+topEmoPct+'\nTendance risque globale : '+RISQUE_TENDANCE+'\n\n'
     +'# VERBATIM DE LA SÉANCE\n'
-    +'IMPORTANT : Le verbatim ci-dessous contient les propos mélangés du psychologue et du patient. '
+    +'IMPORTANT : Le verbatim contient les propos mélangés du psychologue et du patient. '
     +'Identifie les tours de parole par contexte (questions = psy, réponses émotionnelles = patient). '
-    +'Focalise ton analyse sur le discours du PATIENT uniquement pour le compte-rendu clinique.\n'
+    +'Focalise ton analyse sur le discours du PATIENT uniquement.\n'
     +'"""\n'+text+'\n"""\n\n'
     +'# INSTRUCTIONS\n'
-    +'Réponds en JSON strict UNIQUEMENT, sans texte avant ni après, sans balises markdown :\n'
+    +'Réponds en JSON strict UNIQUEMENT, sans texte avant ni après, sans balises markdown.\n'
+    +'Pour le champ "emotions_ia" : analyse finement le verbatim du PATIENT et attribue un score de 0 à 100 pour chacune des 6 émotions. '
+    +'Ces scores doivent refléter la RÉALITÉ clinique du discours — pas les mots-clés isolés. '
+    +'Tiens compte du contexte, des négations, de la tonalité globale. '
+    +'Une seule émotion peut atteindre 85-100 si elle domine clairement. Deux émotions ne peuvent PAS être toutes les deux à 100. '
+    +'Si une émotion est absente du discours, mets 0.\n'
     +'{\n'
     +'"resume_psychologue": "Synthèse narrative intégrant : motif principal exprimé par le patient, déroulement de la séance (thèmes abordés, dynamique), et synthèse du discours patient. Rédige en prose continue, 4-6 phrases, style clinique sobre.",\n'
     +'"evolution_depuis_derniere_seance": "Uniquement si séance de suivi : comparer avec la séance précédente, évolution observée. Null si 1ère séance.",\n'
-    +'"observations": "Observations cliniques du praticien : attitude, affect, cohérence du discours, éléments non verbaux notables, fonctionnement psychique observé.",\n'
-    +'"points_vigilance": "Points à surveiller : signaux de risque, éléments préoccupants, thèmes récurrents à explorer. Vide si rien de notable.",\n'
-    +'"plan_therapeutique": "Suggestion de plan de suivi pour la prochaine séance basée sur cette séance. Le praticien décidera du plan final.",\n'
-    +'"niveau_risque": "faible | modéré | élevé | critique"\n'
+    +'"observations": "Observations cliniques : attitude, affect, cohérence du discours, éléments non verbaux notables, fonctionnement psychique observé.",\n'
+    +'"points_vigilance": "Points à surveiller : signaux de risque, éléments préoccupants, thèmes récurrents. Vide si rien de notable.",\n'
+    +'"plan_therapeutique": "Suggestion de plan de suivi pour la prochaine séance. Le praticien décidera du plan final.",\n'
+    +'"niveau_risque": "faible | modéré | élevé | critique",\n'
+    +'"emotions_ia": {"tristesse": 0, "joie": 0, "surprise": 0, "degout": 0, "colere": 0, "peur": 0}\n'
     +'}';
 
   try {
     var raw=await callAI(prompt,4000);
     var ai; try{ ai=JSON.parse(raw.replace(/```json\n?|\n?```/g,'').trim()); }catch(e){ throw new Error('JSON invalide: '+e.message); }
+
+    // ── Remplacer les scores émotionnels JS par l'analyse IA (bien plus précise) ──
+    if(ai.emotions_ia && typeof ai.emotions_ia === 'object'){
+      var emo=ai.emotions_ia;
+      // Validation : s'assurer que les valeurs sont entre 0-100 et qu'il n'y a pas de bug
+      var maxScore=Math.max.apply(null, EMO6_KEYS.map(function(k){ return Number(emo[k])||0; }));
+      if(maxScore > 0){
+        EMO6_KEYS.forEach(function(k){
+          var v=Number(emo[k])||0;
+          emoValues6[k]=Math.min(100, Math.max(0, Math.round(v)));
+        });
+        updateEmo6Grid();
+        drawDonut6();
+      }
+    }
     lastReport={ai:ai,text:text,duree:dureeMin,date:new Date().toLocaleDateString('fr-FR'),emo:Object.assign({},emoValues6)};
     lastReport.resume_str=[
       'CR · '+PAT+' · S'+SESN+' · '+DATED,
@@ -1450,18 +1482,47 @@ function renderReport(lr) {
     +'<div class="rpt-risk-badge" style="background:'+rc.bdg+';">'+niv.charAt(0).toUpperCase()+niv.slice(1)+'</div>'
     +'<p style="font-size:9px;color:rgba(255,255,255,.35);margin-top:5px;font-weight:600;">PsySpace Pro</p>'
     +'</div></div>';
-  html+='<div class="rpt-meta-grid">'
-    +'<div class="rpt-mc"><div class="rpt-mc-lbl">Date</div><div class="rpt-mc-val">'+escH(DATED)+'</div></div>'
-    +'<div class="rpt-mc"><div class="rpt-mc-lbl">Séance</div><div class="rpt-mc-val">N°'+SESN+'</div></div>'
-    +(PAT_AGE_DISPLAY?'<div class="rpt-mc"><div class="rpt-mc-lbl">Âge</div><div class="rpt-mc-val">'+PAT_AGE_DISPLAY+' ans</div></div>':'<div class="rpt-mc"><div class="rpt-mc-lbl">Durée</div><div class="rpt-mc-val">'+(lr.duree?lr.duree+' min':'—')+'</div></div>')
-    +(PAT_VILLE?'<div class="rpt-mc"><div class="rpt-mc-lbl">Ville</div><div class="rpt-mc-val">'+escH(PAT_VILLE)+'</div></div>':'<div class="rpt-mc"><div class="rpt-mc-lbl">Praticien</div><div class="rpt-mc-val">Dr. '+escH(DR)+'</div></div>')
-    +'</div></div>';
+
+  // Grille meta : toujours Date + Séance + Âge (si dispo) + Ville (si dispo)
+  html+='<div class="rpt-meta-grid">';
+  html+='<div class="rpt-mc"><div class="rpt-mc-lbl">Date</div><div class="rpt-mc-val">'+escH(DATED)+'</div></div>';
+  html+='<div class="rpt-mc"><div class="rpt-mc-lbl">Séance</div><div class="rpt-mc-val">N°'+SESN+'</div></div>';
+  html+='<div class="rpt-mc"><div class="rpt-mc-lbl">Âge</div><div class="rpt-mc-val">'+(PAT_AGE_DISPLAY?PAT_AGE_DISPLAY+' ans':'—')+'</div></div>';
+  html+='<div class="rpt-mc"><div class="rpt-mc-lbl">Ville</div><div class="rpt-mc-val">'+(PAT_VILLE?escH(PAT_VILLE):'—')+'</div></div>';
+  html+='</div></div>';
+
   html+='<div class="rpt-doc-band">'
     +'<div><p class="rpt-doc-name">Dr. '+escH(DR)+'</p><p class="rpt-doc-sub">'+escH(DR_SPEC)+(DR_RPPS?' · RPPS '+escH(DR_RPPS):'')+'</p></div>'
     +'<div style="text-align:right;"><p class="rpt-doc-sub">'+escH(DATED)+'</p>'+(DR_TEL?'<p class="rpt-doc-sub">'+escH(DR_TEL)+'</p>':'')+'</div>'
     +'</div>';
   html+='<div class="rpt-body">';
 
+  // ── Présentation patient (profession, situation, motif initial, antécédents) ──
+  var patInfoParts=[];
+  if(PAT_GENDER) patInfoParts.push(PAT_GENDER);
+  if(PAT_AGE_DISPLAY) patInfoParts.push(PAT_AGE_DISPLAY+' ans');
+  if(PAT_VILLE) patInfoParts.push(PAT_VILLE);
+  if(PAT_PROFESSION) patInfoParts.push(PAT_PROFESSION);
+  if(PAT_SITUATION) patInfoParts.push(PAT_SITUATION);
+  if(patInfoParts.length>0 || PAT_MOTIF_INIT || PAT_ANTECEDENTS || PAT_TRAITEMENT){
+    html+='<div style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;">';
+    html+='<div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.16em;color:var(--tx3);margin-bottom:8px;">Profil patient</div>';
+    if(patInfoParts.length>0){
+      html+='<p style="font-size:12px;font-weight:600;color:var(--tx);margin-bottom:6px;">'+escH(patInfoParts.join(' · '))+'</p>';
+    }
+    if(PAT_MOTIF_INIT){
+      html+='<p style="font-size:11.5px;color:var(--tx2);line-height:1.65;margin-bottom:4px;"><span style="font-weight:700;color:var(--ink);">Motif initial :</span> '+escH(PAT_MOTIF_INIT.slice(0,250))+'</p>';
+    }
+    if(PAT_ANTECEDENTS){
+      html+='<p style="font-size:11.5px;color:var(--tx2);line-height:1.65;margin-bottom:4px;"><span style="font-weight:700;color:var(--rose);">Antécédents :</span> '+escH(PAT_ANTECEDENTS.slice(0,200))+'</p>';
+    }
+    if(PAT_TRAITEMENT){
+      html+='<p style="font-size:11.5px;color:var(--tx2);line-height:1.65;"><span style="font-weight:700;color:var(--violet);">Traitement :</span> '+escH(PAT_TRAITEMENT.slice(0,150))+'</p>';
+    }
+    html+='</div>';
+  }
+
+  // ── Badges émotionnels ──
   var topEmo=EMO6_KEYS.filter(function(k){ return emoValues6[k]>10; }).slice(0,4);
   if(topEmo.length>0){
     html+='<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">';
@@ -1472,23 +1533,30 @@ function renderReport(lr) {
     html+='</div>';
   }
 
+  // ── Synthèse ──
   if(ai.resume_psychologue){
     html+='<div class="rpt-summary-box"><div class="rpt-summary-lbl">Synthèse · Motif & Déroulement de séance</div>'
       +'<p class="rpt-summary-txt">'+escH(ai.resume_psychologue)+'</p></div>';
   }
-  if(ai.evolution_depuis_derniere_seance){
+
+  // ── Évolution (séances de suivi seulement — jamais null affiché) ──
+  if(SESN>1){
+    var evoTxt=ai.evolution_depuis_derniere_seance;
+    // Si l'IA a mis null ou vide on affiche un message par défaut
+    if(!evoTxt||evoTxt==='null'||evoTxt.trim()===''){
+      evoTxt='Première comparaison avec la séance précédente — évolution à documenter au fil du suivi.';
+    }
     html+='<div class="rpt-evolution-box"><div class="rpt-evolution-lbl">Évolution depuis la dernière séance</div>'
-      +'<p class="rpt-evolution-txt">'+escH(ai.evolution_depuis_derniere_seance)+'</p></div>';
+      +'<p class="rpt-evolution-txt">'+escH(evoTxt)+'</p></div>';
   }
+
   if(ai.observations) html+=rptSec('Observations cliniques','<p class="rpt-prose">'+escH(ai.observations)+'</p>');
   if(ai.points_vigilance){
     html+='<div class="rpt-section"><div class="rpt-sec-lbl" style="color:var(--rose);">Points de vigilance</div>'
       +'<div class="rpt-vigil-box"><div class="rpt-vigil-lbl">À surveiller</div><p class="rpt-vigil-txt">'+escH(ai.points_vigilance)+'</p></div></div>';
   }
-  if(ai.plan_therapeutique){
-    html+='<div class="rpt-section"><div class="rpt-sec-lbl">Plan thérapeutique (suggestion IA)</div>'
-      +'<div class="rpt-ib"><p class="rpt-ib-txt">'+escH(ai.plan_therapeutique)+'</p></div></div>';
-  }
+  // Plan thérapeutique suggestion IA → RETIRÉ (c'est le psy qui le fait dans la section Plan de suivi)
+
   html+='</div>';
   html+='<div class="rpt-sig"><div><p class="rpt-sig-sub">Confidentiel · PsySpace Pro</p></div>'
     +'<div style="text-align:right;"><p class="rpt-sig-sub">Dr. '+escH(DR)+'</p><p class="rpt-sig-name">'+escH(DR_SPEC)+'</p>'+(DR_RPPS?'<p class="rpt-sig-sub">RPPS : '+escH(DR_RPPS)+'</p>':'')+'</div>'
@@ -1612,6 +1680,24 @@ function exportPDF() {
   if(DR_TEL) doc.text(DR_TEL,W-M-4,y+5,{align:'right'});
   y+=18; hr();
 
+  // Profil patient dans le PDF
+  var profParts=[];
+  if(PAT_AGE_DISPLAY) profParts.push(PAT_AGE_DISPLAY+' ans');
+  if(PAT_VILLE) profParts.push(PAT_VILLE);
+  if(PAT_GENDER) profParts.push(PAT_GENDER);
+  if(PAT_PROFESSION) profParts.push(PAT_PROFESSION);
+  if(PAT_SITUATION) profParts.push(PAT_SITUATION);
+  if(profParts.length>0||PAT_MOTIF_INIT||PAT_ANTECEDENTS){
+    doc.setFillColor(245,245,250); doc.rect(M,y-2,W-M*2,10,'F');
+    doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(80,80,120);
+    doc.text('PROFIL PATIENT',M+4,y+4); y+=10;
+    if(profParts.length>0){ ln(profParts.join(' · '),{sz:10,c:[40,36,32],lh:5.5,ind:4,b:true}); }
+    if(PAT_MOTIF_INIT){ ln('Motif initial : '+PAT_MOTIF_INIT.slice(0,200),{sz:9.5,c:[50,46,42],lh:5,ind:4}); }
+    if(PAT_ANTECEDENTS){ ln('Antécédents : '+PAT_ANTECEDENTS.slice(0,150),{sz:9.5,c:[140,28,28],lh:5,ind:4}); }
+    if(PAT_TRAITEMENT){ ln('Traitement : '+PAT_TRAITEMENT.slice(0,120),{sz:9.5,c:[90,28,140],lh:5,ind:4}); }
+    y+=2; hr();
+  }
+
   if(ai.resume_psychologue){
     doc.setFillColor(240,245,255); doc.roundedRect(M,y-2,W-M*2,28,2,2,'F');
     doc.setFillColor(15,52,96);doc.rect(M,y-2,3,28,'F');
@@ -1619,18 +1705,21 @@ function exportPDF() {
     doc.text('SYNTHÈSE · MOTIF & DÉROULEMENT DE SÉANCE',M+6,y+3);
     y+=7; ln(ai.resume_psychologue,{sz:11,c:[20,35,100],lh:5.5,ind:4,it:true}); y+=3;
   }
-  if(ai.evolution_depuis_derniere_seance){
+  // Évolution — uniquement en séance de suivi, jamais "null"
+  if(SESN>1){
+    var evoTxt=ai.evolution_depuis_derniere_seance;
+    if(!evoTxt||evoTxt==='null'||evoTxt.trim()==='') evoTxt='Évolution à documenter au fil du suivi.';
     hr();
     doc.setFillColor(224,242,241); doc.roundedRect(M,y-2,W-M*2,20,2,2,'F');
     doc.setFillColor(0,121,107);doc.rect(M,y-2,3,20,'F');
     doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(0,77,64);
     doc.text('ÉVOLUTION DEPUIS LA DERNIÈRE SÉANCE',M+6,y+3);
-    y+=7; ln(ai.evolution_depuis_derniere_seance,{sz:10.5,c:[0,60,50],lh:5.5,ind:4}); y+=2;
+    y+=7; ln(evoTxt,{sz:10.5,c:[0,60,50],lh:5.5,ind:4}); y+=2;
   }
   hr();
   sec('Observations cliniques',ai.observations||'');
   if(ai.points_vigilance) sec('Points de vigilance',ai.points_vigilance);
-  if(ai.plan_therapeutique) sec('Suggestion plan thérapeutique (IA)',ai.plan_therapeutique);
+  // Plan IA suggestion → RETIRÉ (c'est le psy qui définit le plan)
 
   var planEl=document.getElementById('plan-field');
   if(planEl&&planEl.value.trim()){
