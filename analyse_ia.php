@@ -786,6 +786,8 @@ var DR_TEL  = <?= json_encode($doc_tel) ?>;
 var DR_RPPS = <?= json_encode($doc_rpps) ?>;
 var HIST    = <?= json_encode($history_for_ai) ?>;
 var PAT_AGE = <?= json_encode($pat_age) ?>;
+var PAT_AGE_DISPLAY = <?= json_encode($pat_age_display ?? $pat_age) ?>;
+var PAT_VILLE = <?= json_encode($pat_ville_display ?? $pat_ville ?? null) ?>;
 var PAT_GENDER = <?= json_encode($pat_gender) ?>;
 var PAT_PROFESSION = <?= json_encode($pat_profession) ?>;
 var PAT_SITUATION = <?= json_encode($pat_situation) ?>;
@@ -1287,22 +1289,21 @@ async function genReport() {
     +'Identifie les tours de parole par contexte. Analyse uniquement le discours du PATIENT.\n'
     +'"""\n'+text+'\n"""\n\n'
     +'# INSTRUCTIONS — JSON STRICT UNIQUEMENT, aucun texte avant/après, aucune balise markdown\n'
+    +'RÈGLES ABSOLUES pour emotions_ia (entiers 0-100) :\n'
+    +'- Analyse le SENS et le CONTEXTE, pas les mots-clés bruts\n'
+    +'- "je me sens bien parfois" dans un discours majoritairement souffrant = joie MAX 15\n'
+    +'- UNE SEULE émotion peut dépasser 70. Si une 2ème serait >= 70, plafonner à 55 max\n'
+    +'- Émotion absente du discours = 0 (pas 20, pas 10)\n'
+    +'- Les valeurs DOIVENT être des entiers, pas des strings\n'
     +'{\n'
-    +'"resume_psychologue": "Synthèse en prose continue (4-6 phrases) : motif principal, thèmes abordés, dynamique de séance, discours patient.",\n'
-    +'"evolution_depuis_derniere_seance": '+(isFirstSeance?'"PREMIERE_SEANCE"':'"Évolution observée par rapport à la séance précédente (2-3 phrases)."')+',\n'
-    +'"observations": "Attitude, affect, cohérence du discours, éléments non verbaux, fonctionnement psychique observé.",\n'
-    +'"points_vigilance": "Signaux de risque, thèmes préoccupants à surveiller. Laisser vide si rien de notable.",\n'
-    +'"niveau_risque": "faible | modéré | élevé | critique",\n'
-    +'"age_extrait": "Si le patient mentionne son âge dans le verbatim, extraire le nombre entier. Sinon null.",\n'
-    +'"ville_extraite": "Si le patient mentionne sa ville de résidence dans le verbatim, extraire le nom. Sinon null.",\n'
-    +'"emotions_ia": {\n'
-    +'  "tristesse": "0-100 selon réalité clinique du discours",\n'
-    +'  "joie": "0-100",\n'
-    +'  "surprise": "0-100",\n'
-    +'  "degout": "0-100",\n'
-    +'  "colere": "0-100",\n'
-    +'  "peur": "0-100"\n'
-    +'}\n'
+    +'"resume_psychologue": "Synthèse en prose (4-6 phrases) : motif, thèmes, dynamique, discours patient.",\n'
+    +'"evolution_depuis_derniere_seance": '+(isFirstSeance?'"PREMIERE_SEANCE"':'"Évolution vs séance précédente (2-3 phrases)."')+',\n'
+    +'"observations": "Attitude, affect, cohérence, éléments non verbaux, fonctionnement psychique.",\n'
+    +'"points_vigilance": "Signaux de risque, thèmes préoccupants. Vide si rien.",\n'
+    +'"niveau_risque": "faible",\n'
+    +'"age_extrait": null,\n'
+    +'"ville_extraite": null,\n'
+    +'"emotions_ia": {"tristesse": 0, "joie": 0, "surprise": 0, "degout": 0, "colere": 0, "peur": 0}\n'
     +'}';
 
   try {
@@ -1320,11 +1321,22 @@ async function genReport() {
     // ── Remplacer les scores émotionnels JS par l'analyse IA ──
     if(ai.emotions_ia && typeof ai.emotions_ia === 'object'){
       var emo=ai.emotions_ia;
-      var maxScore=Math.max.apply(null, EMO6_KEYS.map(function(k){ return Number(emo[k])||0; }));
+      var rawScores={};
+      EMO6_KEYS.forEach(function(k){ rawScores[k]=Math.min(100,Math.max(0,Math.round(Number(emo[k])||0))); });
+
+      // Règle stricte : une seule émotion >= 70
+      var sorted=EMO6_KEYS.slice().sort(function(a,b){ return rawScores[b]-rawScores[a]; });
+      if(sorted.length>=2 && rawScores[sorted[0]]>=70 && rawScores[sorted[1]]>=70){
+        rawScores[sorted[1]]=Math.min(rawScores[sorted[1]], 55);
+        // Cascader si une 3ème est aussi >= 70
+        for(var i=2;i<sorted.length;i++){
+          if(rawScores[sorted[i]]>=70) rawScores[sorted[i]]=Math.min(rawScores[sorted[i]],45);
+        }
+      }
+
+      var maxScore=Math.max.apply(null, EMO6_KEYS.map(function(k){ return rawScores[k]; }));
       if(maxScore > 0){
-        EMO6_KEYS.forEach(function(k){
-          emoValues6[k]=Math.min(100, Math.max(0, Math.round(Number(emo[k])||0)));
-        });
+        EMO6_KEYS.forEach(function(k){ emoValues6[k]=rawScores[k]; });
         updateEmo6Grid();
         drawDonut6();
       }
