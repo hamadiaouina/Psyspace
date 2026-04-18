@@ -68,6 +68,7 @@ $pat_motif_init = $pat['pmotif_initial'] ?? null;
 $pat_antecedents= $pat['pantecedents']  ?? null;
 $pat_traitement = $pat['ptraitement']   ?? null;
 $pat_notes_admin= $pat['pnotes_admin']  ?? null;
+$pat_ville      = $pat['pville']        ?? ($pat['pcity'] ?? ($pat['ville'] ?? ($pat['city'] ?? null)));
 
 // Historique consultations (6 dernières)
 $prev_consults = [];
@@ -87,6 +88,27 @@ $stmt2->close();
 
 $session_num = count($prev_consults) + 1;
 $is_followup = $session_num > 1;
+
+// Pour les séances de suivi, on utilise l'âge/ville de la 1ère séance si disponible
+// (l'âge peut avoir changé, mais la référence reste celle de la 1ère séance enregistrée)
+$pat_age_display   = $pat_age;
+$pat_ville_display = $pat_ville;
+if ($is_followup) {
+    $stmt_first = $conn->prepare(
+        "SELECT age_patient, ville_patient FROM consultations
+         WHERE patient_id=? AND doctor_id=?
+         ORDER BY date_consultation ASC LIMIT 1"
+    );
+    if ($stmt_first) {
+        $stmt_first->bind_param("ii", $patient_id, $doctor_id);
+        $stmt_first->execute();
+        $first_consult = $stmt_first->get_result()->fetch_assoc() ?: [];
+        $stmt_first->close();
+        // Utilise la valeur de la 1ère séance seulement si elle existe
+        if (!empty($first_consult['age_patient'])) $pat_age_display = (int)$first_consult['age_patient'];
+        if (!empty($first_consult['ville_patient'])) $pat_ville_display = $first_consult['ville_patient'];
+    }
+}
 
 // Objectifs en cours (non atteints)
 $goals_open = [];
@@ -391,7 +413,7 @@ body{overflow:hidden;}
   letter-spacing:.08em;margin-bottom:8px;
 }
 .emo-6-pct{
-  font-family:'Fraunces',serif;font-size:28px;font-weight:700;
+  font-family:'Fraunces',serif;font-size:20px;font-weight:700;
   line-height:1;margin-bottom:6px;
 }
 .emo-6-bar-track{height:4px;border-radius:3px;background:rgba(0,0,0,.1);overflow:hidden;}
@@ -629,42 +651,50 @@ body{overflow:hidden;}
     </div>
   </div>
 
-  <!-- PLAN THÉRAPEUTIQUE -->
-  <?php if($is_followup): ?>
-  <div class="plan-section">
+  <!-- PLAN DE SUIVI — Espace praticien, toujours visible -->
+  <div class="plan-section" id="plan-section-wrap">
     <div class="plan-hd">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      Plan thérapeutique · Séance n°<?= $session_num ?>
+      Plan de suivi · Séance n°<?= $session_num ?>
       <?php if($last_plan): ?>
-      <span class="chip" style="background:var(--teal-bg);color:var(--teal);border-color:rgba(0,121,107,.25);font-size:9px;margin-left:4px;">Reprise séance précédente</span>
+      <span class="chip" style="background:var(--teal-bg);color:var(--teal);border-color:rgba(0,121,107,.25);font-size:9px;margin-left:4px;">Séance précédente disponible</span>
+      <?php else: ?>
+      <span class="chip c-info" style="font-size:9px;margin-left:4px;">1ère séance</span>
       <?php endif; ?>
-      <button onclick="dictPlan()" class="btn" style="margin-left:auto;padding:4px 10px;font-size:10px;background:var(--teal);color:#fff;">Dicter</button>
     </div>
+    <p style="font-size:11px;color:var(--teal);margin-bottom:10px;line-height:1.55;">
+      Rédigez ici votre plan de suivi pour la prochaine séance — dictez ou écrivez directement. Ce plan sera accessible lors de la prochaine consultation.
+    </p>
     <?php if($last_plan): ?>
     <div style="padding:10px 12px;border-radius:var(--r2);background:rgba(0,121,107,.06);border:1px dashed rgba(0,121,107,.3);margin-bottom:10px;">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);margin-bottom:5px;">Plan de la séance précédente</div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);margin-bottom:5px;">Plan de la séance précédente (lecture seule)</div>
       <p style="font-size:12px;color:var(--tx2);line-height:1.65;font-style:italic;"><?= htmlspecialchars(mb_substr($last_plan,0,300,'UTF-8')) ?><?= strlen($last_plan)>300?'…':'' ?></p>
     </div>
     <?php endif; ?>
-    <textarea id="plan-field" class="ta-plan" rows="3"
-      placeholder="Objectifs thérapeutiques, techniques envisagées, orientations, fréquence des séances…"><?= htmlspecialchars($last_plan ?? '') ?></textarea>
+    <textarea id="plan-field" class="ta-plan" rows="4"
+      placeholder="Décrivez ici le plan pour la prochaine séance : axes thérapeutiques, techniques envisagées, points à explorer, fréquence…&#10;&#10;Vous pouvez aussi dicter en cliquant sur le bouton micro ci-dessous."><?= htmlspecialchars($last_plan ?? '') ?></textarea>
     <div id="plan-notif" style="margin-top:6px;min-height:22px;"></div>
-    <div style="display:flex;gap:8px;margin-top:8px;">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+      <button onclick="dictPlan()" id="plan-mic-btn" class="mic-btn" style="width:38px;height:38px;flex-shrink:0;" title="Dicter le plan">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
       <button onclick="savePlan()" class="btn btn-teal" style="flex:1;">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         Sauvegarder le plan
       </button>
-      <button onclick="aiPlan()" class="btn btn-ghost" style="flex:1;font-size:11px;">Suggérer via IA</button>
+      <button onclick="aiPlan()" class="btn btn-ghost" style="flex:1;font-size:11px;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Suggestion IA
+      </button>
     </div>
   </div>
-  <?php endif; ?>
 
   <!-- COMPTE-RENDU -->
   <div class="card" style="flex-shrink:0;padding:0;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 16px;">
       <div>
         <h2 style="font-family:'Fraunces',serif;font-size:16px;font-weight:700;color:var(--tx);letter-spacing:-.02em;">Compte-rendu clinique</h2>
-        <p style="font-size:11px;color:var(--tx3);margin-top:2px;">Généré par IA · Confidentiel · CIM-11</p>
+        <p style="font-size:11px;color:var(--tx3);margin-top:2px;">Généré par IA · Confidentiel</p>
       </div>
       <button id="btn-generate" onclick="genReport()" disabled class="btn btn-ink">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
@@ -797,6 +827,8 @@ var DR_TEL  = <?= json_encode($doc_tel) ?>;
 var DR_RPPS = <?= json_encode($doc_rpps) ?>;
 var HIST    = <?= json_encode($history_for_ai) ?>;
 var PAT_AGE = <?= json_encode($pat_age) ?>;
+var PAT_AGE_DISPLAY = <?= json_encode($pat_age_display) ?>;
+var PAT_VILLE = <?= json_encode($pat_ville_display) ?>;
 var PAT_GENDER = <?= json_encode($pat_gender) ?>;
 var PAT_PROFESSION = <?= json_encode($pat_profession) ?>;
 var PAT_SITUATION = <?= json_encode($pat_situation) ?>;
@@ -926,18 +958,74 @@ function analyzeText(text) {
 }
 
 function analyzePlutchik6(text) {
-  var t=text.toLowerCase();
-  var scores={}, found={};
-  EMO6_KEYS.forEach(function(emo){
-    scores[emo]=0; found[emo]=[];
-    PLUT6[emo].lex.forEach(function(w){
-      var re=new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
-      var m=t.match(re);
-      if(m){ scores[emo]+=m.length; found[emo].push({w:w,n:m.length}); }
+  // Algorithme intelligent avec détection de négation et pondération contextuelle
+  var t = text.toLowerCase();
+
+  // Fenêtres de négation : si un mot négatif précède dans les 5 mots, on inverse
+  var NEG_PATTERNS = [
+    /\b(pas|plus|jamais|ni|sans|aucun|aucune|nullement|non|ne)\s+(\w+\s+){0,4}/g
+  ];
+
+  // Construire une version annotée pour la négation
+  // On tokenise par phrases pour éviter les faux-positifs inter-phrases
+  var sentences = t.split(/[.!?;]+/).filter(function(s){ return s.trim().length > 2; });
+
+  var scores = {}, found = {};
+  EMO6_KEYS.forEach(function(emo){ scores[emo] = 0; found[emo] = []; });
+
+  sentences.forEach(function(sentence) {
+    EMO6_KEYS.forEach(function(emo) {
+      PLUT6[emo].lex.forEach(function(w) {
+        var re = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        var m = sentence.match(re);
+        if (!m) return;
+
+        // Chercher si le mot est précédé d'une négation dans la même phrase
+        var wordRe = new RegExp('\\b(ne\\s+|n\'\\s*)?(pas|plus|jamais|sans|nullement|aucun[e]?)\\s+(?:\\w+\\s+){0,4}' + w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'), 'i');
+        var isNegated = wordRe.test(sentence);
+
+        if (!isNegated) {
+          scores[emo] += m.length;
+          found[emo].push({w: w, n: m.length});
+        } else {
+          // Mot nié : on note comme détecté mais avec un signal négatif
+          // On l'enregistre pour l'affichage mais sans incrémenter le score
+          found[emo].push({w: w + ' (nié)', n: 0, negated: true});
+        }
+      });
     });
   });
-  detectedWords6=found;
+
+  detectedWords6 = found;
   return scores;
+}
+
+function normalizeEmo6Scores(rawScores) {
+  // Normalisation intelligente : relatif au max, avec seuil minimal de signification
+  var vals = EMO6_KEYS.map(function(k){ return rawScores[k]; });
+  var maxRaw = Math.max.apply(null, vals);
+  var totalRaw = vals.reduce(function(a,b){ return a+b; }, 0);
+
+  var result = {};
+  if (maxRaw === 0) {
+    EMO6_KEYS.forEach(function(k){ result[k] = 0; });
+    return result;
+  }
+
+  // Score relatif : l'émotion dominante prend au max 85%, les autres proportionnellement
+  // Cela rend impossible d'avoir deux 100%
+  EMO6_KEYS.forEach(function(k) {
+    var raw = rawScores[k];
+    if (raw === 0) { result[k] = 0; return; }
+    // Normalisation relative : (raw / maxRaw) * 85, arrondi
+    var pct = Math.round((raw / maxRaw) * 85);
+    // Seuil minimal de détection : si raw >= 1 mais pct < 8, on affiche au moins 8
+    result[k] = Math.max(8, pct);
+    // L'émotion dominante garde son score exact (plafonné à 85)
+    if (raw === maxRaw) result[k] = 85;
+  });
+
+  return result;
 }
 
 function checkUrgence(text) {
@@ -962,13 +1050,11 @@ function onTyping(val) {
 
   var sc=analyzeText(val);
   var plut=analyzePlutchik6(val);
+  var normalized=normalizeEmo6Scores(plut);
 
-  var maxRaw=Math.max(1, Math.max.apply(null, EMO6_KEYS.map(function(k){ return plut[k]; })));
   EMO6_KEYS.forEach(function(k){
-    var raw=plut[k];
-    emoValues6[k]=raw===0?0:Math.min(100, Math.round(10+((raw/maxRaw)*90)));
+    emoValues6[k] = normalized[k];
   });
-  EMO6_KEYS.forEach(function(k){ if(plut[k]===0) emoValues6[k]=0; });
 
   updateEmo6Grid();
   drawDonut6();
@@ -1218,19 +1304,29 @@ function buildPatientContext() {
 var planMicOn=false;
 function dictPlan(){
   var SR2=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR2){ ntf('plan-notif','Microphone non supporté.','er'); return; }
+  if(!SR2){ ntf('plan-notif','Microphone non supporté sur ce navigateur.','er'); return; }
   if(planMicOn) return;
   planMicOn=true;
+  var pmb=document.getElementById('plan-mic-btn');
+  if(pmb){ pmb.className='mic-btn live'; }
+  ntf('plan-notif','Dictée en cours — parlez…','in',0);
   var pr=new SR2(); pr.lang='fr-FR'; pr.continuous=false; pr.interimResults=false;
-  pr.onstart=function(){ ntf('plan-notif','Dictée en cours…','in',0); };
   pr.onresult=function(e){
     var t=e.results[0][0].transcript;
     var f=document.getElementById('plan-field');
-    if(f){ f.value=(f.value?f.value+' ':'')+t; ntf('plan-notif','Dictée capturée.','ok'); }
+    if(f){ f.value=(f.value?f.value+'\n':'')+t; ntf('plan-notif','Dictée capturée — vérifiez et sauvegardez.','ok'); }
   };
-  pr.onerror=function(){ ntf('plan-notif','Erreur dictée.','er'); };
-  pr.onend=function(){ planMicOn=false; };
-  pr.start();
+  pr.onerror=function(e){
+    ntf('plan-notif','Erreur dictée : '+e.error,'er');
+    if(pmb){ pmb.className='mic-btn'; }
+    planMicOn=false;
+  };
+  pr.onend=function(){
+    planMicOn=false;
+    if(pmb){ pmb.className='mic-btn done'; }
+    setTimeout(function(){ if(pmb) pmb.className='mic-btn'; },2500);
+  };
+  try{ pr.start(); }catch(e){ ntf('plan-notif','Erreur démarrage : '+e.message,'er'); planMicOn=false; if(pmb) pmb.className='mic-btn'; }
 }
 
 async function savePlan(){
@@ -1286,17 +1382,29 @@ async function genReport() {
       }).join('\n')
     :'HISTORIQUE : Première consultation.';
 
-  var prompt='# RÔLE\nTu es psychologue clinicien senior avec 20 ans d\'expérience.\n\n'
+  var prompt='# RÔLE\nTu es psychologue clinicien senior avec 20 ans d\'expérience. Tu rédiges un compte-rendu clinique confidentiel en français professionnel.\n\n'
     +'# CONTEXTE\n- Praticien : Dr. '+DR+', '+DR_SPEC+(DR_RPPS?' (RPPS : '+DR_RPPS+')':'')+'\n'
-    +'- Date : '+DATED+' · Séance n°'+SESN+(dureeMin?' · Durée : '+dureeMin+'min':'')+'\n\n'
+    +'- Date : '+DATED+' · Séance n°'+SESN+(dureeMin?' · Durée approx. : '+dureeMin+'min':'')+'\n\n'
     +'# PROFIL PATIENT\n'+patCtx+'\n\n'
     +'# '+histCtx+'\n\n'
-    +(notes?'# NOTES PRATICIEN\n'+notes+'\n\n':'')
-    +(planVal?'# PLAN THÉRAPEUTIQUE ACTUEL\n'+planVal+'\n\n':'')
-    +'# PROFIL ÉMOTIONNEL (6 émotions)\n'+topEmoPct+'\nTendance risque : '+RISQUE_TENDANCE+'\n\n'
-    +'# VERBATIM\n"""\n'+text+'\n"""\n\n'
-    +'# INSTRUCTIONS\nJSON strict uniquement :\n'
-    +'{"resume_psychologue":"","evolution_depuis_derniere_seance":null,"motif":"","deroulement":"","observations":"","points_vigilance":"","hypotheses_diagnostiques":[],"plan_therapeutique":"","objectifs_prochaine_seance":[],"niveau_risque":"faible"}';
+    +(notes?'# NOTES CLINIQUES DU PRATICIEN (observations directes, non verbal, contre-transfert)\n'+notes+'\n\n':'')
+    +(planVal?'# PLAN DE SUIVI EN COURS (défini par le praticien)\n'+planVal+'\n\n':'')
+    +'# ÉMOTIONS DÉTECTÉES AUTOMATIQUEMENT\n'+topEmoPct+'\nTendance risque globale : '+RISQUE_TENDANCE+'\n\n'
+    +'# VERBATIM DE LA SÉANCE\n'
+    +'IMPORTANT : Le verbatim ci-dessous contient les propos mélangés du psychologue et du patient. '
+    +'Identifie les tours de parole par contexte (questions = psy, réponses émotionnelles = patient). '
+    +'Focalise ton analyse sur le discours du PATIENT uniquement pour le compte-rendu clinique.\n'
+    +'"""\n'+text+'\n"""\n\n'
+    +'# INSTRUCTIONS\n'
+    +'Réponds en JSON strict UNIQUEMENT, sans texte avant ni après, sans balises markdown :\n'
+    +'{\n'
+    +'"resume_psychologue": "Synthèse narrative intégrant : motif principal exprimé par le patient, déroulement de la séance (thèmes abordés, dynamique), et synthèse du discours patient. Rédige en prose continue, 4-6 phrases, style clinique sobre.",\n'
+    +'"evolution_depuis_derniere_seance": "Uniquement si séance de suivi : comparer avec la séance précédente, évolution observée. Null si 1ère séance.",\n'
+    +'"observations": "Observations cliniques du praticien : attitude, affect, cohérence du discours, éléments non verbaux notables, fonctionnement psychique observé.",\n'
+    +'"points_vigilance": "Points à surveiller : signaux de risque, éléments préoccupants, thèmes récurrents à explorer. Vide si rien de notable.",\n'
+    +'"plan_therapeutique": "Suggestion de plan de suivi pour la prochaine séance basée sur cette séance. Le praticien décidera du plan final.",\n'
+    +'"niveau_risque": "faible | modéré | élevé | critique"\n'
+    +'}';
 
   try {
     var raw=await callAI(prompt,4000);
@@ -1345,8 +1453,8 @@ function renderReport(lr) {
   html+='<div class="rpt-meta-grid">'
     +'<div class="rpt-mc"><div class="rpt-mc-lbl">Date</div><div class="rpt-mc-val">'+escH(DATED)+'</div></div>'
     +'<div class="rpt-mc"><div class="rpt-mc-lbl">Séance</div><div class="rpt-mc-val">N°'+SESN+'</div></div>'
-    +'<div class="rpt-mc"><div class="rpt-mc-lbl">Durée</div><div class="rpt-mc-val">'+(lr.duree?lr.duree+' min':'—')+'</div></div>'
-    +'<div class="rpt-mc"><div class="rpt-mc-lbl">Praticien</div><div class="rpt-mc-val">Dr. '+escH(DR)+'</div></div>'
+    +(PAT_AGE_DISPLAY?'<div class="rpt-mc"><div class="rpt-mc-lbl">Âge</div><div class="rpt-mc-val">'+PAT_AGE_DISPLAY+' ans</div></div>':'<div class="rpt-mc"><div class="rpt-mc-lbl">Durée</div><div class="rpt-mc-val">'+(lr.duree?lr.duree+' min':'—')+'</div></div>')
+    +(PAT_VILLE?'<div class="rpt-mc"><div class="rpt-mc-lbl">Ville</div><div class="rpt-mc-val">'+escH(PAT_VILLE)+'</div></div>':'<div class="rpt-mc"><div class="rpt-mc-lbl">Praticien</div><div class="rpt-mc-val">Dr. '+escH(DR)+'</div></div>')
     +'</div></div>';
   html+='<div class="rpt-doc-band">'
     +'<div><p class="rpt-doc-name">Dr. '+escH(DR)+'</p><p class="rpt-doc-sub">'+escH(DR_SPEC)+(DR_RPPS?' · RPPS '+escH(DR_RPPS):'')+'</p></div>'
@@ -1365,40 +1473,21 @@ function renderReport(lr) {
   }
 
   if(ai.resume_psychologue){
-    html+='<div class="rpt-summary-box"><div class="rpt-summary-lbl">Synthèse du discours patient</div>'
+    html+='<div class="rpt-summary-box"><div class="rpt-summary-lbl">Synthèse · Motif & Déroulement de séance</div>'
       +'<p class="rpt-summary-txt">'+escH(ai.resume_psychologue)+'</p></div>';
   }
   if(ai.evolution_depuis_derniere_seance){
     html+='<div class="rpt-evolution-box"><div class="rpt-evolution-lbl">Évolution depuis la dernière séance</div>'
       +'<p class="rpt-evolution-txt">'+escH(ai.evolution_depuis_derniere_seance)+'</p></div>';
   }
-  if(ai.motif) html+=rptSec('Motif de consultation','<p class="rpt-prose">'+escH(ai.motif)+'</p>');
-  if(ai.deroulement) html+=rptSec('Déroulement de la séance','<p class="rpt-prose">'+escH(ai.deroulement)+'</p>');
   if(ai.observations) html+=rptSec('Observations cliniques','<p class="rpt-prose">'+escH(ai.observations)+'</p>');
   if(ai.points_vigilance){
     html+='<div class="rpt-section"><div class="rpt-sec-lbl" style="color:var(--rose);">Points de vigilance</div>'
       +'<div class="rpt-vigil-box"><div class="rpt-vigil-lbl">À surveiller</div><p class="rpt-vigil-txt">'+escH(ai.points_vigilance)+'</p></div></div>';
   }
-  if(Array.isArray(ai.hypotheses_diagnostiques)&&ai.hypotheses_diagnostiques.length){
-    html+='<div class="rpt-section"><div class="rpt-sec-lbl">Hypothèses diagnostiques · CIM-11</div>';
-    ai.hypotheses_diagnostiques.forEach(function(h){
-      var m=h.match(/([A-Z][A-Z0-9]+\.?[0-9A-Z]*)/);
-      html+='<div class="rpt-diag-row">'+(m?'<span class="rpt-diag-code">'+m[1]+'</span>':'')+'<p class="rpt-diag-txt">'+escH(h)+'</p></div>';
-    });
-    html+='</div>';
-  }
-  if(ai.plan_therapeutique||(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length)){
-    html+='<div class="rpt-section"><div class="rpt-sec-lbl">Plan thérapeutique & Prochaine séance</div><div class="rpt-grid2">';
-    if(ai.plan_therapeutique)
-      html+='<div class="rpt-ib"><div class="rpt-ib-lbl">Plan de suivi</div><p class="rpt-ib-txt">'+escH(ai.plan_therapeutique)+'</p></div>';
-    if(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length){
-      html+='<div class="rpt-ib"><div class="rpt-ib-lbl">Objectifs · Prochaine séance</div>';
-      ai.objectifs_prochaine_seance.forEach(function(o,i){
-        html+='<div class="rpt-obj-row"><span class="rpt-obj-n">'+(i+1)+'</span><p class="rpt-obj-t">'+escH(o)+'</p></div>';
-      });
-      html+='</div>';
-    }
-    html+='</div></div>';
+  if(ai.plan_therapeutique){
+    html+='<div class="rpt-section"><div class="rpt-sec-lbl">Plan thérapeutique (suggestion IA)</div>'
+      +'<div class="rpt-ib"><p class="rpt-ib-txt">'+escH(ai.plan_therapeutique)+'</p></div></div>';
   }
   html+='</div>';
   html+='<div class="rpt-sig"><div><p class="rpt-sig-sub">Confidentiel · PsySpace Pro</p></div>'
@@ -1439,11 +1528,12 @@ async function finalize() {
       fd.append('notes',notesVal);
       if(lastReport){
         fd.append('niveau_risque',lastReport.ai.niveau_risque||'faible');
-        fd.append('hypotheses',JSON.stringify(lastReport.ai.hypotheses_diagnostiques||[]));
-        fd.append('objectifs',JSON.stringify(lastReport.ai.objectifs_prochaine_seance||[]));
-        fd.append('motif_seance',lastReport.ai.motif||'');
+        fd.append('motif_seance',lastReport.ai.resume_psychologue||'');
         fd.append('evolution_inter',lastReport.ai.evolution_depuis_derniere_seance||'');
       }
+      // Sauvegarder âge et ville pour les séances de suivi futures
+      if(PAT_AGE_DISPLAY) fd.append('age_patient',String(PAT_AGE_DISPLAY));
+      if(PAT_VILLE) fd.append('ville_patient',PAT_VILLE);
       try {
         var res=await fetch('save_consultation.php',{method:'POST',body:fd});
         if(!res.ok) throw new Error('HTTP '+res.status);
@@ -1491,8 +1581,11 @@ function exportPDF() {
   doc.text('COMPTE-RENDU DE CONSULTATION PSYCHOLOGIQUE — CONFIDENTIEL',M,10);
   doc.setFontSize(21);doc.setFont('times','bold');doc.setTextColor(255,255,255);
   doc.text(PAT,M,23);
+  var subLine='Séance n°'+SESN+' · '+DATED+' · Dr. '+DR;
+  if(PAT_AGE_DISPLAY) subLine+=' · '+PAT_AGE_DISPLAY+' ans';
+  if(PAT_VILLE) subLine+=' · '+PAT_VILLE;
   doc.setFontSize(9.5);doc.setFont('helvetica','normal');doc.setTextColor(160,185,230);
-  doc.text('Séance n°'+SESN+' · '+DATED+' · Dr. '+DR+(lastReport.duree?' · '+lastReport.duree+'min':''),M,31);
+  doc.text(subLine,M,31);
   var nc=[27,94,32]; if(niv==='MODÉRÉ') nc=[230,81,0]; if(niv==='ÉLEVÉ'||niv==='CRITIQUE') nc=[183,28,28];
   doc.setFillColor(255,255,255); doc.roundedRect(W-M-34,9,32,14,2,2,'F');
   doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(nc[0],nc[1],nc[2]);
@@ -1523,7 +1616,7 @@ function exportPDF() {
     doc.setFillColor(240,245,255); doc.roundedRect(M,y-2,W-M*2,28,2,2,'F');
     doc.setFillColor(15,52,96);doc.rect(M,y-2,3,28,'F');
     doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(15,52,96);
-    doc.text('SYNTHÈSE DU DISCOURS PATIENT',M+6,y+3);
+    doc.text('SYNTHÈSE · MOTIF & DÉROULEMENT DE SÉANCE',M+6,y+3);
     y+=7; ln(ai.resume_psychologue,{sz:11,c:[20,35,100],lh:5.5,ind:4,it:true}); y+=3;
   }
   if(ai.evolution_depuis_derniere_seance){
@@ -1535,23 +1628,14 @@ function exportPDF() {
     y+=7; ln(ai.evolution_depuis_derniere_seance,{sz:10.5,c:[0,60,50],lh:5.5,ind:4}); y+=2;
   }
   hr();
-  sec('Motif de consultation',ai.motif||'');
-  sec('Déroulement',ai.deroulement||'');
   sec('Observations cliniques',ai.observations||'');
   if(ai.points_vigilance) sec('Points de vigilance',ai.points_vigilance);
-  if(Array.isArray(ai.hypotheses_diagnostiques)&&ai.hypotheses_diagnostiques.length){
-    sec('Hypothèses diagnostiques · CIM-11',null);
-    ai.hypotheses_diagnostiques.forEach(function(h){ ln('· '+h,{sz:10,c:[15,52,96],ind:6,lh:5.5}); }); y+=2;
-  }
-  sec('Plan thérapeutique',ai.plan_therapeutique||'');
-  if(Array.isArray(ai.objectifs_prochaine_seance)&&ai.objectifs_prochaine_seance.length){
-    sec('Objectifs · Prochaine séance',null);
-    ai.objectifs_prochaine_seance.forEach(function(o,i){ ln((i+1)+'. '+o,{sz:10,c:[0,77,64],ind:6,lh:5.5}); }); y+=2;
-  }
+  if(ai.plan_therapeutique) sec('Suggestion plan thérapeutique (IA)',ai.plan_therapeutique);
 
   var planEl=document.getElementById('plan-field');
   if(planEl&&planEl.value.trim()){
-    hr(); sec('Plan thérapeutique (praticien)',planEl.value.trim());
+    hr();
+    sec('Plan de suivi (praticien · prochaine séance)',planEl.value.trim());
   }
 
   var trVal=document.getElementById('transcript').value.trim();
