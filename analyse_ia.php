@@ -629,35 +629,37 @@ body{overflow:hidden;}
     </div>
   </div>
 
-  <!-- PLAN THÉRAPEUTIQUE -->
-  <?php if($is_followup): ?>
-  <div class="plan-section">
+  <!-- PLAN DE SUIVI — toujours visible, psy seulement -->
+  <div class="plan-section" id="plan-section-wrap">
     <div class="plan-hd">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-      Plan thérapeutique · Séance n°<?= $session_num ?>
+      Plan de suivi · Séance n°<?= $session_num ?>
       <?php if($last_plan): ?>
-      <span class="chip" style="background:var(--teal-bg);color:var(--teal);border-color:rgba(0,121,107,.25);font-size:9px;margin-left:4px;">Reprise séance précédente</span>
+      <span class="chip" style="background:var(--teal-bg);color:var(--teal);border-color:rgba(0,121,107,.25);font-size:9px;margin-left:4px;">Séance précédente disponible</span>
+      <?php else: ?>
+      <span class="chip c-info" style="font-size:9px;margin-left:4px;">1ère séance</span>
       <?php endif; ?>
-      <button onclick="dictPlan()" class="btn" style="margin-left:auto;padding:4px 10px;font-size:10px;background:var(--teal);color:#fff;">Dicter</button>
     </div>
+    <p style="font-size:11px;color:var(--teal);margin-bottom:10px;line-height:1.55;">Rédigez votre plan pour la prochaine séance — il sera accessible lors de la prochaine consultation.</p>
     <?php if($last_plan): ?>
     <div style="padding:10px 12px;border-radius:var(--r2);background:rgba(0,121,107,.06);border:1px dashed rgba(0,121,107,.3);margin-bottom:10px;">
-      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);margin-bottom:5px;">Plan de la séance précédente</div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--teal);margin-bottom:5px;">Plan de la séance précédente (lecture seule)</div>
       <p style="font-size:12px;color:var(--tx2);line-height:1.65;font-style:italic;"><?= htmlspecialchars(mb_substr($last_plan,0,300,'UTF-8')) ?><?= strlen($last_plan)>300?'…':'' ?></p>
     </div>
     <?php endif; ?>
-    <textarea id="plan-field" class="ta-plan" rows="3"
-      placeholder="Objectifs thérapeutiques, techniques envisagées, orientations, fréquence des séances…"><?= htmlspecialchars($last_plan ?? '') ?></textarea>
+    <textarea id="plan-field" class="ta-plan" rows="4"
+      placeholder="Axes thérapeutiques, techniques envisagées, points à explorer, fréquence…&#10;&#10;Dictez ou écrivez directement."><?= htmlspecialchars($last_plan ?? '') ?></textarea>
     <div id="plan-notif" style="margin-top:6px;min-height:22px;"></div>
-    <div style="display:flex;gap:8px;margin-top:8px;">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+      <button onclick="dictPlan()" id="plan-mic-btn" class="mic-btn" style="width:38px;height:38px;flex-shrink:0;" title="Dicter le plan">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>
       <button onclick="savePlan()" class="btn btn-teal" style="flex:1;">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
         Sauvegarder le plan
       </button>
-      <button onclick="aiPlan()" class="btn btn-ghost" style="flex:1;font-size:11px;">Suggérer via IA</button>
     </div>
   </div>
-  <?php endif; ?>
 
   <!-- COMPTE-RENDU -->
   <div class="card" style="flex-shrink:0;padding:0;">
@@ -1209,19 +1211,28 @@ function buildPatientContext() {
 var planMicOn=false;
 function dictPlan(){
   var SR2=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR2){ ntf('plan-notif','Microphone non supporté.','er'); return; }
+  if(!SR2){ ntf('plan-notif','Microphone non supporté sur ce navigateur.','er'); return; }
   if(planMicOn) return;
   planMicOn=true;
+  var pmb=document.getElementById('plan-mic-btn');
+  if(pmb) pmb.className='mic-btn live';
+  ntf('plan-notif','Dictée en cours — parlez…','in',0);
   var pr=new SR2(); pr.lang='fr-FR'; pr.continuous=false; pr.interimResults=false;
-  pr.onstart=function(){ ntf('plan-notif','Dictée en cours…','in',0); };
   pr.onresult=function(e){
     var t=e.results[0][0].transcript;
     var f=document.getElementById('plan-field');
-    if(f){ f.value=(f.value?f.value+' ':'')+t; ntf('plan-notif','Dictée capturée.','ok'); }
+    if(f){ f.value=(f.value?f.value+'\n':'')+t; ntf('plan-notif','Dictée capturée — vérifiez et sauvegardez.','ok'); }
   };
-  pr.onerror=function(){ ntf('plan-notif','Erreur dictée.','er'); };
-  pr.onend=function(){ planMicOn=false; };
-  pr.start();
+  pr.onerror=function(e){
+    ntf('plan-notif','Erreur dictée : '+(e.error||''),'er');
+    if(pmb) pmb.className='mic-btn';
+    planMicOn=false;
+  };
+  pr.onend=function(){
+    planMicOn=false;
+    if(pmb){ pmb.className='mic-btn done'; setTimeout(function(){ if(pmb) pmb.className='mic-btn'; },2500); }
+  };
+  try{ pr.start(); }catch(e){ ntf('plan-notif','Erreur démarrage : '+e.message,'er'); planMicOn=false; if(pmb) pmb.className='mic-btn'; }
 }
 
 async function savePlan(){
@@ -1235,22 +1246,6 @@ async function savePlan(){
     ntf('plan-notif',d.trim()==='success'?'Plan sauvegardé.':'Erreur : '+d.trim(),d.trim()==='success'?'ok':'er');
   } catch(e){ ntf('plan-notif','Erreur réseau.','er'); }
 }
-
-async function aiPlan(){
-  var pf=document.getElementById('plan-field'); if(!pf) return;
-  var text=document.getElementById('transcript').value.trim();
-  if(text.length<20){ ntf('plan-notif','Transcription insuffisante.','wa'); return; }
-  ntf('plan-notif','Génération via IA…','in',0);
-  var patCtx=buildPatientContext();
-  var histCtx=HIST.length?'Historique :\n'+HIST.map(function(h){ return '- '+h.date+' : '+h.resume+(h.plan?' | Plan: '+h.plan:''); }).join('\n'):'Première consultation.';
-  var prompt='## Rôle\nTu es psychologue clinicien. Propose un plan thérapeutique structuré en 3-5 lignes, en français professionnel, sans numérotation, en prose.\n\n## Patient\n'+patCtx+'\n\n## '+histCtx+'\n\n## Verbatim\n"'+text.slice(-800)+'"\n\nRéponds UNIQUEMENT avec le texte du plan, sans titre ni introduction.';
-  try {
-    var raw=await callAI(prompt,600);
-    pf.value=raw.trim();
-    ntf('plan-notif','Plan généré. Vérifiez et sauvegardez.','ok');
-  } catch(e){ ntf('plan-notif','Erreur IA.','er'); }
-}
-
 /* ═══════════════════════════════════════════════════════════
    GÉNÉRATION COMPTE-RENDU
 ═══════════════════════════════════════════════════════════ */
@@ -1277,30 +1272,52 @@ async function genReport() {
 
   var isFirstSeance = (SESN === 1);
 
-  var prompt='# RÔLE\nTu es psychologue clinicien senior avec 20 ans d\'expérience. Tu rédiges un compte-rendu clinique confidentiel en français professionnel.\n\n'
-    +'# CONTEXTE\n- Praticien : Dr. '+DR+', '+DR_SPEC+(DR_RPPS?' (RPPS : '+DR_RPPS+')':'')+'\n'
-    +'- Date : '+DATED+' · Séance n°'+SESN+(dureeMin?' · Durée approx. : '+dureeMin+'min':'')+'\n\n'
+  var prompt='# RÔLE\nTu es psychologue clinicien senior. Tu rédiges un compte-rendu clinique en français professionnel.\n\n'
+    +'# CONTEXTE\nPraticien : Dr. '+DR+', '+DR_SPEC+(DR_RPPS?' (RPPS : '+DR_RPPS+')':'')+'\n'
+    +'Date : '+DATED+' · Séance n°'+SESN+(dureeMin?' · Durée : '+dureeMin+'min':'')+'\n\n'
     +'# PROFIL PATIENT\n'+patCtx+'\n\n'
     +'# '+histCtx+'\n\n'
-    +(notes?'# NOTES CLINIQUES DU PRATICIEN\n'+notes+'\n\n':'')
-    +(planVal?'# PLAN DE SUIVI EN COURS\n'+planVal+'\n\n':'')
-    +'# VERBATIM DE LA SÉANCE\n'
-    +'IMPORTANT : Le verbatim contient les propos mélangés du psychologue et du patient. '
-    +'Identifie les tours de parole par contexte. Analyse uniquement le discours du PATIENT.\n'
+    +(notes?'# NOTES DU PRATICIEN\n'+notes+'\n\n':'')
+    +(planVal?'# PLAN DE SUIVI ACTUEL\n'+planVal+'\n\n':'')
+    +'# VERBATIM\n'
+    +'Le verbatim contient les propos du psychologue ET du patient mélangés. '
+    +'Identifie qui parle par le contexte (questions ouvertes = psy, récits émotionnels = patient). '
+    +'Analyse UNIQUEMENT le discours du PATIENT.\n'
     +'"""\n'+text+'\n"""\n\n'
-    +'# INSTRUCTIONS — JSON STRICT UNIQUEMENT, aucun texte avant/après, aucune balise markdown\n'
-    +'RÈGLES ABSOLUES pour emotions_ia (entiers 0-100) :\n'
-    +'- Analyse le SENS et le CONTEXTE, pas les mots-clés bruts\n'
-    +'- "je me sens bien parfois" dans un discours majoritairement souffrant = joie MAX 15\n'
-    +'- UNE SEULE émotion peut dépasser 70. Si une 2ème serait >= 70, plafonner à 55 max\n'
-    +'- Émotion absente du discours = 0 (pas 20, pas 10)\n'
-    +'- Les valeurs DOIVENT être des entiers, pas des strings\n'
+    +'# INSTRUCTIONS — Réponds en JSON strict, aucun texte avant/après\n\n'
+    +'## Champ evolution_depuis_derniere_seance :\n'
+    +(isFirstSeance
+      ? '→ C\'est la PREMIÈRE séance. Mets OBLIGATOIREMENT la valeur exacte : null\n'
+      : '→ C\'est la séance n°'+SESN+'. Compare avec la séance précédente en 2-3 phrases.\n')
+    +'\n'
+    +'## Champ emotions_ia — RÈGLES DE CALIBRATION PRÉCISES :\n'
+    +'Scores entiers 0-100. Voici comment calibrer :\n'
+    +'\n'
+    +'EXEMPLE 1 — Discours de vide, instabilité émotionnelle, peur de l\'attachement, quelques rares moments positifs :\n'
+    +'→ {"tristesse":55,"peur":50,"colere":20,"joie":12,"surprise":5,"degout":0}\n'
+    +'\n'
+    +'EXEMPLE 2 — Dépression sévère, désespoir, pleurs, sentiment d\'abandon, pas d\'espoir :\n'
+    +'→ {"tristesse":85,"peur":30,"colere":10,"joie":0,"surprise":0,"degout":5}\n'
+    +'\n'
+    +'EXEMPLE 3 — Colère explosive, conflits relationnels, sentiment d\'injustice dominant :\n'
+    +'→ {"tristesse":25,"peur":15,"colere":80,"joie":0,"surprise":10,"degout":20}\n'
+    +'\n'
+    +'EXEMPLE 4 — Anxiété généralisée, ruminations, peur du futur, hypervigilance :\n'
+    +'→ {"tristesse":30,"peur":75,"colere":15,"joie":5,"surprise":0,"degout":0}\n'
+    +'\n'
+    +'RÈGLES ABSOLUES :\n'
+    +'1. UNE SEULE émotion peut dépasser 70. La 2ème ne peut pas dépasser 55.\n'
+    +'2. Émotion absente du discours = 0 (jamais 5 ou 10 "par défaut")\n'
+    +'3. "je me sens bien parfois" dans un discours souffrant = joie MAX 15\n'
+    +'4. Pondère par PROPORTION : si 80% du texte est souffrance et 20% espoir, reflète ça\n'
+    +'5. Les scores sont des ENTIERS (pas de virgules)\n'
+    +'\n'
     +'{\n'
-    +'"resume_psychologue": "Synthèse en prose (4-6 phrases) : motif, thèmes, dynamique, discours patient.",\n'
-    +'"evolution_depuis_derniere_seance": '+(isFirstSeance?'"PREMIERE_SEANCE"':'"Évolution vs séance précédente (2-3 phrases)."')+',\n'
-    +'"observations": "Attitude, affect, cohérence, éléments non verbaux, fonctionnement psychique.",\n'
-    +'"points_vigilance": "Signaux de risque, thèmes préoccupants. Vide si rien.",\n'
-    +'"niveau_risque": "faible",\n'
+    +'"resume_psychologue": "Synthèse en prose continue (4-6 phrases) : motif, thèmes abordés, dynamique de séance.",\n'
+    +'"evolution_depuis_derniere_seance": '+(isFirstSeance?'null':'"Évolution vs séance précédente (2-3 phrases)."')+',\n'
+    +'"observations": "Attitude, affect, cohérence du discours, éléments non verbaux, fonctionnement psychique.",\n'
+    +'"points_vigilance": "Signaux de risque à surveiller. Laisser vide si rien de notable.",\n'
+    +'"niveau_risque": "faible | modéré | élevé | critique",\n'
     +'"age_extrait": null,\n'
     +'"ville_extraite": null,\n'
     +'"emotions_ia": {"tristesse": 0, "joie": 0, "surprise": 0, "degout": 0, "colere": 0, "peur": 0}\n'
@@ -1502,8 +1519,8 @@ async function finalize() {
       if(lastReport){
         fd.append('niveau_risque',lastReport.ai.niveau_risque||'faible');
         fd.append('motif_seance',lastReport.ai.resume_psychologue||'');
-        var evo=lastReport.ai.evolution_depuis_derniere_seance||'';
-        fd.append('evolution_inter',evo==='PREMIERE_SEANCE'?'':evo);
+        var evo=lastReport.ai.evolution_depuis_derniere_seance;
+        fd.append('evolution_inter',(evo && evo!==null && evo!=='null')?String(evo):'');
       }
       // Sauvegarder âge et ville (DB ou extraits du verbatim par l'IA)
       var ageToSave = PAT_AGE_DISPLAY || (lastReport&&lastReport.ai.age_extrait?parseInt(lastReport.ai.age_extrait):null);
