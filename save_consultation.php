@@ -1,4 +1,8 @@
 <?php
+// DEBUG TEMPORAIRE — À RETIRER APRÈS
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
 // --- 1. CONFIGURATION SÉCURISÉE DES SESSIONS ---
 ini_set('session.cookie_httponly', '1');
 ini_set('session.use_only_cookies', '1');
@@ -135,7 +139,9 @@ if (!in_array($niveau_risque, $allowed_risques, true)) {
     $niveau_risque = 'faible';
 }
 
-// Ville : longueur max
+// MySQLi bind_param ne gère pas null nativement pour les ints
+// On passe 0 si null, la colonne accepte NULL via le type SQL
+$age_patient_bind = $age_patient ?? 0;
 if ($ville_patient && mb_strlen($ville_patient) > 150) {
     $ville_patient = mb_substr($ville_patient, 0, 150);
 }
@@ -186,54 +192,46 @@ $stmt_dup->close();
 $sql = "INSERT INTO consultations
         (patient_id, appointment_id, doctor_id, date_consultation,
          transcription_brute, resume_ia, duree_minutes,
-         emotion_data, emotions_plutchik,
+         emotion_data, emotions_plutchik, emo_timeline,
          plan_therapeutique, niveau_risque,
          motif_seance, evolution_inter, notes_praticien,
          age_patient, ville_patient)
-        VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 $stmt = $db->prepare($sql);
 
 if (!$stmt) {
     error_log("[PsySpace Error] Prepare: " . $db->error);
-    echo "db_prepare_error";
+    echo "db_prepare_error: " . $db->error;
     exit();
 }
 
-// Comptage précis — 16 paramètres :
-// i  patient_id
-// i  appointment_id
-// i  doctor_id
-// s  transcript
-// s  resume
-// i  duree
-// s  emotions (emotion_data)
-// s  emotions (emotions_plutchik, même valeur)
-// s  plan
-// s  niveau_risque
-// s  motif_seance
-// s  evolution_inter
-// s  notes_praticien
-// i  age_patient
-// s  ville_patient
-// = "iiississssssssis" → 16 chars, 16 vars
+// 17 paramètres exacts :
+// i patient_id, i appointment_id, i doctor_id
+// s transcript,  s resume,        i duree
+// s emotions(emotion_data), s emotions(emotions_plutchik), s emo_timeline
+// s plan,        s niveau_risque
+// s motif_seance, s evolution_inter, s notes_praticien
+// i age_patient, s ville_patient
+// = "iiissiSssssssssis" → comptons : i i i s s i s s s s s s s s s i s = 17
 $stmt->bind_param(
     "iiississssssssis",
-    $patient_id,
-    $appointment_id,
-    $doctor_id,
-    $transcript,
-    $resume,
-    $duree,
-    $emotions,
-    $emotions,
-    $plan,
-    $niveau_risque,
-    $motif_seance,
-    $evolution_inter,
-    $notes_praticien,
-    $age_patient,
-    $ville_patient
+    $patient_id,       // i
+    $appointment_id,   // i
+    $doctor_id,        // i
+    $transcript,       // s
+    $resume,           // s
+    $duree,            // i
+    $emotions,         // s — emotion_data
+    $emotions,         // s — emotions_plutchik
+    $emo_timeline,     // s — emo_timeline
+    $plan,             // s
+    $niveau_risque,    // s
+    $motif_seance,     // s
+    $evolution_inter,  // s
+    $notes_praticien,  // s
+    $age_patient_bind, // i
+    $ville_patient     // s
 );
 
 if ($stmt->execute()) {
