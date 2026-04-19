@@ -1,50 +1,48 @@
 <?php
-ini_set('session.cookie_httponly', '1'); 
+// ════════════════════════════════════════════════════════════════
+//  PsySpace · rapport_seance.php — Compte-Rendu Clinique Complet
+// ════════════════════════════════════════════════════════════════
+ini_set('session.cookie_httponly', '1');
 ini_set('session.use_only_cookies', '1');
 ini_set('session.cookie_samesite', 'Lax');
-
-if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
+if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+    (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
     ini_set('session.cookie_secure', '1');
 }
-
 session_start();
-if (!isset($_SESSION['id'])) {
-    header("Location: login.php");
-    exit();
-}
-
-// Anti-hijacking
-if (isset($_SESSION['user_ip']) && isset($_SESSION['user_agent'])) {
-    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] || $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
-        session_destroy();
-        header("Location: login.php?error=hijack");
-        exit();
+if (!isset($_SESSION['id'])) { header("Location: login.php"); exit(); }
+if (isset($_SESSION['user_ip'], $_SESSION['user_agent'])) {
+    if ($_SESSION['user_ip'] !== $_SERVER['REMOTE_ADDR'] ||
+        $_SESSION['user_agent'] !== $_SERVER['HTTP_USER_AGENT']) {
+        session_destroy(); header("Location: login.php?error=hijack"); exit();
     }
 }
-
-// CSP et Headers de sécurité
-$nonce = base64_encode(random_bytes(16));
 header("X-Frame-Options: DENY");
 header("X-Content-Type-Options: nosniff");
 header("Referrer-Policy: strict-origin-when-cross-origin");
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{$nonce}' 'strict-dynamic' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';");
 
 include "connection.php";
 if (!isset($conn) && isset($con)) { $conn = $con; }
 
 if (!isset($_GET['id']) || !ctype_digit((string)$_GET['id'])) {
-    header("Location: consultations.php?error=invalid_id"); 
-    exit();
+    header("Location: consultations.php?error=invalid_id"); exit();
 }
 
 $consultation_id = (int)$_GET['id'];
 $doc_id = (int)$_SESSION['id'];
 
-// Récupération sécurisée du rapport
+// ── Consultation + patient + docteur
 $stmt = $conn->prepare("
-    SELECT c.*, a.patient_name, a.patient_phone, a.app_date
+    SELECT c.*,
+           a.patient_name, a.patient_phone, a.app_date, a.app_type,
+           p.pdob, p.pgender, p.pprofession, p.psituation,
+           p.pmotif_initial, p.pantecedents, p.ptraitement, p.padresse, p.pemail,
+           d.docname, d.docprenom, d.specialty, d.rpps, d.tel AS doc_tel, d.adresse AS doc_adresse
     FROM consultations c
     LEFT JOIN appointments a ON c.appointment_id = a.id
+    LEFT JOIN patients p ON c.patient_id = p.id
+    LEFT JOIN doctor d ON c.doctor_id = d.docid
     WHERE c.id = ? AND c.doctor_id = ?
     LIMIT 1
 ");
@@ -53,464 +51,469 @@ $stmt->execute();
 $data = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
-if (!$data) {
-    header("Location: consultations.php?error=not_found");
-    exit();
-}
+if (!$data) { header("Location: consultations.php?error=not_found"); exit(); }
 
-if (empty($data['patient_name'])) {
-    $data['patient_name']  = 'Patient non lié';
-    $data['patient_phone'] = '—';
-}
+// ── Numéro de séance (combien de consultations avant celle-ci pour ce patient)
+$stmt_sn = $conn->prepare("SELECT COUNT(*) as n FROM consultations WHERE patient_id=? AND doctor_id=? AND date_consultation <= ? AND id <= ?");
+$stmt_sn->bind_param("iisi", $data['patient_id'], $doc_id, $data['date_consultation'], $consultation_id);
+$stmt_sn->execute();
+$sn_row = $stmt_sn->get_result()->fetch_assoc();
+$stmt_sn->close();
+$session_num = (int)($sn_row['n'] ?? 1);
 
-// Traitement de l'analyse IA
-$resume_json = null;
-$resume_text = '';
-if (!empty($data['resume_ia'])) {
-    $raw = $data['resume_ia'];
-    $cleaned = preg_replace('/^```json\s*/i', '', trim($raw));
-    $cleaned = preg_replace('/```\s*$/', '', $cleaned);
-    $decoded = json_decode(trim($cleaned), true);
-    
-    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-        $resume_json = $decoded;
-    } else {
-        $resume_text = $raw;
-    }
-}
+// ── Données patient
+$pat_name     = $data['patient_name']  ?: 'Patient non lié';
+$pat_phone    = $data['patient_phone'] ?: null;
+$pat_email    = $data['pemail']        ?: null;
+$pat_adresse  = $data['padresse']      ?: null;
+$pat_dob      = $data['pdob']          ?: null;
+$pat_age      = $data['age_patient']   ?: ($pat_dob ? (int)date_diff(date_create($pat_dob), date_create('today'))->y : null);
+$pat_ville    = $data['ville_patient'] ?: null;
+$pat_gender   = $data['pgender']       ?: null;
+$pat_job      = $data['pprofession']   ?: null;
+$pat_sit      = $data['psituation']    ?: null;
+$pat_motif    = $data['pmotif_initial'] ?: null;
+$pat_ant      = $data['pantecedents']  ?: null;
+$pat_trt      = $data['ptraitement']   ?: null;
 
-// Formatage Date / Heure
-$mois = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+// ── Données docteur
+$doc_fullname = trim(($data['docprenom'] ?? '') . ' ' . ($data['docname'] ?? '')) ?: ($_SESSION['nom'] ?? 'Dr.');
+$doc_spec     = $data['specialty']    ?: 'Psychologue clinicien';
+$doc_rpps     = $data['rpps']         ?: null;
+$doc_tel      = $data['doc_tel']      ?: null;
+$doc_adr      = $data['doc_adresse']  ?: null;
+
+// ── Dates
+$mois_fr = ['','janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
 $ts = strtotime($data['date_consultation']);
-$date_fr = date('d', $ts) . ' ' . $mois[(int)date('n',$ts)-1] . ' ' . date('Y', $ts);
-$heure = date('H:i', $ts);
+$date_fr = date('d', $ts) . ' ' . $mois_fr[(int)date('n',$ts)] . ' ' . date('Y', $ts);
+$heure   = date('H:i', $ts);
 
-// Styles conditionnels selon le niveau de risque
-$niveau = $resume_json['niveau_risque'] ?? '';
-$rc_map = [
-    'faible'   => ['text'=>'text-emerald-700 dark:text-emerald-400', 'bg'=>'bg-emerald-50 dark:bg-emerald-900/30', 'border'=>'border-emerald-200 dark:border-emerald-800'],
-    'modéré'   => ['text'=>'text-amber-700 dark:text-amber-400',   'bg'=>'bg-amber-50 dark:bg-amber-900/30',   'border'=>'border-amber-200 dark:border-amber-800'],
-    'élevé'    => ['text'=>'text-red-700 dark:text-red-400',     'bg'=>'bg-red-50 dark:bg-red-900/30',     'border'=>'border-red-200 dark:border-red-800'],
-    'critique' => ['text'=>'text-rose-800 dark:text-rose-400',    'bg'=>'bg-rose-50 dark:bg-rose-900/30',    'border'=>'border-rose-300 dark:border-rose-800'],
-];
-$rc = $rc_map[$niveau] ?? ['text'=>'text-indigo-700 dark:text-indigo-400', 'bg'=>'bg-indigo-50 dark:bg-indigo-900/30', 'border'=>'border-indigo-200 dark:border-indigo-800'];
+// ── Résumé IA
+$resume_ia = trim($data['resume_ia'] ?? '');
 
-// Extraction des données du graphique pour le Javascript
-$emotion_data_js = '[]';
-if (!empty($data['emotion_data']) && $data['emotion_data'] !== '[]') {
-    $ep_dec = json_decode($data['emotion_data'], true);
-    if (is_array($ep_dec) && !empty($ep_dec)) {
-        if (is_array($ep_dec[0])) {
-            $emotion_data_js = json_encode(array_map(fn($e) => $e['v'] ?? $e['valence'] ?? 0, $ep_dec));
-        } else {
-            $emotion_data_js = json_encode($ep_dec);
-        }
-    }
+// ── Émotions Plutchik (nouveau format JSON objet)
+$emotions_pu = [];
+if (!empty($data['emotions_plutchik'])) {
+    $dec = json_decode($data['emotions_plutchik'], true);
+    if (is_array($dec)) $emotions_pu = $dec;
 }
+
+// ── Niveau de risque
+$niveau_risque = strtolower(trim($data['niveau_risque'] ?? 'faible'));
+$risque_cfg = [
+    'faible'   => ['label'=>'Faible',   'color'=>'#1B6B3A', 'bg'=>'#EDFAF3', 'border'=>'#A7F3D0'],
+    'modéré'   => ['label'=>'Modéré',   'color'=>'#C77700', 'bg'=>'#FFF8E1', 'border'=>'#FDE68A'],
+    'élevé'    => ['label'=>'Élevé',    'color'=>'#B71C1C', 'bg'=>'#FFF3F3', 'border'=>'#FECACA'],
+    'critique' => ['label'=>'Critique', 'color'=>'#7B1FA2', 'bg'=>'#F3E5F5', 'border'=>'#DDD6FE'],
+];
+$rc = $risque_cfg[$niveau_risque] ?? $risque_cfg['faible'];
+
+// ── Émotions mapping
+$emo_cfg = [
+    'tristesse' => ['label'=>'Tristesse', 'color'=>'#1565C0', 'bg'=>'#E3F2FD'],
+    'joie'      => ['label'=>'Joie',      'color'=>'#E65100', 'bg'=>'#FFF3E0'],
+    'peur'      => ['label'=>'Peur',      'color'=>'#6A1B9A', 'bg'=>'#F3E5F5'],
+    'colere'    => ['label'=>'Colère',    'color'=>'#B71C1C', 'bg'=>'#FFEBEE'],
+    'degout'    => ['label'=>'Dégoût',    'color'=>'#558B2F', 'bg'=>'#F1F8E9'],
+    'surprise'  => ['label'=>'Surprise',  'color'=>'#00796B', 'bg'=>'#E0F2F1'],
+];
+
+// Trier les émotions par score décroissant
+arsort($emotions_pu);
 ?>
 <!DOCTYPE html>
-<html lang="fr" class="scroll-smooth">
+<html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>PsySpace · Rapport de séance</title>
-<link rel="icon" type="image/png" href="{{ asset('assets/images/logo.png') }}">    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" nonce="<?= $nonce ?>"></script>
-    <script src="https://cdn.tailwindcss.com" nonce="<?= $nonce ?>"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,700;0,900;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
-    <script nonce="<?= $nonce ?>">
-        tailwind.config = { 
-            darkMode: 'class', 
-            theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], serif: ['Merriweather', 'serif'] } } } 
-        };
-        if (localStorage.getItem('color-theme') === 'dark' || (!('color-theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
-        }
-    </script>
-    
-    <style nonce="<?= $nonce ?>">
-        body { font-family: 'Inter', sans-serif; }
-        .sidebar-link { transition: all 0.2s ease; }
-        .sidebar-link.active { background-color: #eef2ff; color: #4f46e5; font-weight: 600; }
-        .dark .sidebar-link.active { background-color: rgba(79,70,229,0.2); color: #818cf8; }
-        
-        .verbatim::-webkit-scrollbar { width: 4px; }
-        .verbatim::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        .dark .verbatim::-webkit-scrollbar-thumb { background: #475569; }
-        
-        @media print {
-            body { background: white !important; color: black !important; }
-            .dark body { background: white !important; color: black !important; }
-            aside, #sidebar-overlay, #theme-toggle, .no-print { display: none !important; }
-            main { margin-left: 0 !important; padding: 0 !important; }
-            .card-print { break-inside: avoid; box-shadow: none !important; border: 1px solid #e5e7eb !important; background: white !important; color: black !important; }
-            * { color: black !important; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CR · <?= htmlspecialchars($pat_name) ?> · <?= $date_fr ?> | PsySpace</title>
+<link rel="icon" type="image/png" href="assets/images/logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#F5F3EE;
+  --paper:#FFFFFF;
+  --border:#DDD8CF;
+  --border2:#EAE6DF;
+  --tx:#1A1714;
+  --tx2:#4A4540;
+  --tx3:#8C867E;
+  --tx4:#B8B2AA;
+  --ink:#0D2D6B;
+  --ink-lt:#EEF3FF;
+  --teal:#005F52;
+  --teal-lt:#E6F4F1;
+  --rose:#8B1A1A;
+  --rose-lt:#FDF3F3;
+  --amber:#7A4800;
+  --amber-lt:#FFF8ED;
+  --violet:#4A1272;
+  --violet-lt:#F5EEFF;
+  --ok:#1B5E20;
+  --ok-lt:#F0FAF0;
+  --sh:0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+  --sh2:0 2px 8px rgba(0,0,0,.08), 0 8px 32px rgba(0,0,0,.08);
+}
+
+html,body{min-height:100%;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);font-size:14px;line-height:1.6;}
+
+/* ── LAYOUT ── */
+.page{max-width:900px;margin:0 auto;padding:32px 20px 80px;}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:32px;}
+.back-btn{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--tx3);text-decoration:none;padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--paper);transition:all .15s;}
+.back-btn:hover{color:var(--ink);border-color:var(--ink);}
+.topbar-actions{display:flex;gap:8px;}
+.btn-print{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:7px 16px;border-radius:6px;border:none;cursor:pointer;background:var(--ink);color:#fff;transition:all .15s;letter-spacing:.02em;}
+.btn-print:hover{background:#1a3c7a;}
+
+/* ── DOCUMENT HEADER ── */
+.doc-header{background:var(--ink);border-radius:12px 12px 0 0;padding:28px 32px 24px;color:#fff;position:relative;overflow:hidden;}
+.doc-header::before{content:'';position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.04);}
+.doc-header::after{content:'';position:absolute;bottom:-30px;right:60px;width:100px;height:100px;border-radius:50%;background:rgba(255,255,255,.03);}
+.doc-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.22em;color:rgba(255,255,255,.4);margin-bottom:6px;}
+.doc-patient-name{font-family:'Lora',serif;font-size:28px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.2;margin-bottom:4px;}
+.doc-subtitle{font-size:12px;color:rgba(255,255,255,.55);margin-top:2px;}
+.risk-badge{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:99px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;border:1.5px solid rgba(255,255,255,.25);color:#fff;position:relative;z-index:1;}
+.doc-meta-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:20px;background:rgba(255,255,255,.08);border-radius:8px;overflow:hidden;}
+.doc-meta-cell{background:rgba(0,0,0,.15);padding:10px 14px;}
+.doc-meta-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.16em;color:rgba(255,255,255,.35);margin-bottom:3px;}
+.doc-meta-val{font-size:13px;font-weight:700;color:#fff;}
+.doc-praticien-band{background:rgba(0,0,0,.2);margin:0 -32px -24px;padding:11px 32px;display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid rgba(255,255,255,.08);}
+.doc-prat-name{font-size:13px;font-weight:700;color:#fff;}
+.doc-prat-sub{font-size:10px;color:rgba(255,255,255,.4);margin-top:1px;}
+
+/* ── BODY WRAPPER ── */
+.doc-body{background:var(--paper);border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;box-shadow:var(--sh);}
+
+/* ── SECTIONS ── */
+.section{padding:24px 32px;border-bottom:1px solid var(--border2);}
+.section:last-child{border-bottom:none;}
+.section-title{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.2em;color:var(--tx3);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.section-title::before{content:'';width:3px;height:12px;border-radius:2px;background:var(--ink);flex-shrink:0;}
+.section-title.rose::before{background:var(--rose);}
+.section-title.teal::before{background:var(--teal);}
+.section-title.amber::before{background:var(--amber);}
+.section-title.violet::before{background:var(--violet);}
+.section-title.ok::before{background:var(--ok);}
+
+/* ── PATIENT INFO GRID ── */
+.pat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.pat-field{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px 14px;}
+.pat-field-lbl{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--tx3);margin-bottom:4px;}
+.pat-field-val{font-size:13px;font-weight:600;color:var(--tx);}
+.pat-field-val.missing{color:var(--tx4);font-weight:400;font-style:italic;}
+.pat-field.full{grid-column:1/-1;}
+.pat-field.half{grid-column:span 2;}
+
+/* ── RESUME BOX ── */
+.resume-box{background:var(--ink-lt);border:1px solid rgba(13,45,107,.12);border-left:4px solid var(--ink);border-radius:0 8px 8px 0;padding:16px 18px;margin-bottom:0;}
+.resume-label{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:var(--ink);margin-bottom:8px;}
+.resume-txt{font-family:'Lora',serif;font-size:14px;line-height:1.9;color:#1A2D5A;font-style:italic;}
+
+/* ── OBSERVATIONS / VIGILANCE ── */
+.prose-block{font-size:13.5px;line-height:1.85;color:var(--tx2);}
+.vigil-box{background:var(--rose-lt);border:1px solid rgba(139,26,26,.15);border-left:4px solid var(--rose);border-radius:0 8px 8px 0;padding:14px 16px;}
+.vigil-lbl{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--rose);margin-bottom:6px;}
+.vigil-txt{font-size:13px;line-height:1.75;color:var(--tx2);}
+
+/* ── ÉVOLUTION ── */
+.evo-box{background:var(--teal-lt);border:1px solid rgba(0,95,82,.15);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:14px 16px;}
+.evo-lbl{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--teal);margin-bottom:6px;}
+.evo-txt{font-size:13px;line-height:1.75;color:var(--tx2);}
+
+/* ── ÉMOTIONS ── */
+.emo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.emo-cell{border-radius:8px;padding:12px 10px;text-align:center;border:1.5px solid;}
+.emo-name{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;}
+.emo-pct{font-family:'Lora',serif;font-size:22px;font-weight:700;line-height:1;margin-bottom:6px;}
+.emo-bar-track{height:3px;border-radius:2px;background:rgba(0,0,0,.1);overflow:hidden;}
+.emo-bar-fill{height:3px;border-radius:2px;}
+.emo-badge{display:inline-block;margin-top:6px;padding:2px 7px;border-radius:99px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;}
+
+/* ── PLAN ── */
+.plan-box{background:var(--teal-lt);border:1px solid rgba(0,95,82,.2);border-left:4px solid var(--teal);border-radius:0 8px 8px 0;padding:16px 18px;}
+.plan-txt{font-size:13px;line-height:1.85;color:var(--tx2);white-space:pre-wrap;}
+
+/* ── NOTES PRATICIEN ── */
+.notes-box{background:var(--amber-lt);border:1px solid rgba(122,72,0,.15);border-left:4px solid var(--amber);border-radius:0 8px 8px 0;padding:14px 16px;}
+.notes-txt{font-size:13px;line-height:1.75;color:var(--tx2);white-space:pre-wrap;}
+
+/* ── ANTÉCÉDENTS / TRAITEMENT ── */
+.ant-box{background:var(--rose-lt);border:1px solid rgba(139,26,26,.12);border-left:3px solid var(--rose);border-radius:0 6px 6px 0;padding:11px 14px;}
+.trt-box{background:var(--violet-lt);border:1px solid rgba(74,18,114,.12);border-left:3px solid var(--violet);border-radius:0 6px 6px 0;padding:11px 14px;}
+.ant-lbl, .trt-lbl{font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;margin-bottom:5px;}
+.ant-lbl{color:var(--rose);}
+.trt-lbl{color:var(--violet);}
+.ant-txt, .trt-txt{font-size:12.5px;line-height:1.7;color:var(--tx2);}
+
+/* ── TRANSCRIPTION ── */
+.verbatim{background:#FAFAF8;border:1px solid var(--border);border-radius:8px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.8;color:var(--tx3);max-height:300px;overflow-y:auto;}
+.verbatim::-webkit-scrollbar{width:3px;}
+.verbatim::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+/* ── SIGNATURE ── */
+.doc-sig{padding:20px 32px;display:flex;justify-content:space-between;align-items:center;background:#FAFAF8;border-top:1px solid var(--border2);border-radius:0 0 12px 12px;}
+.sig-left{font-size:11px;color:var(--tx4);}
+.sig-right{text-align:right;}
+.sig-name{font-size:13px;font-weight:700;color:var(--tx);}
+.sig-sub{font-size:10.5px;color:var(--tx3);margin-top:1px;}
+
+/* ── RISQUE INLINE ── */
+.risk-inline{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;border:1.5px solid;}
+
+/* ── PRINT ── */
+@media print{
+  .topbar,.btn-print,.back-btn{display:none!important;}
+  body{background:#fff;}
+  .page{padding:0;max-width:100%;}
+  .doc-header{border-radius:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .doc-body{border-radius:0;box-shadow:none;border:none;}
+  .section{break-inside:avoid;}
+  .verbatim{max-height:none;}
+}
+</style>
 </head>
-<body class="bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 transition-colors duration-300 min-h-screen">
+<body>
+<div class="page">
 
-<div class="flex min-h-screen relative">
-    <!-- Sidebar Mobile Overlay -->
-    <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden lg:hidden transition-opacity print:hidden"></div>
-
-    <!-- Navigation Latérale -->
-    <aside id="sidebar" class="w-64 bg-slate-900 dark:bg-slate-900 border-r border-slate-800 flex flex-col fixed h-full z-50 transition-transform transform -translate-x-full lg:translate-x-0 print:hidden">
-        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
-            <a href="dashboard.php" class="flex items-center gap-3">
-                <img src="assets/images/logo.png" alt="PsySpace Logo" class="h-8 w-8 rounded-lg object-cover">
-                <span class="text-lg font-bold text-white">PsySpace</span>
-            </a>
-            <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-white">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-        </div>
-        <nav class="flex-1 p-4 space-y-1">
-            <a href="dashboard.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-                Dashboard
-            </a>
-            <a href="patients_search.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                Patients
-            </a>
-            <a href="agenda.php" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                Agenda
-            </a>
-            <a href="consultations.php" class="sidebar-link active flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-white bg-slate-800/50">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
-                Archives
-            </a>
-        </nav>
-        <div class="p-4 border-t border-slate-800">
-             <a href="logout.php" class="flex items-center gap-2 text-slate-500 hover:text-red-400 text-sm font-medium transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-                Déconnexion
-            </a>
-        </div>
-    </aside>
-
-    <main class="flex-1 lg:ml-64 p-4 md:p-8 w-full max-w-6xl mx-auto">
-        <!-- Navigation d'en-tête -->
-        <nav class="flex justify-between items-center mb-6 no-print">
-            <div class="flex items-center gap-4">
-                <button id="open-sidebar" class="lg:hidden p-2 text-slate-500 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
-                </button>
-                <a href="consultations.php" class="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-                    Retour aux archives
-                </a>
-            </div>
-            
-            <!-- BOUTON CONTACT ASSISTANT AVEC PASTILLE -->
-<a href="chat_cabinet.php" class="sidebar-link flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium text-slate-400 hover:bg-slate-800 hover:text-white transition-colors">
-    <div class="flex items-center gap-3">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
-        Contact Assistant
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <a href="consultations.php" class="back-btn">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      Archives
+    </a>
+    <div class="topbar-actions">
+      <button class="btn-print" onclick="window.print()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+        Imprimer / PDF
+      </button>
     </div>
-    <span id="chat-badge-sidebar" class="hidden bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm transition-all duration-300">0</span>
-</a>
+  </div>
 
+  <!-- DOCUMENT -->
+  <div>
 
-            <div class="flex items-center gap-4">
-                <button id="theme-toggle" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-all border border-transparent dark:border-slate-700">
-                    <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
-                    <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 01-1.414 1.414l-.707-.707a1 1 0 011.414-1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.464 5.05l-.707-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"></path></svg>
-                </button>
-                <button onclick="window.print()" class="bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 dark:hover:bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition shadow-sm flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-                    <span class="hidden sm:inline">Imprimer / PDF</span>
-                </button>
-            </div>
-        </nav>
-
-        <!-- Titre du Rapport -->
-        <header class="mb-8 bg-white dark:bg-slate-900 border-l-4 border-indigo-500 rounded-xl p-6 shadow-sm card-print transition-colors">
-            <h1 class="font-serif text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Rapport de séance</h1>
-            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-                <span class="font-semibold text-indigo-600 dark:text-indigo-400 text-base"><?= htmlspecialchars($data['patient_name']) ?></span>
-                &nbsp;·&nbsp; <?= $date_fr ?> à <?= $heure ?>
-                <?php if($data['duree_minutes']>0): ?> &nbsp;·&nbsp; <?= (int)$data['duree_minutes'] ?> min <?php endif; ?>
-            </p>
-        </header>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 space-y-6">
-
-                <!-- Compte-Rendu Clinique -->
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm card-print border-l-4 border-indigo-400 transition-colors">
-                    <h2 class="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-6 pb-2 border-b border-slate-100 dark:border-slate-800">
-                        Compte-rendu clinique
-                    </h2>
-
-                    <?php if ($resume_json): ?>
-
-                        <?php if ($niveau): ?>
-                            <div class="flex justify-between items-center p-4 rounded-lg mb-6 border <?= $rc['bg'] ?> <?= $rc['border'] ?>">
-                                <div>
-                                    <p class="text-[10px] font-bold uppercase tracking-widest <?= $rc['text'] ?> mb-1">Niveau de risque</p>
-                                    <p class="text-2xl font-bold <?= $rc['text'] ?>"><?= ucfirst(htmlspecialchars($niveau)) ?></p>
-                                </div>
-                                <span class="px-3 py-1 text-xs font-bold rounded-full border <?= $rc['text'] ?> <?= $rc['bg'] ?> <?= $rc['border'] ?>">
-                                    <?= ucfirst(htmlspecialchars($niveau)) ?>
-                                </span>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php if (!empty($resume_json['synthese_courte'])): ?>
-                            <div class="p-5 bg-indigo-50 dark:bg-indigo-900/20 border-l-4 border-indigo-400 text-sm text-slate-700 dark:text-slate-300 mb-6 leading-relaxed rounded-r-lg shadow-sm">
-                                <p class="font-bold uppercase text-indigo-600 dark:text-indigo-400 text-[10px] tracking-widest mb-2">Synthèse</p>
-                                <?= nl2br(htmlspecialchars($resume_json['synthese_courte'])) ?>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php
-                        $sections = [
-                            ['observation',    'Observation clinique',   'border-slate-300 dark:border-slate-600'],
-                            ['humeur',         'État thymique',          'border-amber-300 dark:border-amber-600'],
-                            ['alliance',       'Alliance thérapeutique', 'border-purple-300 dark:border-purple-600'],
-                            ['vigilance',      'Points de vigilance',    'border-red-300 dark:border-red-600'],
-                            ['axes',           'Axes thérapeutiques',    'border-emerald-300 dark:border-emerald-600'],
-                            ['recommandations','Recommandations',        'border-blue-300 dark:border-blue-600'],
-                        ];
-                        
-                        foreach ($sections as $s):
-                            if (empty($resume_json[$s[0]])) continue;
-                        ?>
-                            <div class="mb-5 group">
-                                <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2 flex items-center gap-2">
-                                    <span class="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-indigo-400 transition"></span>
-                                    <?= $s[1] ?>
-                                </h3>
-                                <div class="p-4 bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 border-l-2 <?= $s[2] ?> rounded-r-lg text-sm text-slate-600 dark:text-slate-300 leading-relaxed shadow-sm hover:shadow dark:hover:shadow-slate-800 transition">
-                                    <?= nl2br(htmlspecialchars($resume_json[$s[0]])) ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-
-                        <?php if (!empty($resume_json['hypotheses_diag']) && is_array($resume_json['hypotheses_diag'])): ?>
-                            <div class="mb-5 bg-sky-50 dark:bg-sky-900/20 p-4 rounded-lg border border-sky-100 dark:border-sky-800/50">
-                                <h3 class="text-[10px] font-bold uppercase tracking-widest text-sky-600 dark:text-sky-400 mb-3">Hypothèses diagnostiques (CIM-11)</h3>
-                                <div class="space-y-2">
-                                    <?php foreach ($resume_json['hypotheses_diag'] as $h): ?>
-                                        <div class="flex items-start gap-3 p-2 bg-white dark:bg-slate-800/80 border border-sky-100 dark:border-sky-800 rounded text-xs text-slate-600 dark:text-slate-300 shadow-sm">
-                                            <span class="bg-sky-100 dark:bg-sky-900/50 text-sky-700 dark:text-sky-400 font-bold px-2 py-0.5 rounded uppercase shrink-0"><?= htmlspecialchars($h) ?></span>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <?php if (!empty($resume_json['objectifs_next']) && is_array($resume_json['objectifs_next'])): ?>
-                            <div class="mb-5 bg-teal-50 dark:bg-teal-900/20 p-4 rounded-lg border border-teal-100 dark:border-teal-800/50">
-                                <h3 class="text-[10px] font-bold uppercase tracking-widest text-teal-600 dark:text-teal-400 mb-3">Objectifs prochaine séance</h3>
-                                <ul class="space-y-2">
-                                    <?php foreach ($resume_json['objectifs_next'] as $i => $o): ?>
-                                        <li class="flex items-start gap-3">
-                                            <span class="w-5 h-5 rounded bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-400 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5"><?= $i+1 ?></span>
-                                            <span class="text-sm text-slate-600 dark:text-slate-300 leading-relaxed"><?= htmlspecialchars($o) ?></span>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            </div>
-                        <?php endif; ?>
-
-                    <?php elseif ($resume_text): ?>
-                        <div class="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap leading-relaxed"><?= htmlspecialchars($resume_text) ?></div>
-                    <?php else: ?>
-                        <p class="text-sm text-slate-400 dark:text-slate-500 italic">Aucun compte-rendu généré.</p>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Dynamique Émotionnelle -->
-                <?php if (!empty($data['emotion_data']) && $data['emotion_data'] !== '[]'): ?>
-                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm card-print border-l-4 border-emerald-300 transition-colors">
-                        <h2 class="text-xs font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-4 flex items-center gap-2">
-                            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                            Dynamique émotionnelle
-                        </h2>
-                        <div style="height: 120px; position: relative;">
-                            <canvas id="emoChart"></canvas>
-                        </div>
-                        <div class="flex justify-between text-[9px] font-bold uppercase tracking-widest text-slate-400 mt-2">
-                            <span>Début</span>
-                            <span>Fin</span>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
-                <!-- Transcription brute -->
-                <?php if (!empty($data['transcription_brute'])): ?>
-                    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm card-print border-l-4 border-slate-300 transition-colors">
-                        <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2">
-                            <span class="w-1.5 h-1.5 bg-slate-400 dark:bg-slate-500 rounded-full"></span>
-                            Transcription verbatim
-                        </h2>
-                        <div class="verbatim max-h-64 overflow-y-auto bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-lg p-4 text-xs text-slate-500 dark:text-slate-400 font-mono leading-relaxed transition-colors">
-                            <?= nl2br(htmlspecialchars($data['transcription_brute'])) ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
-
-            </div>
-
-            <!-- Colonne Informations Latérale -->
-            <div class="space-y-6">
-                
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm card-print border-l-4 border-indigo-500 transition-colors">
-                    <div class="bg-slate-50 dark:bg-slate-800/50 px-5 py-3 border-b border-slate-100 dark:border-slate-800 transition-colors">
-                         <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Patient</h3>
-                    </div>
-                    <div class="p-5 space-y-4">
-                        <div>
-                            <p class="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 font-bold">Nom complet</p>
-                            <p class="font-bold text-slate-800 dark:text-slate-200 text-base"><?= htmlspecialchars($data['patient_name']) ?></p>
-                        </div>
-                        <div>
-                            <p class="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 font-bold">Téléphone</p>
-                            <p class="font-medium text-slate-700 dark:text-slate-300 text-sm"><?= htmlspecialchars($data['patient_phone'] ?? '—') ?></p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm card-print transition-colors">
-                    <div class="bg-slate-50 dark:bg-slate-800/50 px-5 py-3 border-b border-slate-100 dark:border-slate-800 transition-colors">
-                         <h3 class="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Détails</h3>
-                    </div>
-                    <div class="p-5 space-y-3 text-sm">
-                        <div class="flex justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                            <span class="text-slate-500 dark:text-slate-400">Date</span>
-                            <span class="font-semibold text-slate-800 dark:text-slate-200"><?= $date_fr ?></span>
-                        </div>
-                        <div class="flex justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                            <span class="text-slate-500 dark:text-slate-400">Heure</span>
-                            <span class="font-semibold text-slate-800 dark:text-slate-200"><?= $heure ?></span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-500 dark:text-slate-400">Durée</span>
-                            <span class="font-semibold text-slate-800 dark:text-slate-200"><?= ($data['duree_minutes']>0) ? (int)$data['duree_minutes'].' min' : '< 1 min' ?></span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-slate-800 dark:bg-slate-950 text-slate-300 border border-slate-700 dark:border-slate-800 rounded-xl p-5 text-xs space-y-2 card-print shadow-inner transition-colors">
-                    <div class="flex justify-between">
-                        <span class="opacity-70">Réf. Séance</span>
-                        <span class="font-bold text-white">#<?= $data['id'] ?></span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="opacity-70">Réf. RDV</span>
-                        <span class="font-bold text-white">#<?= $data['appointment_id'] ?? '—' ?></span>
-                    </div>
-                    <div class="pt-2 mt-2 border-t border-slate-700 dark:border-slate-800 text-center">
-                         <span class="text-[9px] tracking-widest uppercase opacity-50">PsySpace · Sécurisé</span>
-                    </div>
-                </div>
-
-            </div>
+    <!-- EN-TÊTE -->
+    <div class="doc-header">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;">
+          <div class="doc-label">Compte-Rendu de Consultation Psychologique — Confidentiel</div>
+          <div class="doc-patient-name"><?= htmlspecialchars($pat_name) ?></div>
+          <div class="doc-subtitle">
+            Séance n°<?= $session_num ?> · <?= $date_fr ?> à <?= $heure ?>
+            <?php if($data['duree_minutes']>0): ?> · <?= (int)$data['duree_minutes'] ?> min<?php endif; ?>
+            <?php if($pat_age): ?> · <?= $pat_age ?> ans<?php endif; ?>
+            <?php if($pat_ville): ?> · <?= htmlspecialchars($pat_ville) ?><?php endif; ?>
+          </div>
         </div>
-    </main>
-</div>
+        <div style="text-align:right;flex-shrink:0;margin-left:16px;">
+          <div class="risk-badge" style="background:<?= $rc['color'] ?>33;border-color:rgba(255,255,255,.25);">
+            <span style="width:6px;height:6px;border-radius:50%;background:<?= $rc['color'] ?>;display:inline-block;"></span>
+            Risque <?= $rc['label'] ?>
+          </div>
+          <div style="font-size:9px;color:rgba(255,255,255,.3);margin-top:6px;font-weight:600;">PsySpace Pro</div>
+        </div>
+      </div>
 
-<script nonce="<?= $nonce ?>">
-// Gestion de la barre de navigation
-const sidebar = document.getElementById('sidebar');
-const overlay = document.getElementById('sidebar-overlay');
-const openBtn = document.getElementById('open-sidebar');
-const closeBtn = document.getElementById('close-sidebar');
+      <div class="doc-meta-row">
+        <div class="doc-meta-cell">
+          <div class="doc-meta-lbl">Date</div>
+          <div class="doc-meta-val"><?= $date_fr ?></div>
+        </div>
+        <div class="doc-meta-cell">
+          <div class="doc-meta-lbl">Séance</div>
+          <div class="doc-meta-val">N°<?= $session_num ?></div>
+        </div>
+        <div class="doc-meta-cell">
+          <div class="doc-meta-lbl">Âge</div>
+          <div class="doc-meta-val"><?= $pat_age ? $pat_age.' ans' : '—' ?></div>
+        </div>
+        <div class="doc-meta-cell">
+          <div class="doc-meta-lbl">Ville</div>
+          <div class="doc-meta-val"><?= $pat_ville ? htmlspecialchars($pat_ville) : '—' ?></div>
+        </div>
+      </div>
 
-function toggleSidebar() { 
-    sidebar.classList.toggle('-translate-x-full'); 
-    overlay.classList.toggle('hidden'); 
-}
+      <div class="doc-praticien-band">
+        <div>
+          <div class="doc-prat-name">Dr. <?= htmlspecialchars($doc_fullname) ?></div>
+          <div class="doc-prat-sub"><?= htmlspecialchars($doc_spec) ?><?= $doc_rpps ? ' · RPPS '.$doc_rpps : '' ?></div>
+        </div>
+        <div style="text-align:right;">
+          <?php if($doc_tel): ?><div class="doc-prat-sub"><?= htmlspecialchars($doc_tel) ?></div><?php endif; ?>
+          <?php if($doc_adr): ?><div class="doc-prat-sub"><?= htmlspecialchars($doc_adr) ?></div><?php endif; ?>
+        </div>
+      </div>
+    </div>
 
-if (openBtn) openBtn.addEventListener('click', toggleSidebar);
-if (closeBtn) closeBtn.addEventListener('click', toggleSidebar);
-if (overlay) overlay.addEventListener('click', toggleSidebar);
+    <!-- CORPS DU DOCUMENT -->
+    <div class="doc-body">
 
-// Gestion du Dark Mode
-const themeToggleBtn = document.getElementById('theme-toggle');
-const darkIcon = document.getElementById('theme-toggle-dark-icon');
-const lightIcon = document.getElementById('theme-toggle-light-icon');
+      <!-- 1. PROFIL PATIENT -->
+      <div class="section">
+        <div class="section-title">Profil patient</div>
+        <div class="pat-grid">
+          <div class="pat-field">
+            <div class="pat-field-lbl">Nom complet</div>
+            <div class="pat-field-val"><?= htmlspecialchars($pat_name) ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Date de naissance</div>
+            <div class="pat-field-val <?= !$pat_dob?'missing':'' ?>">
+              <?= $pat_dob ? date('d/m/Y', strtotime($pat_dob)).($pat_age?' ('.$pat_age.' ans)':'') : 'Non renseigné' ?>
+            </div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Genre</div>
+            <div class="pat-field-val <?= !$pat_gender?'missing':'' ?>"><?= $pat_gender ? htmlspecialchars($pat_gender) : 'Non renseigné' ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Téléphone</div>
+            <div class="pat-field-val <?= !$pat_phone?'missing':'' ?>"><?= $pat_phone ? htmlspecialchars($pat_phone) : 'Non renseigné' ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Email</div>
+            <div class="pat-field-val <?= !$pat_email?'missing':'' ?>"><?= $pat_email ? htmlspecialchars($pat_email) : 'Non renseigné' ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Situation</div>
+            <div class="pat-field-val <?= !$pat_sit?'missing':'' ?>"><?= $pat_sit ? htmlspecialchars($pat_sit) : 'Non renseigné' ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Profession</div>
+            <div class="pat-field-val <?= !$pat_job?'missing':'' ?>"><?= $pat_job ? htmlspecialchars($pat_job) : 'Non renseigné' ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Ville</div>
+            <div class="pat-field-val <?= !$pat_ville?'missing':'' ?>"><?= $pat_ville ? htmlspecialchars($pat_ville) : 'Non renseigné' ?></div>
+          </div>
+          <div class="pat-field">
+            <div class="pat-field-lbl">Adresse</div>
+            <div class="pat-field-val <?= !$pat_adresse?'missing':'' ?>"><?= $pat_adresse ? htmlspecialchars($pat_adresse) : 'Non renseigné' ?></div>
+          </div>
+          <?php if($pat_motif): ?>
+          <div class="pat-field full">
+            <div class="pat-field-lbl">Motif initial de consultation</div>
+            <div class="pat-field-val"><?= htmlspecialchars($pat_motif) ?></div>
+          </div>
+          <?php endif; ?>
+        </div>
 
-if (document.documentElement.classList.contains('dark')) { 
-    lightIcon.classList.remove('hidden'); 
-} else { 
-    darkIcon.classList.remove('hidden'); 
-}
+        <?php if($pat_ant || $pat_trt): ?>
+        <div style="display:grid;grid-template-columns:<?= ($pat_ant&&$pat_trt)?'1fr 1fr':'1fr' ?>;gap:12px;margin-top:12px;">
+          <?php if($pat_ant): ?>
+          <div class="ant-box">
+            <div class="ant-lbl">Antécédents</div>
+            <div class="ant-txt"><?= nl2br(htmlspecialchars($pat_ant)) ?></div>
+          </div>
+          <?php endif; ?>
+          <?php if($pat_trt): ?>
+          <div class="trt-box">
+            <div class="trt-lbl">Traitement en cours</div>
+            <div class="trt-txt"><?= nl2br(htmlspecialchars($pat_trt)) ?></div>
+          </div>
+          <?php endif; ?>
+        </div>
+        <?php endif; ?>
+      </div>
 
-themeToggleBtn.addEventListener('click', function() {
-    darkIcon.classList.toggle('hidden');
-    lightIcon.classList.toggle('hidden');
-    
-    if (document.documentElement.classList.contains('dark')) {
-        document.documentElement.classList.remove('dark'); 
-        localStorage.setItem('color-theme', 'light');
-    } else {
-        document.documentElement.classList.add('dark'); 
-        localStorage.setItem('color-theme', 'dark');
-    }
-});
+      <!-- 2. PROFIL ÉMOTIONNEL -->
+      <?php if(!empty($emotions_pu)): ?>
+      <div class="section">
+        <div class="section-title teal">Profil émotionnel de séance</div>
+        <div class="emo-grid">
+          <?php foreach($emotions_pu as $emo_key => $emo_val):
+            $emo_val = max(0, min(100, (int)$emo_val));
+            if($emo_val === 0) continue;
+            $ecfg = $emo_cfg[$emo_key] ?? ['label'=>ucfirst($emo_key),'color'=>'#666','bg'=>'#f5f5f5'];
+            $badge = $emo_val >= 75 ? 'Dominant' : ($emo_val >= 40 ? 'Présent' : 'Trace');
+          ?>
+          <div class="emo-cell" style="background:<?= $ecfg['bg'] ?>;border-color:<?= $ecfg['color'] ?>44;">
+            <div class="emo-name" style="color:<?= $ecfg['color'] ?>;"><?= $ecfg['label'] ?></div>
+            <div class="emo-pct" style="color:<?= $ecfg['color'] ?>;"><?= $emo_val ?>%</div>
+            <div class="emo-bar-track">
+              <div class="emo-bar-fill" style="width:<?= $emo_val ?>%;background:<?= $ecfg['color'] ?>;"></div>
+            </div>
+            <div class="emo-badge" style="background:<?= $ecfg['color'] ?>22;color:<?= $ecfg['color'] ?>;"><?= $badge ?></div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endif; ?>
 
-// Graphique des émotions
-const emotionData = <?= $emotion_data_js ?>;
+      <!-- 3. SYNTHÈSE CLINIQUE (résumé IA) -->
+      <?php if($resume_ia): ?>
+      <div class="section">
+        <div class="section-title">Synthèse · Motif & Déroulement de séance</div>
+        <div class="resume-box">
+          <div class="resume-label">Compte-rendu clinique</div>
+          <div class="resume-txt"><?= nl2br(htmlspecialchars($resume_ia)) ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
 
-if (emotionData && emotionData.length > 1) {
-    const ctx = document.getElementById('emoChart').getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 120);
-    
-    gradient.addColorStop(0, 'rgba(16, 185, 129, 0.25)'); // Emerald light
-    gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-  
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: emotionData.map((_, i) => i),
-            datasets: [{
-                data: emotionData,
-                borderColor: '#10b981',
-                borderWidth: 2,
-                pointRadius: 0,
-                fill: true,
-                backgroundColor: gradient,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { display: false },
-                y: { min: -1.2, max: 1.2, display: false }
-            }
-        }
-    });
-}
+      <!-- 4. ÉVOLUTION -->
+      <?php if(!empty($data['evolution_inter']) && trim($data['evolution_inter'])): ?>
+      <div class="section">
+        <div class="section-title teal">Évolution depuis la dernière séance</div>
+        <div class="evo-box">
+          <div class="evo-lbl">Comparaison inter-séances</div>
+          <div class="evo-txt"><?= nl2br(htmlspecialchars($data['evolution_inter'])) ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
 
-// --- POLLING POUR LA PASTILLE DU CHAT ---
-function checkUnreadMessages() {
-    fetch('api_chat_unread.php')
-    .then(r => r.json())
-    .then(data => {
-        const badge = document.getElementById('chat-badge-sidebar');
-        if (badge) { // Sécurité pour éviter les erreurs
-            if (data.unread > 0) {
-                badge.textContent = '+' + data.unread;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
-        }
-    })
-    .catch(e => console.error('Erreur Badge Chat:', e));
-}
-// On lance la vérification tout de suite, puis toutes les 5 secondes
-checkUnreadMessages();
-setInterval(checkUnreadMessages, 5000);
-</script>
+      <!-- 5. POINTS DE VIGILANCE -->
+      <?php 
+      // Chercher les points de vigilance dans le résumé (champ motif_seance peut contenir la synthèse complète)
+      // On n'a pas de champ dédié, mais on peut les afficher si présents
+      $notes_pr = trim($data['notes_praticien'] ?? '');
+      if($notes_pr): ?>
+      <div class="section">
+        <div class="section-title amber">Notes cliniques du praticien <span style="font-size:9px;font-weight:500;text-transform:none;letter-spacing:0;color:var(--tx4);margin-left:8px;">Confidentiel · Usage exclusif</span></div>
+        <div class="notes-box">
+          <div class="notes-txt"><?= nl2br(htmlspecialchars($notes_pr)) ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <!-- 6. PLAN DE SUIVI -->
+      <?php if(!empty($data['plan_therapeutique']) && trim($data['plan_therapeutique'])): ?>
+      <div class="section">
+        <div class="section-title teal">Plan de suivi · Prochaine séance</div>
+        <div class="plan-box">
+          <div class="plan-txt"><?= nl2br(htmlspecialchars($data['plan_therapeutique'])) ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <!-- 7. TRANSCRIPTION -->
+      <?php $transcript = trim($data['transcription_brute'] ?? $data['transcription'] ?? '');
+      if($transcript): ?>
+      <div class="section">
+        <div class="section-title" style="">Transcription verbatim de séance</div>
+        <div class="verbatim"><?= nl2br(htmlspecialchars($transcript)) ?></div>
+      </div>
+      <?php endif; ?>
+
+      <!-- SIGNATURE -->
+      <div class="doc-sig">
+        <div class="sig-left">Confidentiel · PsySpace Pro · Usage clinique exclusif · Réf. #<?= $data['id'] ?></div>
+        <div class="sig-right">
+          <div class="sig-name">Dr. <?= htmlspecialchars($doc_fullname) ?></div>
+          <div class="sig-sub"><?= htmlspecialchars($doc_spec) ?><?= $doc_rpps ? ' · RPPS '.$doc_rpps : '' ?></div>
+        </div>
+      </div>
+
+    </div><!-- /doc-body -->
+  </div><!-- /document -->
+
+</div><!-- /page -->
 </body>
 </html>
