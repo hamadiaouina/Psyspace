@@ -113,6 +113,7 @@ ob_start(function($buffer) {
 <!DOCTYPE html>
 <html lang="fr" class="scroll-smooth">
 <head>
+    <meta name="google-site-verification" content="google-site-verification=3648EysteCJqG8a_40SJDbKlNvM34j8PpGx3_wwR0bI">
     <script nonce="<?= $nonce ?>">
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js');
