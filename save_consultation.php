@@ -1,23 +1,24 @@
 <?php
-// DEBUG TEMPORAIRE — À RETIRER APRÈS
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
+ob_start(); // Buffer toute sortie pour éviter que les warnings polluent la réponse JSON/texte
 
 // --- 1. CONFIGURATION SÉCURISÉE DES SESSIONS ---
-ini_set('session.cookie_httponly', '1');
-ini_set('session.use_only_cookies', '1');
-ini_set('session.cookie_samesite', 'Lax');
+// Suppression des warnings si la session est déjà démarrée par connection.php
+@ini_set('session.cookie_httponly', '1');
+@ini_set('session.use_only_cookies', '1');
+@ini_set('session.cookie_samesite', 'Lax');
 
 if ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
     (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https')) {
-    ini_set('session.cookie_secure', '1');
+    @ini_set('session.cookie_secure', '1');
 }
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 // --- 2. VÉRIFICATION MÉTHODE + CSRF ---
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo "method_not_allowed";
+    ob_clean(); echo "method_not_allowed";
     exit();
 }
 
@@ -26,11 +27,13 @@ $sess_csrf = $_SESSION['csrf_token'] ?? '';
 
 if (empty($post_csrf) || empty($sess_csrf) || !hash_equals($sess_csrf, $post_csrf)) {
     error_log("[PsySpace Security] Échec CSRF - save_consultation");
-    echo "csrf_invalid";
+    ob_clean(); echo "csrf_invalid";
     exit();
 }
 
 // --- 3. CONNEXION DB ---
+// connection.php ne doit PAS appeler session_start() lui-même
+// Si c'est le cas, les warnings ini_set viennent de là — rien à faire ici
 require_once "connection.php";
 
 $db = null;
@@ -39,7 +42,7 @@ elseif (isset($con))   { $db = $con; }
 
 if (!$db) {
     error_log("[PsySpace Error] Connexion DB échouée");
-    echo "db_error";
+    ob_clean(); echo "db_error";
     exit();
 }
 
@@ -54,7 +57,7 @@ if ($action === 'save_plan') {
     $appointment_id = (int)($_SESSION['pending_appointment_id'] ?? 0);
 
     if (!$doctor_id || !$appointment_id || !$plan) {
-        echo "missing_data";
+        ob_clean(); echo "missing_data";
         exit();
     }
 
@@ -66,12 +69,12 @@ if ($action === 'save_plan') {
     $s->close();
 
     if ($r->num_rows === 0) {
-        echo "unauthorized";
+        ob_clean(); echo "unauthorized";
         exit();
     }
 
     $_SESSION['pending_plan'] = $plan;
-    echo "success";
+    ob_clean(); echo "success";
     exit();
 }
 
@@ -82,7 +85,7 @@ if ($action === 'goal_achieved') {
     $goal_id = (int)($_POST['goal_id'] ?? 0);
 
     if (!$doctor_id || !$goal_id) {
-        echo "missing_data";
+        ob_clean(); echo "missing_data";
         exit();
     }
 
@@ -94,7 +97,7 @@ if ($action === 'goal_achieved') {
     $s->bind_param("ii", $goal_id, $doctor_id);
     $s->execute();
     $s->close();
-    echo "success";
+    ob_clean(); echo "success";
     exit();
 }
 
@@ -110,7 +113,7 @@ $emotions        = $_POST['emotions']      ?? '{}';   // JSON objet {tristesse:x
 $emo_timeline    = $_POST['emo_timeline']  ?? '[]';   // JSON tableau
 $plan            = strip_tags(trim($_POST['plan'] ?? $_SESSION['pending_plan'] ?? ''));
 $niveau_risque   = strip_tags(trim($_POST['niveau_risque']  ?? 'faible'));
-$motif_seance    = strip_tags(trim($_POST['motif_seance']   ?? ''));
+$motif_seance    = mb_substr(strip_tags(trim($_POST['motif_seance']   ?? '')), 0, 500, 'UTF-8');
 $evolution_inter = strip_tags(trim($_POST['evolution_inter'] ?? ''));
 $notes_praticien = strip_tags(trim($_POST['notes']          ?? ''));
 
@@ -121,9 +124,9 @@ $ville_patient   = !empty($_POST['ville_patient'])  ? strip_tags(trim($_POST['vi
 $appointment_id  = (int)($_SESSION['pending_appointment_id'] ?? 0);
 
 // Validations de base
-if (!$doctor_id)      { echo "not_logged_in";    exit(); }
-if (!$appointment_id) { echo "no_appointment_id"; exit(); }
-if (!$resume && !$transcript) { echo "empty_content"; exit(); }
+if (!$doctor_id)      { ob_clean(); echo "not_logged_in";    exit(); }
+if (!$appointment_id) { ob_clean(); echo "no_appointment_id"; exit(); }
+if (!$resume && !$transcript) { ob_clean(); echo "empty_content"; exit(); }
 
 // Validation JSON
 foreach (['emotions', 'emo_timeline'] as $jsonField) {
@@ -155,7 +158,7 @@ $stmt_find->execute();
 $res_find = $stmt_find->get_result();
 
 if ($res_find->num_rows === 0) {
-    echo "appointment_not_found";
+    ob_clean(); echo "appointment_not_found";
     $stmt_find->close();
     exit();
 }
@@ -165,7 +168,7 @@ $stmt_find->close();
 
 if (!$patient_id) {
     error_log("[PsySpace Error] patient_id=0 pour appointment_id=$appointment_id");
-    echo "invalid_patient_id";
+    ob_clean(); echo "invalid_patient_id";
     exit();
 }
 
@@ -176,14 +179,15 @@ $stmt_dup = $db->prepare(
 $stmt_dup->bind_param("i", $appointment_id);
 $stmt_dup->execute();
 if ($stmt_dup->get_result()->num_rows > 0) {
-    echo "already_saved";
+    ob_clean(); echo "already_saved";
     $stmt_dup->close();
     exit();
 }
 $stmt_dup->close();
 
 // --- Insertion ---
-// Colonnes nécessaires (ALTER TABLE si pas encore fait) :
+// IMPORTANT : motif_seance doit être TEXT (pas VARCHAR) car il contient maintenant le résumé complet
+// ALTER TABLE consultations MODIFY COLUMN motif_seance TEXT;
 // ALTER TABLE consultations ADD COLUMN age_patient INT DEFAULT NULL;
 // ALTER TABLE consultations ADD COLUMN ville_patient VARCHAR(150) DEFAULT NULL;
 // (motif_seance, evolution_inter, notes_praticien, emotions_plutchik, plan_therapeutique,
@@ -202,7 +206,7 @@ $stmt = $db->prepare($sql);
 
 if (!$stmt) {
     error_log("[PsySpace Error] Prepare: " . $db->error);
-    echo "db_prepare_error: " . $db->error;
+    ob_clean(); echo "db_prepare_error: " . $db->error;
     exit();
 }
 
@@ -241,12 +245,11 @@ if ($stmt->execute()) {
         $_SESSION['pending_plan']
     );
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    echo "success";
+    ob_clean(); echo "success";
 } else {
     error_log("[PsySpace Error] Insert: " . $stmt->error);
     // Retourner le détail de l'erreur pour debug (à retirer en prod)
-    echo "insert_error: " . $stmt->error;
+    ob_clean(); echo "insert_error: " . $stmt->error;
 }
-
 $stmt->close();
 ?>
