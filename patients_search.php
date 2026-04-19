@@ -416,14 +416,22 @@ foreach($patients as $p) {
                                         </div>
                                     </div>
                                     <div class="flex items-center gap-2">
-                                        <?php if (!$isArch && !$isPast): ?>
-                                            <a href="analyse_ia.php?patient_name=<?= urlencode($name) ?>&id=<?= $appt['id'] ?>"
-                                               class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-bold transition">
-                                                Démarrer
-                                            </a>
-                                        <?php endif; ?>
-                                        
-                                        <?php if (!$isArch): ?>
+<?php if (!$isArch && !$isPast): ?>
+    <a href="analyse_ia.php?patient_name=<?= urlencode($name) ?>&id=<?= $appt['id'] ?>"
+       class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded text-xs font-bold transition">
+        Démarrer
+    </a>
+<?php endif; ?>
+
+<?php if ($isArch): ?>
+    <a href="patient_details.php?id=<?= $appt['archive_id'] ?>"
+       class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs font-bold transition flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Consulter archives
+    </a>
+<?php endif; ?>
+
+<?php if (!$isArch): ?>
                                             <button onclick="openEdit(<?= $appt['id'] ?>, '<?= date('Y-m-d\TH:i', $ts) ?>', '<?= htmlspecialchars(addslashes($name), ENT_QUOTES) ?>')" class="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition" title="Modifier">
                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                             </button>
