@@ -21,11 +21,12 @@ RewriteEngine On
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-RewriteEngine On
-
-# Si le fichier demandé n'existe pas...
+# 5. Cacher l'extension .php
 RewriteCond %{REQUEST_FILENAME} !-f
-# Et si le dossier demandé n'existe pas...
 RewriteCond %{REQUEST_FILENAME} !-d
-# ALORS on affiche la page 404.php
+RewriteRule ^([^\.]+)$ $1.php [NC,L]
+
+# 6. Page 404 personnalisée
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ /404.php [L,QSA]
